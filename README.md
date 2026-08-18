@@ -107,6 +107,15 @@ The settings window uses the same draft **Cancel / Apply** behavior as Multi-sea
 
 During a normal full scan, BetterSearch temporarily replaces the listing gallery with a dedicated progress screen. Custom mode can instead show matching cards progressively while scanning.
 
+The progress screen reports pages checked and matches found, plus a rolling **average pages/second** and an **estimated time remaining** once enough pages have completed to calculate a useful rate. The speed is smoothed over recent page completions so several concurrent requests finishing together do not make it jump wildly. If a retry is happening, ETA is temporarily marked for recalculation. Returning from a heavily throttled background tab also restarts the timing window so stale background timing does not distort the estimate.
+
+Example:
+
+```text
+Scanning pages 83 / 160 · 513 matches found
+Average speed: 2.7 pages/s · Estimated remaining: ~29s
+```
+
 The scanner only parses Etsy's main search-result region and ignores personalized sections such as **Recommended for you** and **Because you viewed**.
 
 Results are rebuilt into a dense grid with no gaps. Native pagination is hidden while BetterSearch is displaying the combined result set.
