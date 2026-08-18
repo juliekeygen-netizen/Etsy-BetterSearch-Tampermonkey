@@ -221,6 +221,69 @@ function showStatus(status = null) {
     info.replaceChildren(span);
 }
 
+function ensureScanPanel() {
+    let panel = document.querySelector('[data-ebs-scan-panel]');
+    if (panel) return panel;
+
+    const grid = mainResultsGrid(document);
+    const searchGroup = document.querySelector('.search-listings-group');
+    const noResults = document.querySelector('[data-no-results]');
+    const host = grid?.parentElement || searchGroup || noResults?.parentElement;
+    if (!host) return null;
+
+    panel = document.createElement('div');
+    panel.className = 'ebs-scan-panel';
+    panel.dataset.ebsScanPanel = '';
+    panel.setAttribute('role', 'status');
+    panel.setAttribute('aria-live', 'polite');
+    panel.innerHTML = `
+        <span class="ebs-scan-spinner" aria-hidden="true"></span>
+        <span class="ebs-scan-copy">
+            <strong data-ebs-scan-title>Scanning Etsy results…</strong>
+            <span data-ebs-scan-detail>Preparing search…</span>
+        </span>`;
+
+    if (grid?.parentElement === host) host.insertBefore(panel, grid);
+    else if (searchGroup) searchGroup.prepend(panel);
+    else noResults.insertAdjacentElement('afterend', panel);
+    return panel;
+}
+
+function updateScanPanel(status = {}) {
+    const panel = ensureScanPanel();
+    if (!panel) return;
+    document.body?.classList.add('ebs-scan-active');
+
+    const title = panel.querySelector('[data-ebs-scan-title]');
+    const detail = panel.querySelector('[data-ebs-scan-detail]');
+    if (title) title.textContent = status.phase === 'retrying' ? 'Retrying Etsy scan…' : 'Scanning Etsy results…';
+
+    const searchCount = Math.max(1, Number(status.searchCount) || 1);
+    const readySearches = Math.max(0, Number(status.readySearches) || 0);
+    const completedPages = Math.max(0, Number(status.completedPages) || 0);
+    const totalPages = Math.max(0, Number(status.totalPages) || 0);
+    const matches = Math.max(0, Number(status.matches) || 0);
+
+    let progress;
+    if (readySearches < searchCount) {
+        progress = searchCount > 1
+            ? `Preparing searches ${readySearches} / ${searchCount}`
+            : 'Preparing search';
+        if (completedPages) progress += ` · ${completedPages} ${completedPages === 1 ? 'page' : 'pages'} checked`;
+    } else if (totalPages > 0) {
+        progress = `Scanning pages ${Math.min(completedPages, totalPages)} / ${totalPages}`;
+    } else {
+        progress = 'Scanning result pages';
+    }
+    progress += ` · ${matches} ${matches === 1 ? 'match' : 'matches'} found`;
+    if (detail) detail.textContent = progress;
+}
+
+function clearScanPanel() {
+    document.querySelector('[data-ebs-scan-panel]')?.remove();
+    document.body?.classList.remove('ebs-scan-active');
+}
+
 function abortActiveScan() {
     state.scanId += 1;
     state.controller?.abort();
@@ -240,6 +303,7 @@ function clearAutoRetry(resetCount = true) {
 function stopScan() {
     abortActiveScan();
     clearAutoRetry(true);
+    clearScanPanel();
 }
 
 function invalidateCache() {
@@ -250,6 +314,7 @@ function invalidateCache() {
 }
 
 function restoreNative() {
+    clearScanPanel();
     const grid = state.nativeGrid;
     if (state.rendered && grid?.isConnected) {
         if (grid.hasAttribute('data-ebs-results-grid')) grid.closest('[data-ebs-results-grid-host]')?.remove();
@@ -293,6 +358,7 @@ function nodeFromCandidate(item) {
 
 function renderResults(sig, phase = 'done') {
     if (!(cfg.multi || cfg.strict) || signature() !== sig) return;
+    clearScanPanel();
     const grid = liveResultsGrid();
     if (!grid) return scheduleSync(180);
     if (!state.rendered || state.nativeGrid !== grid) {
@@ -333,12 +399,21 @@ function scheduleAutoRetry(sig) {
     if (state.retryCount > 3) {
         clearTimeout(state.retryTimer);
         state.retryTimer = 0;
+        clearScanPanel();
         renderResults(sig, 'error');
         return;
     }
     const delays = [2500, 6500, 15000];
     const delay = delays[state.retryCount - 1] || 15000;
-    renderResults(sig, 'retrying');
+    const searchCount = cfg.multi ? compileMultiPlan().searches.length : 1;
+    state.status = {
+        ...state.status,
+        phase: 'retrying',
+        searchCount,
+        matches: state.status?.matches || 0,
+    };
+    showStatus(state.status);
+    updateScanPanel(state.status);
     clearTimeout(state.retryTimer);
     state.retryTimer = setTimeout(() => {
         state.retryTimer = 0;
