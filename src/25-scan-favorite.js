@@ -35,10 +35,71 @@ async function scan() {
     state.controller = controller;
     state.scanningSig = sig;
     state.nativeNodes = captureLiveNativeNodes();
-    state.status = { phase: 'scanning', matches: 0, searchCount: searches.length };
-    showStatus(state.status);
 
+    const SCAN_CONCURRENCY = 3;
     const map = new Map();
+    let completedPages = 0;
+    let totalPages = 0;
+    let readySearches = 0;
+    let progressTimer = 0;
+    let lastProgressAt = 0;
+    let pendingPhase = 'scanning';
+
+    const countMatches = () => {
+        let count = 0;
+        if (cfg.multi) {
+            for (const item of map.values()) if (multiCandidateMatches(item, plan)) count += 1;
+        } else {
+            for (const item of map.values()) if (strictMatchesTitle(item.title)) count += 1;
+        }
+        return count;
+    };
+
+    const publishProgress = () => {
+        if (myId !== state.scanId || controller.signal.aborted) return;
+        lastProgressAt = performance.now();
+        const status = {
+            phase: pendingPhase,
+            matches: countMatches(),
+            searchCount: searches.length,
+            readySearches,
+            completedPages,
+            totalPages,
+        };
+        state.status = status;
+        showStatus(status);
+        updateScanPanel(status);
+    };
+
+    const progress = (phase = 'scanning', force = false) => {
+        if (myId !== state.scanId || controller.signal.aborted) return;
+        pendingPhase = phase;
+        const elapsed = performance.now() - lastProgressAt;
+        if (force || elapsed >= 120) {
+            clearTimeout(progressTimer);
+            progressTimer = 0;
+            publishProgress();
+            return;
+        }
+        if (!progressTimer) {
+            progressTimer = setTimeout(() => {
+                progressTimer = 0;
+                publishProgress();
+            }, Math.max(20, 120 - elapsed));
+        }
+    };
+
+    state.status = {
+        phase: 'scanning',
+        matches: 0,
+        searchCount: searches.length,
+        readySearches: 0,
+        completedPages: 0,
+        totalPages: 0,
+    };
+    showStatus(state.status);
+    updateScanPanel(state.status);
+
     const firstJobs = searches.map((search, groupIndex) => ({
         part: search.query,
         branchId: search.branchRuleId,
@@ -46,51 +107,95 @@ async function scan() {
         total: 0,
     }));
 
-    const progress = (phase = 'scanning') => {
-        if (myId !== state.scanId) return;
-        state.candidates = Array.from(map.values()).sort(compareCandidates);
-        const matches = matchedCandidates().length;
-        state.status = { phase, matches, searchCount: searches.length };
-        showStatus(state.status);
-    };
-
     try {
-        const firstResult = await runJobs(firstJobs, 2, async (job) => {
-            const doc = await fetchDoc(scanUrl(job.part, 1), controller.signal);
-            job.total = parseTotalPages(doc);
-            for (const item of cardData(doc, job.groupIndex, 1, job.branchId)) mergeCandidate(map, item);
-            progress();
-        }, controller.signal, () => progress('retrying'));
+        const currentUrl = new URL(location.href);
+        const currentPage = Math.max(1, Number(currentUrl.searchParams.get('page')) || 1);
+        const canReuseLivePage = searches.length === 1
+            && normalize(searches[0].query) === normalize(query())
+            && Boolean(mainResultsGrid(document));
 
-        const queue = [];
-        for (const job of firstJobs) {
-            if (!job.total) continue;
-            for (let page = 2; page <= job.total; page += 1) queue.push({ ...job, page });
+        let firstResult;
+        if (canReuseLivePage) {
+            const job = firstJobs[0];
+            job.total = parseTotalPages(document);
+            totalPages = job.total;
+            readySearches = 1;
+            completedPages = 1;
+            for (const item of cardData(document, job.groupIndex, currentPage, job.branchId)) mergeCandidate(map, item);
+            progress('scanning', true);
+            firstResult = { pending: [], errors: [] };
+        } else {
+            firstResult = await runJobs(firstJobs, SCAN_CONCURRENCY, async (job) => {
+                const doc = await fetchDoc(scanUrl(job.part, 1), controller.signal);
+                job.total = parseTotalPages(doc);
+                totalPages += job.total;
+                readySearches += 1;
+                completedPages += 1;
+                for (const item of cardData(doc, job.groupIndex, 1, job.branchId)) mergeCandidate(map, item);
+                progress();
+            }, controller.signal, () => progress('retrying', true));
         }
-        const pageResult = await runJobs(queue, 2, async (job) => {
+
+        // Round-robin pages from the different searches. This gives useful progressive
+        // results across every branch instead of finishing one large query before the next.
+        const queue = [];
+        const maxPages = Math.max(0, ...firstJobs.map((job) => job.total || 0));
+        for (let page = 1; page <= maxPages; page += 1) {
+            for (const job of firstJobs) {
+                if (!job.total || page > job.total) continue;
+                if (!canReuseLivePage && page === 1) continue;
+                if (canReuseLivePage && job.groupIndex === 0 && page === currentPage) continue;
+                queue.push({ ...job, page });
+            }
+        }
+
+        const pageResult = await runJobs(queue, SCAN_CONCURRENCY, async (job) => {
             const doc = await fetchDoc(scanUrl(job.part, job.page), controller.signal);
             for (const item of cardData(doc, job.groupIndex, job.page, job.branchId)) mergeCandidate(map, item);
+            completedPages += 1;
             progress();
-        }, controller.signal, () => progress('retrying'));
+        }, controller.signal, () => progress('retrying', true));
 
+        clearTimeout(progressTimer);
+        progressTimer = 0;
         if (myId !== state.scanId || controller.signal.aborted) return;
+
         const incomplete = firstResult.pending.length > 0 || pageResult.pending.length > 0;
         state.scanningSig = '';
         state.cacheSig = sig;
         state.candidates = Array.from(map.values()).sort(compareCandidates);
         state.cacheReady = !incomplete;
+        state.status = {
+            phase: incomplete ? 'retrying' : 'done',
+            matches: matchedCandidates().length,
+            searchCount: searches.length,
+            readySearches,
+            completedPages,
+            totalPages,
+        };
+
         if (incomplete) scheduleAutoRetry(sig);
         else {
             clearAutoRetry(true);
             renderResults(sig, 'done');
         }
     } catch (error) {
+        clearTimeout(progressTimer);
+        progressTimer = 0;
         if (error?.name === 'AbortError' || myId !== state.scanId) return;
         console.warn('[Etsy BetterSearch] Scan failed:', error);
         state.scanningSig = '';
         state.cacheSig = sig;
         state.candidates = Array.from(map.values()).sort(compareCandidates);
         state.cacheReady = false;
+        state.status = {
+            phase: 'retrying',
+            matches: matchedCandidates().length,
+            searchCount: searches.length,
+            readySearches,
+            completedPages,
+            totalPages,
+        };
         scheduleAutoRetry(sig);
     }
 }
