@@ -98,7 +98,9 @@ function signature() {
         const rules = JSON.stringify(normalizeRules(cfg.multiRules));
         return `${location.pathname}|multi|${rules}|${filters}`;
     }
-    return `${location.pathname}|single|${query()}|${cfg.strict ? cfg.mode : 'native'}|${filters}`;
+    // Exact phrase vs All words changes only local filtering; the downloaded Etsy
+    // candidate pool is identical, so keep one cache signature for both modes.
+    return `${location.pathname}|single|${query()}|${filters}`;
 }
 
 function strictMatchesTitle(title, rawQuery = query()) {
