@@ -27,7 +27,7 @@ Open the arrow beside **Strict title** to choose:
 
 Matching is case-insensitive and normalizes punctuation, spacing, accents, hyphens, slashes, and similar separators.
 
-Strict title and Multi-search keep independent states. Turning one off does not disable the other.
+Strict title and Multi-search keep independent states. Turning one off does not disable the other. Switching between **Exact phrase** and **All words** reuses the already-scanned Etsy candidate pool when the query and native filters have not changed, so it does not needlessly download every page again.
 
 ## Rule-based Multi-search
 
@@ -99,6 +99,8 @@ The first two queries are searched independently, then any merged listing whose 
 - **Exact word / phrase**
 - **Any word**
 
+On the desktop editor these three options sit on the same compact horizontal row. The phone layout wraps them as needed so the rule card stays usable at narrow widths.
+
 Other operators expose **Case sensitive** where applicable.
 
 The collapsed **Search preview** at the bottom of the modal shows the exact generated Etsy searches and active exclusions before you Apply.
@@ -115,7 +117,11 @@ While Multi-search is enabled, submitting text through Etsy's normal search bar 
 
 ## Scanning and recovery
 
-BetterSearch requests Etsy result pages in the background with low concurrency, parses only Etsy's actual main search-results region, and ignores personalized sections such as **Recommended for you** and **Because you viewed**.
+When Strict title or Multi-search needs to scan Etsy, BetterSearch temporarily hides the normal listing gallery and shows a centered progress state in its place. It reports preparation/search progress, pages scanned, and how many matching listings have been found so far. The finished dense result grid appears only when the scan is ready, so stale native cards are not left visible while a different result set is being built.
+
+BetterSearch requests Etsy result pages in the background with modest concurrency, parses only Etsy's actual main search-results region, and ignores personalized sections such as **Recommended for you** and **Because you viewed**.
+
+The scanner reuses the currently loaded Etsy result page when it already represents one of the required searches instead of downloading that page again. Remaining pages are fetched with up to three concurrent requests and Multi-search pages are processed round-robin across its different searches. Progress calculations are throttled so large scans do not repeatedly sort and re-filter the complete candidate set after every single page.
 
 Failed pages retry automatically with backoff. If necessary, the complete scan retries a few times before finally showing `scan incomplete`.
 
