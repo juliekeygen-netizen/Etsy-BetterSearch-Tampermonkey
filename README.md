@@ -81,6 +81,8 @@ The script is deliberately small visually:
 
 Strict title works by requesting Etsy search-result pages in the background with low concurrency, parsing the normal listing cards, and filtering their full title text locally. Multi-search does the same thing for each comma-separated query before merging and deduplicating the matches.
 
+Only Etsy's explicit main search-results region is scanned. Recommendation sections such as personalized or recently viewed listing modules are not used as search candidates.
+
 Etsy currently exposes a finite set of search-result pages to the browser, so BetterSearch can only scan the pages Etsy actually makes available for each query. It cannot find listings that Etsy never returns as candidates.
 
 The script does not use the Etsy API and does not attempt to bypass Etsy verification or rate limiting.
