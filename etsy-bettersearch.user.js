@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Etsy BetterSearch
 // @namespace    https://github.com/juliekeygen-netizen
-// @version      0.2.0
+// @version      0.2.1
 // @description  Adds strict title matching, multi-search, and persistent Etsy filters while keeping Etsy's native search UI.
 // @homepageURL  https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey
 // @supportURL   https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/issues
@@ -325,8 +325,16 @@
         return total;
     }
 
+    // Only accept Etsy's actual main search-results grid. Recommendation modules can also
+    // contain listing-card grids, especially on zero-result pages, and must never be scanned.
+    function mainResultsGrid(root = document) {
+        return root.querySelector('[data-search-results] [data-search-results-region] [data-results-grid-container]')
+            || root.querySelector('[data-search-results-region] [data-results-grid-container]')
+            || null;
+    }
+
     function cardData(doc, groupIndex, page) {
-        const grid = doc.querySelector('[data-results-grid-container]');
+        const grid = mainResultsGrid(doc);
         if (!grid) return [];
         const out = [];
 
@@ -389,15 +397,17 @@
         }
 
         const html = await response.text();
-        if (/captcha|robot check|verify you are human/i.test(html) && !html.includes('data-results-grid-container')) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const grid = mainResultsGrid(doc);
+
+        if (/captcha|robot check|verify you are human/i.test(html) && !grid) {
             const error = new Error('Etsy returned a verification page');
             error.retryAfterMs = 5000;
             throw error;
         }
 
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        if (!doc.querySelector('[data-results-grid-container]') && !/no results|0 results/i.test(doc.body?.textContent || '')) {
-            throw new Error('Etsy search results were missing from the response');
+        if (!grid && !/no results|0 results/i.test(doc.body?.textContent || '')) {
+            throw new Error('Etsy main search results were missing from the response');
         }
         return doc;
     }
@@ -503,7 +513,7 @@
     }
 
     function restoreNative() {
-        const grid = document.querySelector('[data-results-grid-container]');
+        const grid = mainResultsGrid(document);
         if (state.rendered && grid && state.nativeGrid === grid) grid.innerHTML = state.nativeHTML;
         state.rendered = false;
         state.renderSig = '';
@@ -534,7 +544,7 @@
 
     function renderStrict(sig, queryGroups, phase = 'done') {
         if (!cfg.strict || signature(query(), queryGroups) !== sig) return;
-        const grid = document.querySelector('[data-results-grid-container]');
+        const grid = mainResultsGrid(document);
         if (!grid) return scheduleSync(180);
 
         if (!state.rendered || state.nativeGrid !== grid) {
