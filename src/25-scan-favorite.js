@@ -2,6 +2,10 @@ async function scan() {
     if (!(cfg.multi || cfg.strict) || !isSearchPage()) return;
     if (cfg.multi) ensureRulesSeeded();
     const sig = signature();
+    // Never start a new scan from a grid we reconstructed ourselves. Restore Etsy's
+    // original nodes first so native listeners stay native and transplanted cards keep
+    // their explicit fallback behavior.
+    if (state.rendered && state.renderSig !== sig) restoreNative();
     if (state.scanningSig === sig) return showStatus(state.status);
     if (state.retryTimer && state.retrySig === sig) return showStatus(state.status);
     if (state.cacheReady && state.cacheSig === sig) return renderResults(sig, 'done');
