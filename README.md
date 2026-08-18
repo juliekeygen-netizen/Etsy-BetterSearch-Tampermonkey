@@ -1,8 +1,8 @@
 # Etsy BetterSearch
 
-A Tampermonkey userscript that makes Etsy search more literal without replacing Etsy's normal search bar, filters, sorting, or listing-card UI.
+A Tampermonkey userscript that makes Etsy search more literal and more useful without replacing Etsy's normal filters, sorting, or listing-card UI.
 
-It adds compact **Strict title**, **Keep filters**, and **Multi-search** controls beside Etsy's **Show filters** button. Strict title scans Etsy's search-result pages in the background, keeps only listings whose titles really match your search, and repacks them into Etsy's normal results grid.
+It adds compact **Keep filters**, **Strict title**, and **Multi-search** controls beside Etsy's **Show filters** button.
 
 ## Install
 
@@ -10,82 +10,126 @@ It adds compact **Strict title**, **Keep filters**, and **Multi-search** control
 2. Open the [Etsy BetterSearch userscript](https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js).
 3. Confirm the installation and refresh Etsy.
 
+## Keep filters
+
+**Keep filters** remembers Etsy's current native search/filter URL state and carries it into the next search you submit through Etsy's normal search bar.
+
+This is intended for things such as price, item format, shop location, shipping options, sorting, and other native Etsy filters. Temporary navigation, tracking, pagination, and old-query parameters are not carried forward.
+
+The remembered filter state survives refreshes and browser restarts until you turn the option off or change the filters.
+
 ## Strict title
 
-Turn on **Strict title** from the same row as Etsy's normal filter chips.
-
-The script scans all result pages Etsy exposes for the current search and native filter state, then only shows matching listing titles. It keeps Etsy's existing cards and grid styling instead of replacing the whole search page.
+**Strict title** scans all result pages Etsy exposes for the current search and only shows listings whose titles genuinely match the search.
 
 Open the small arrow beside **Strict title** to choose:
 
-* **Exact phrase** — the normalized phrase must appear in the title in the same order. This is the default.
-* **All words** — every word in the search must appear as a real word in the listing title, in any order.
+* **Exact phrase** — the normalized search phrase must appear in the title in the same order. This is the default.
+* **All words** — every search word must appear as a real word in the listing title, but the words may appear in a different order.
 
 Matching is case-insensitive and normalizes punctuation, repeated spacing, Unicode accents, hyphens, slashes, and similar separators. For example, `Outer Wilds`, `OUTER WILDS`, and `Outer-Wilds` can match each other.
 
-While scanning, Etsy's normal result text changes to something like `398 results · scanning…`. When finished it becomes `398 results · 37 strict matches`.
+Strict title is independent from Multi-search. You can use it with a normal Etsy search, with Multi-search, or turn it off while leaving Multi-search enabled.
 
 ## Multi-search
 
-Turn on **Multi-search** to use commas as separate Etsy searches.
+**Multi-search** lets one search bar hold multiple independent Etsy searches.
 
-For example:
+Separate searches with commas:
 
 ```text
 subahibi, saya no uta, higurashi, persona
 ```
 
-is treated as four independent searches rather than one giant Etsy query. BetterSearch scans each query with the same native Etsy filters, applies the selected strict-title rule to each one, merges the matches, and removes duplicate listings.
+BetterSearch treats that as four separate Etsy searches, scans each one with the same native Etsy filters, merges the results, and removes duplicate listings.
 
-Results from the different searches are interleaved by their Etsy result position so a very large search such as `persona` does not completely bury results from a smaller search.
+When Strict title is also enabled, the selected Strict title rule is applied to the merged results. When Strict title is disabled, Multi-search still works and shows the merged Etsy result pool without the extra title requirement.
 
-Multi-search automatically enables Strict title because the merged result set depends on strict title matching. Turning Strict title off also turns Multi-search off.
+### Shared terms with `[brackets]`
 
-When Multi-search is active, the result text uses the number of searches instead of Etsy's mostly meaningless result count for the comma-filled query, for example:
+A term or phrase inside square brackets at the **start** or **end** of a Multi-search is added to every individual search.
+
+Prefix example:
 
 ```text
-4 searches · 111 strict matches
+[charm] subahibi, saya no uta, persona
 ```
 
-The full comma-separated query remains in Etsy's normal search bar and URL, so refreshing or using browser back/forward does not forget what you searched for. BetterSearch rebuilds the result set automatically after a full page refresh rather than permanently storing potentially stale Etsy cards.
+becomes:
 
-## Automatic scan recovery
+```text
+charm subahibi
+charm saya no uta
+charm persona
+```
 
-Search pages occasionally fail to load in the background because of a temporary network error, navigation during a scan, or Etsy returning an incomplete response.
+Suffix example:
 
-BetterSearch retries failed pages automatically with short backoff delays. If a scan is still incomplete after the per-page retries, it automatically retries the complete scan a few times instead of immediately leaving you with `scan incomplete`.
+```text
+subahibi, saya no uta, persona [charm]
+```
 
-It also handles browser back/forward cache restores by discarding stale in-memory scan state and starting the current search again.
+becomes:
 
-If Etsy repeatedly blocks or fails the requests after all automatic retries, BetterSearch eventually stops retrying rather than hammering Etsy forever and shows `scan incomplete`.
+```text
+subahibi charm
+saya no uta charm
+persona charm
+```
 
-## Keep filters
+The position therefore matters: a leading bracket is put before every individual query and a trailing bracket is put after every query.
 
-**Keep filters** remembers Etsy's native search/filter URL state and carries it into the next search you submit through Etsy's normal header search bar.
+Multiple leading or trailing bracket groups are also supported.
 
-This is intended for things such as price, item format, shop location, shipping options, sorting, and other native Etsy filters. Temporary navigation, tracking, pagination, and old-query parameters are not carried forward.
+Open the small arrow beside **Multi-search** for a short built-in reminder of the comma and bracket syntax.
 
-The remembered filter state and all BetterSearch settings survive refreshes and browser restarts until you change the toggles again.
+## Separate Single-search and Multi-search state
+
+Normal Etsy searching and Multi-search keep separate saved query text.
+
+For example, you can have:
+
+```text
+Single-search:
+saya no uta
+```
+
+and:
+
+```text
+Multi-search:
+subahibi, saya no uta, persona [charm]
+```
+
+Turning Multi-search on restores the last Multi-search query. Turning it off restores the last normal Single-search query.
+
+Both are remembered across refreshes and browser restarts.
+
+## Scanning and recovery
+
+BetterSearch requests Etsy result pages in the background with low concurrency, parses only Etsy's actual main search-result grid, and ignores personalized sections such as **Recommended for you** or **Because you viewed**.
+
+Failed pages are retried automatically with short backoff delays. If a scan still cannot finish, BetterSearch retries the complete scan a few times before finally showing `scan incomplete`.
+
+Browser back/forward restores discard stale in-memory scan state and rebuild the current result set.
 
 ## UI
 
-The script is deliberately small visually:
+The controls are deliberately compact and use the same area as Etsy's native search chips:
 
-* **Strict title**, **Keep filters**, and **Multi-search** sit directly after Etsy's **Show filters** control.
-* The rightmost Etsy recommendation chips are hidden as needed so the added controls stay inside the normal toolbar width.
-* Active Etsy filters are not intentionally removed.
-* Etsy's native result count and sort control stay in place.
-* Native pagination is hidden only while Strict title is showing the combined strict results.
+```text
+Show filters | Keep filters | Strict title ▾ | Multi-search ▾ | Etsy filters...
+```
+
+The rightmost Etsy recommendation chips are hidden as needed so BetterSearch's controls stay inside the normal toolbar width. Active Etsy filters are not intentionally removed.
+
+While a scan is running, Etsy's result-info area shows scanning progress. Finished Strict title searches show the strict match count. Multi-search shows the number of independent searches instead of Etsy's misleading result count for the comma-filled combined query.
 
 ## Notes
 
-Strict title works by requesting Etsy search-result pages in the background with low concurrency, parsing the normal listing cards, and filtering their full title text locally. Multi-search does the same thing for each comma-separated query before merging and deduplicating the matches.
+BetterSearch does not use the Etsy API. It can only scan the finite result pages Etsy makes available for each search and cannot find listings Etsy never returns as candidates.
 
-Only Etsy's explicit main search-results region is scanned. Recommendation sections such as personalized or recently viewed listing modules are not used as search candidates.
-
-Etsy currently exposes a finite set of search-result pages to the browser, so BetterSearch can only scan the pages Etsy actually makes available for each query. It cannot find listings that Etsy never returns as candidates.
-
-The script does not use the Etsy API and does not attempt to bypass Etsy verification or rate limiting.
+The script does not attempt to bypass Etsy verification or rate limiting.
 
 Etsy can change its page structure at any time, so selectors may occasionally need updating.
 
