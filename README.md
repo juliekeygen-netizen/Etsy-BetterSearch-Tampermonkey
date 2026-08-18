@@ -25,6 +25,15 @@ The arrow beside it provides:
 
 Matching normalizes case, punctuation, spacing, accents, hyphens, slashes, and similar separators. Switching between Exact phrase and All words can reuse the already-downloaded candidate pool when the query and native Etsy filters have not changed.
 
+### Strict title and Multi-search are exclusive
+
+Only one enhanced search mode can be active at a time.
+
+- Enabling **Multi-search** automatically turns **Strict title** off.
+- Enabling **Strict title** while Multi-search is active automatically turns Multi-search off and returns to the saved normal/single-search query before running the Strict-title scan.
+
+The normal Single-search and Multi-search query states remain stored separately, so switching modes does not erase the other setup.
+
 ## Rule-based Multi-search
 
 Click the **Multi-search** arrow to open the rule editor. Its layout is adapted from the Advanced Filter editor in the Rule34Video Media Filter project.
@@ -52,7 +61,7 @@ Applied rules, order, enabled states, operators, options, and values persist thr
 
 ## Scan settings
 
-Click the **gear icon** to open scanner settings. They affect both Strict title and Multi-search.
+Click the **gear icon** to open scanner settings. They affect whichever enhanced mode is active.
 
 The top of the window has four presets:
 
@@ -102,6 +111,14 @@ The scanner only parses Etsy's main search-result region and ignores personalize
 
 Results are rebuilt into a dense grid with no gaps. Native pagination is hidden while BetterSearch is displaying the combined result set.
 
+### Background tabs / Alt-Tab behavior
+
+BetterSearch does not cancel an active scan just because the Etsy tab becomes hidden. First-pass fetches are allowed to continue normally in the background.
+
+If Chrome throttles the hidden tab and requests start failing, BetterSearch pauses retry rounds and whole-scan recovery until the Etsy tab becomes visible again. Hidden time therefore does not burn through the retry budget and immediately turn into `scan incomplete`. Returning to the tab automatically resumes recovery.
+
+A genuine repeated failure while the tab is active can still eventually end as `scan incomplete` after the configured retry limits are exhausted.
+
 ## Favorite hearts
 
 Cards already present on the current Etsy page reuse their original DOM nodes so Etsy's native event handlers are preserved. Imported cards from background-scanned pages use a separate same-site helper path for their heart action because their original page JavaScript listeners cannot be copied with HTML alone.
@@ -114,7 +131,7 @@ Show filters | Keep filters | Strict title ▾ | Multi-search ▾ | ⚙ | Etsy f
 
 Rightmost Etsy recommendation chips are hidden as needed so BetterSearch's controls stay inside the normal toolbar width. Active Etsy filters are not intentionally removed.
 
-The Multi-search and Scan settings windows both have responsive phone layouts.
+The Multi-search and Scan settings windows both have responsive phone layouts. Modal and settings text is intentionally larger than the initial versions so helper text and rule controls remain readable without zooming in.
 
 ## Project structure
 
