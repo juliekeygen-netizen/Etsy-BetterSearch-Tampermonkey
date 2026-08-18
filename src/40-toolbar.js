@@ -94,7 +94,6 @@ function ensureUI() {
             updateButtons();
             if (!cfg.multi) {
                 stopScan();
-                invalidateCache();
                 if (cfg.strict) reapply();
                 else { restoreNative(); showStatus(null); }
             }
@@ -130,7 +129,9 @@ function makeStrictPopup() {
         const target = event.target;
         if (!target.matches('input[name="ebs-mode"]')) return;
         save('mode', target.value === 'all' ? 'all' : 'phrase');
-        if (!cfg.multi) { invalidateCache(); reapply(); }
+        // Exact phrase / All words only changes local filtering, so reuse the
+        // candidate pages already scanned for this query whenever possible.
+        if (!cfg.multi) reapply();
     });
     document.body.append(popup);
     return popup;
