@@ -4,8 +4,6 @@ A Tampermonkey userscript that makes Etsy search more literal without replacing 
 
 It adds a compact **Strict title** control beside Etsy's **Show filters** button and a **Keep filters** toggle. Strict title scans Etsy's search-result pages in the background, keeps only listings whose titles really match your search, and repacks them into Etsy's normal results grid.
 
-No Etsy API key is required.
-
 ## Install
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
@@ -26,25 +24,12 @@ Open the small arrow beside **Strict title** to choose:
 
 Matching is case-insensitive and normalizes punctuation, repeated spacing, Unicode accents, hyphens, slashes, and similar separators. For example, `Outer Wilds`, `OUTER WILDS`, and `Outer-Wilds` can match each other.
 
-While scanning, Etsy's normal result text changes to something like `398 results · scanning…`. When finished it becomes `398 results · 37 strict matches`.
-
 ## Keep filters
 
 **Keep filters** remembers Etsy's native search/filter URL state and carries it into the next search you submit through Etsy's normal header search bar.
 
 This is intended for things such as price, item format, shop location, shipping options, sorting, and other native Etsy filters. Temporary navigation, tracking, pagination, and old-query parameters are not carried forward.
 
-The remembered filter state and all BetterSearch settings survive refreshes and browser restarts until you change the toggles again.
-
-## UI
-
-The script is deliberately small visually:
-
-* **Strict title** and **Keep filters** sit directly after Etsy's **Show filters** control.
-* The rightmost Etsy recommendation chips are hidden as needed so the added controls stay inside the normal toolbar width.
-* Active Etsy filters are not intentionally removed.
-* Etsy's native result count and sort control stay in place.
-* Native pagination is hidden only while Strict title is showing the combined strict results.
 
 ## Notes
 
