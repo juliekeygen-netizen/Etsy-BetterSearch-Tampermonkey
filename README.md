@@ -1,6 +1,6 @@
 # Etsy BetterSearch
 
-A Tampermonkey userscript that makes Etsy search more literal and more useful without replacing Etsy's normal filters, sorting, or listing-card UI.
+A Tampermonkey userscript that makes Etsy search more literal and more useful while keeping Etsy's native filters, sorting, and listing-card UI.
 
 It adds compact **Keep filters**, **Strict title**, and **Multi-search** controls beside Etsy's **Show filters** button.
 
@@ -12,64 +12,62 @@ It adds compact **Keep filters**, **Strict title**, and **Multi-search** control
 
 ## Keep filters
 
-**Keep filters** remembers Etsy's current native search/filter URL state and carries it into the next search you submit through Etsy's normal search bar.
+**Keep filters** remembers Etsy's native search/filter URL state and carries it into the next search you submit through Etsy's normal search bar.
 
-This is intended for things such as price, item format, shop location, shipping options, sorting, and other native Etsy filters. Temporary navigation, tracking, pagination, and old-query parameters are not carried forward.
-
-The remembered filter state survives refreshes and browser restarts until you turn the option off or change the filters.
+This is intended for price, item format, shop location, shipping options, sorting, and Etsy's other native filters. Temporary navigation, tracking, pagination, and old-query parameters are not carried forward.
 
 ## Strict title
 
-**Strict title** scans all result pages Etsy exposes for the current search and only shows listings whose titles genuinely match the search.
+**Strict title** is for normal/single Etsy searches. It scans all result pages Etsy exposes and only shows listings whose titles genuinely match the search.
 
-Open the small arrow beside **Strict title** to choose:
+Open the arrow beside **Strict title** to choose:
 
-* **Exact phrase** — the normalized search phrase must appear in the title in the same order. This is the default.
-* **All words** — every search word must appear as a real word in the listing title, but the words may appear in a different order.
+- **Exact phrase** — the normalized phrase must appear in the title in the same order. This is the default.
+- **All words** — every search word must appear as a real word in the title, but the order may differ.
 
-Matching is case-insensitive and normalizes punctuation, repeated spacing, Unicode accents, hyphens, slashes, and similar separators. For example, `Outer Wilds`, `OUTER WILDS`, and `Outer-Wilds` can match each other.
+Matching is case-insensitive and normalizes punctuation, spacing, accents, hyphens, slashes, and similar separators.
 
-Strict title is independent from Multi-search. You can use it with a normal Etsy search, with Multi-search, or turn it off while leaving Multi-search enabled.
+Strict title and Multi-search keep independent states. Turning one off does not disable the other.
 
-## Multi-search
+## Rule-based Multi-search
 
-**Multi-search** lets one search bar hold multiple independent Etsy searches.
+Click the **Multi-search** arrow to open the full rule editor. Its layout is based on the Advanced Filter editor from the Rule34Video Media Filter project, adapted to Etsy's light UI and responsive layout.
 
-Separate searches with commas:
+Each row contains:
 
-```text
-subahibi, saya no uta, higurashi, persona
-```
+- drag handle and enable checkbox
+- **AND / OR** logic
+- **Field** — currently `Title`
+- **Match / Exclude**
+- **Contains / Equals / Starts with / Ends with**
+- text value
+- dynamic text options
+- `...` menu for Move up, Move down, Duplicate, and Delete
 
-BetterSearch treats that as four separate Etsy searches, scans each one with the same native Etsy filters, merges the results, and removes duplicate listings.
+Use **+ Add rule** to add another row. Changes are drafts until **Apply** is pressed; **Cancel** discards them.
 
-When Strict title is also enabled, the selected Strict title rule is applied to the merged results. When Strict title is disabled, Multi-search still works and shows the merged Etsy result pool without the extra title requirement.
-
-### Shared terms with `[brackets]`
-
-A term or phrase inside square brackets at the **start** or **end** of a Multi-search is added to every individual search.
-
-Prefix example:
-
-```text
-[charm] subahibi, saya no uta, persona
-```
-
-becomes:
+### OR = separate Etsy searches
 
 ```text
-charm subahibi
-charm saya no uta
-charm persona
+OR  | Title | Match | Contains | Subahibi
+OR  | Title | Match | Contains | Saya no uta
+OR  | Title | Match | Contains | Persona
 ```
 
-Suffix example:
+BetterSearch scans those as three independent Etsy searches, merges their listing cards, and removes duplicates.
+
+### AND = shared Match rule
+
+An AND Match rule is added to every OR search, and its row position controls where the shared text appears.
 
 ```text
-subahibi, saya no uta, persona [charm]
+OR   Subahibi
+OR   Saya no uta
+OR   Persona
+AND  Charm
 ```
 
-becomes:
+produces:
 
 ```text
 subahibi charm
@@ -77,53 +75,73 @@ saya no uta charm
 persona charm
 ```
 
-The position therefore matters: a leading bracket is put before every individual query and a trailing bracket is put after every query.
+Move `AND Charm` above the OR rows and the generated searches become `charm subahibi`, `charm saya no uta`, and `charm persona`.
 
-Multiple leading or trailing bracket groups are also supported.
+If there are only AND Match rows, they form one combined Etsy search.
 
-Open the small arrow beside **Multi-search** for a short built-in reminder of the comma and bracket syntax.
+### Exclude rules
 
-## Separate Single-search and Multi-search state
-
-Normal Etsy searching and Multi-search keep separate saved query text.
-
-For example, you can have:
+Exclude rules are global final-result filters and use AND logic.
 
 ```text
-Single-search:
-saya no uta
+OR   | Match   | Contains | Persona
+OR   | Match   | Contains | Subahibi
+AND  | Exclude | Contains | Sticker
 ```
 
-and:
+The first two queries are searched independently, then any merged listing whose title matches `Sticker` is removed.
 
-```text
-Multi-search:
-subahibi, saya no uta, persona [charm]
-```
+### Text options
 
-Turning Multi-search on restores the last Multi-search query. Turning it off restores the last normal Single-search query.
+`Contains` supports:
 
-Both are remembered across refreshes and browser restarts.
+- **Case sensitive**
+- **Exact word / phrase**
+- **Any word**
+
+Other operators expose **Case sensitive** where applicable.
+
+The collapsed **Search preview** at the bottom of the modal shows the exact generated Etsy searches and active exclusions before you Apply.
+
+### Saved Multi-search state
+
+Applied rows, row order, enabled states, operators, options, and values are stored by Tampermonkey and survive refreshes/browser restarts.
+
+Normal Single-search and Multi-search also keep separate saved states. Turning Multi-search off restores the last normal query; turning it back on restores the Multi-search setup.
+
+Older comma-based Multi-search and leading/trailing `[shared term]` syntax are migrated into rule rows when no saved rule configuration exists yet.
+
+While Multi-search is enabled, submitting text through Etsy's normal search bar remains a quick way to replace the OR search rows; shared AND and Exclude rules are kept.
 
 ## Scanning and recovery
 
-BetterSearch requests Etsy result pages in the background with low concurrency, parses only Etsy's actual main search-result grid, and ignores personalized sections such as **Recommended for you** or **Because you viewed**.
+BetterSearch requests Etsy result pages in the background with low concurrency, parses only Etsy's actual main search-results region, and ignores personalized sections such as **Recommended for you** and **Because you viewed**.
 
-Failed pages are retried automatically with short backoff delays. If a scan still cannot finish, BetterSearch retries the complete scan a few times before finally showing `scan incomplete`.
+Failed pages retry automatically with backoff. If necessary, the complete scan retries a few times before finally showing `scan incomplete`.
 
-Browser back/forward restores discard stale in-memory scan state and rebuild the current result set.
+The result grid is rebuilt densely with no empty card gaps. Native pagination is hidden while BetterSearch is displaying its combined result set.
 
-## UI
+## Favorite hearts on combined results
 
-The controls are deliberately compact and use the same area as Etsy's native search chips:
+Cards that already existed on the current native Etsy page are reused as their original DOM nodes, preserving Etsy's native event handlers including the favorite heart.
+
+Cards imported from background-scanned result pages cannot carry Etsy's original JavaScript listeners with their HTML. BetterSearch handles their favorite button separately by using Etsy's native listing-page favorite control in the background, rather than hard-coding an internal favorite API request.
+
+## UI and mobile layout
+
+The toolbar stays compact:
 
 ```text
 Show filters | Keep filters | Strict title ▾ | Multi-search ▾ | Etsy filters...
 ```
 
-The rightmost Etsy recommendation chips are hidden as needed so BetterSearch's controls stay inside the normal toolbar width. Active Etsy filters are not intentionally removed.
+Rightmost Etsy recommendation chips are hidden as needed so these controls remain inside the normal toolbar width. Active Etsy filters are not intentionally removed.
 
-While a scan is running, Etsy's result-info area shows scanning progress. Finished Strict title searches show the strict match count. Multi-search shows the number of independent searches instead of Etsy's misleading result count for the comma-filled combined query.
+The Multi-search editor uses a wide row layout on desktop and switches to a stacked rule-card layout on phones, with one predictable scrolling area and a wrapping footer.
+
+## Project structure
+
+`etsy-bettersearch.user.js` is the install/update entry point. The implementation is split into ordered `src/` modules loaded with Tampermonkey `@require` so the larger rule editor remains maintainable.
 
 ## Notes
 
