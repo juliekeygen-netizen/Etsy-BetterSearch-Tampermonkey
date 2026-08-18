@@ -6,7 +6,7 @@ GM_addStyle(`
   .ebs-gear svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 
   .ebs-scan-settings-modal { width:min(840px,calc(100vw - clamp(20px,4vw,48px))); max-width:840px; }
-  .ebs-settings-body { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:16px 18px 20px; scrollbar-color:#b9b9b3 #f2f1ed; scrollbar-width:thin; }
+  .ebs-settings-body { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:16px 18px 20px; scrollbar-color:#b9b9b3 #f2f1ed; scrollbar-width:thin; }
   .ebs-settings-intro { display:grid; gap:12px; }
   .ebs-settings-kicker { margin:0; color:#777; font-size:10px; letter-spacing:.045em; text-transform:uppercase; }
   .ebs-preset-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
