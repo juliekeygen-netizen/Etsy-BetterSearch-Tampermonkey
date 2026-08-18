@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Etsy BetterSearch
 // @namespace    https://github.com/juliekeygen-netizen
-// @version      0.2.2
+// @version      0.3.0
 // @description  Adds strict title matching, multi-search, and persistent Etsy filters while keeping Etsy's native search UI.
 // @homepageURL  https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey
 // @supportURL   https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/issues
@@ -26,6 +26,8 @@
         legacyComma: 'etsy-bettersearch.comma',
         keep: 'etsy-bettersearch.keepFilters',
         filters: 'etsy-bettersearch.savedFilters',
+        singleQuery: 'etsy-bettersearch.singleQuery',
+        multiQuery: 'etsy-bettersearch.multiQuery',
     };
 
     const storedMode = GM_getValue(KEY.mode, null);
@@ -38,10 +40,11 @@
         multi: Boolean(storedMulti),
         keep: Boolean(GM_getValue(KEY.keep, false)),
         filters: readSavedFilters(),
+        singleQuery: String(GM_getValue(KEY.singleQuery, '') || ''),
+        multiQuery: String(GM_getValue(KEY.multiQuery, '') || ''),
     };
 
-    // These are navigation/tracking/query-state parameters, not filters we want to carry forward.
-    // This list is based partly on Etsy's own filter_keys_to_clear data in the search page.
+    // Navigation/tracking/query-state parameters that should not be remembered as filters.
     const TEMP_PARAMS = new Set([
         'q', 'search_query', 'page', 'ref', 'page_type', 'promoted', 'sorted', 'explicit',
         'explicit_scope', 'anchor_listing_id', 'entry_point', 'rbl_s', 'redirect_url',
@@ -75,11 +78,13 @@
         status: null,
         popup: null,
         popupAnchor: null,
+        popupType: '',
         resizeObserver: null,
         observedInner: null,
         retryTimer: 0,
         retrySig: '',
         retryCount: 0,
+        switchingMode: false,
     };
 
     GM_addStyle(`
@@ -93,6 +98,7 @@
             white-space: nowrap;
         }
         #ebs-controls button { font-family: inherit; }
+
         .ebs-split {
             display: inline-flex;
             height: 36px;
@@ -102,6 +108,7 @@
             color: #222;
         }
         .ebs-split.ebs-active { background: #222; color: #fff; }
+
         .ebs-main, .ebs-caret, .ebs-pill {
             appearance: none;
             min-height: 36px;
@@ -113,7 +120,11 @@
             white-space: nowrap;
             cursor: pointer;
         }
-        .ebs-main { padding: 0 10px 0 12px; background: transparent; color: inherit; }
+        .ebs-main {
+            padding: 0 10px 0 12px;
+            background: transparent;
+            color: inherit;
+        }
         .ebs-caret {
             width: 30px;
             padding: 0;
@@ -121,7 +132,9 @@
             background: transparent;
             color: inherit;
         }
-        .ebs-split.ebs-active .ebs-caret { border-left-color: rgba(255,255,255,.28); }
+        .ebs-split.ebs-active .ebs-caret {
+            border-left-color: rgba(255,255,255,.28);
+        }
         .ebs-pill {
             padding: 0 12px;
             border-radius: 999px;
@@ -129,11 +142,13 @@
             color: #222;
         }
         .ebs-pill.ebs-active { background: #222; color: #fff; }
+
         .ebs-main:hover, .ebs-caret:hover, .ebs-pill:hover { filter: brightness(.96); }
+
         .ebs-popup {
             position: fixed;
             z-index: 100000;
-            width: 218px;
+            width: 236px;
             box-sizing: border-box;
             padding: 14px;
             border: 1px solid rgba(34,34,34,.14);
@@ -143,7 +158,10 @@
             box-shadow: 0 6px 24px rgba(34,34,34,.16);
             font: 14px/1.35 inherit;
         }
-        .ebs-popup-title { margin: 0 0 9px; font-weight: 600; }
+        .ebs-popup-title {
+            margin: 0 0 9px;
+            font-weight: 600;
+        }
         .ebs-option {
             display: flex;
             align-items: center;
@@ -152,7 +170,30 @@
             cursor: pointer;
             user-select: none;
         }
-        .ebs-option input { width: 16px; height: 16px; margin: 0; accent-color: #222; }
+        .ebs-option input {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            accent-color: #222;
+        }
+        .ebs-guide {
+            margin: 0;
+            color: #595959;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .ebs-guide + .ebs-guide { margin-top: 10px; }
+        .ebs-example {
+            display: block;
+            margin-top: 4px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: #f5f5f1;
+            color: #222;
+            font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
         .ebs-result-text { white-space: nowrap; }
         .ebs-empty {
             width: 100% !important;
@@ -163,10 +204,12 @@
             color: #595959;
             list-style: none;
         }
-        body.ebs-strict-active [data-appears-component-name="search_pagination"],
-        body.ebs-strict-active [data-no-results] {
+
+        body.ebs-results-active [data-appears-component-name="search_pagination"],
+        body.ebs-results-active [data-no-results] {
             display: none !important;
         }
+
         @media (max-width: 899px) {
             #ebs-controls { gap: 4px; margin-right: 4px; }
             .ebs-main, .ebs-caret, .ebs-pill { font-size: 12px; }
@@ -220,21 +263,71 @@
             .trim();
     }
 
-    function groups(raw) {
-        const source = cfg.multi ? raw.split(',') : [raw];
+    function saveActiveQuery(value = query()) {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) return;
+        if (cfg.multi) save('multiQuery', trimmed);
+        else save('singleQuery', trimmed);
+    }
+
+    function seedQueryState() {
+        const current = query();
+        if (!current) return;
+        if (cfg.multi && !cfg.multiQuery) save('multiQuery', current);
+        if (!cfg.multi && !cfg.singleQuery) save('singleQuery', current);
+    }
+
+    // Multi-search supports optional shared modifiers only at the very beginning/end:
+    // [charm] subahibi, saya no uta  -> charm subahibi / charm saya no uta
+    // subahibi, saya no uta [charm]  -> subahibi charm / saya no uta charm
+    // Multiple leading/trailing [] blocks are also supported.
+    function parseMulti(raw) {
+        let text = String(raw || '').trim();
+        const prefix = [];
+        const suffix = [];
+
+        while (text) {
+            const match = text.match(/^\s*\[([^\[\]]+)\]\s*/u);
+            if (!match) break;
+            const value = match[1].trim();
+            if (value) prefix.push(value);
+            text = text.slice(match[0].length).trimStart();
+        }
+
+        while (text) {
+            const match = text.match(/\s*\[([^\[\]]+)\]\s*$/u);
+            if (!match) break;
+            const value = match[1].trim();
+            if (value) suffix.unshift(value);
+            text = text.slice(0, text.length - match[0].length).trimEnd();
+        }
+
         const seen = new Set();
-        const out = [];
-        for (const value of source) {
-            const trimmed = value.trim();
-            const key = normalize(trimmed);
+        const groups = [];
+        for (const part of text.split(',')) {
+            const base = part.trim();
+            if (!base) continue;
+            const expanded = [...prefix, base, ...suffix].join(' ').replace(/\s+/g, ' ').trim();
+            const key = normalize(expanded);
             if (!key || seen.has(key)) continue;
             seen.add(key);
-            out.push(trimmed);
+            groups.push(expanded);
         }
-        return out;
+
+        return { groups, prefix, suffix, baseText: text };
+    }
+
+    function groups(raw) {
+        if (!cfg.multi) {
+            const trimmed = String(raw || '').trim();
+            return trimmed ? [trimmed] : [];
+        }
+        return parseMulti(raw).groups;
     }
 
     function matchesTitle(title, queryGroups) {
+        if (!cfg.strict) return true;
+
         const titleNorm = normalize(title);
         if (!titleNorm) return false;
         const tokenSet = cfg.mode === 'all' ? new Set(titleNorm.split(' ').filter(Boolean)) : null;
@@ -288,6 +381,52 @@
         return url.href;
     }
 
+    function modeSwitchFilters() {
+        const current = filterEntries(new URL(location.href));
+        if (current.length) return current;
+        return cfg.keep ? cfg.filters : current;
+    }
+
+    function switchSearchMode(nextMulti) {
+        if (cfg.multi === nextMulti) return;
+
+        const current = query();
+        if (current) {
+            if (cfg.multi) save('multiQuery', current);
+            else save('singleQuery', current);
+        }
+
+        save('multi', nextMulti);
+        updateButtons();
+        closePopup();
+        stopScan();
+        invalidateCache();
+        restoreNative();
+
+        let target = nextMulti ? cfg.multiQuery : cfg.singleQuery;
+        if (!target) {
+            target = current;
+            if (target) {
+                if (nextMulti) save('multiQuery', target);
+                else save('singleQuery', target);
+            }
+        }
+
+        if (!target || !isSearchPage()) {
+            scheduleSync(50);
+            return;
+        }
+
+        const desired = searchUrl(target, modeSwitchFilters());
+        if (desired.href === location.href) {
+            scheduleSync(50);
+            return;
+        }
+
+        state.switchingMode = true;
+        location.assign(desired.href);
+    }
+
     function maybeRestoreFilters() {
         if (!cfg.keep || !isSearchPage() || cfg.filters.length === 0) return false;
         const url = new URL(location.href);
@@ -326,36 +465,33 @@
         return total;
     }
 
-    // Only accept Etsy's actual main search-results grid. Recommendation modules can also
-    // contain listing-card grids, especially on zero-result pages, and must never be scanned.
+    // Only accept Etsy's real main search-result grid; recommendation modules can also contain cards.
     function mainResultsGrid(root = document) {
         return root.querySelector('[data-search-results] [data-search-results-region] [data-results-grid-container]')
             || root.querySelector('[data-search-results-region] [data-results-grid-container]')
             || null;
     }
 
-    // A comma-filled Multi-search can legitimately produce zero results as one native Etsy
-    // query even though the independent searches have matches. In that case Etsy may omit the
-    // normal grid, so create a temporary grid in the real search-listings area instead of ever
-    // borrowing a personalized/recommendation grid.
+    // Multi-search can produce zero results as one native Etsy query while independent searches match.
+    // In that case create a temporary grid in the actual search area, never in a recommendation module.
     function liveResultsGrid() {
         const native = mainResultsGrid(document);
         if (native) return native;
 
-        const existingHost = document.querySelector('[data-ebs-strict-grid-host]');
-        if (existingHost) return existingHost.querySelector('[data-ebs-strict-grid]');
+        const existingHost = document.querySelector('[data-ebs-results-grid-host]');
+        if (existingHost) return existingHost.querySelector('[data-ebs-results-grid]');
 
         const searchGroup = document.querySelector('.search-listings-group');
         const noResults = document.querySelector('[data-no-results]');
         if (!searchGroup && !noResults?.parentElement) return null;
 
         const host = document.createElement('div');
-        host.setAttribute('data-ebs-strict-grid-host', '');
+        host.setAttribute('data-ebs-results-grid-host', '');
         host.className = 'wt-grid__item-xs-12 wt-pr-xs-1 wt-pl-xs-1 wt-pl-md-3 wt-pr-md-3';
 
         const grid = document.createElement('ul');
         grid.setAttribute('data-results-grid-container', '');
-        grid.setAttribute('data-ebs-strict-grid', '');
+        grid.setAttribute('data-ebs-results-grid', '');
         grid.className = 'wt-grid wt-grid--block wt-pl-xs-0 tab-reorder-container';
         host.append(grid);
 
@@ -385,8 +521,7 @@
     }
 
     function compare(a, b, groupCount) {
-        // With multiple searches, interleave comparable Etsy ranks so one huge query
-        // (for example Persona) does not drown out smaller searches.
+        // Interleave comparable Etsy ranks so one large multi-search query does not bury smaller ones.
         if (a.page !== b.page) return a.page - b.page;
         if (groupCount > 1) {
             if (a.index !== b.index) return a.index - b.index;
@@ -447,7 +582,7 @@
         let pending = items.slice();
         let lastErrors = [];
 
-        // Initial attempt + two automatic retry rounds for individual failed pages.
+        // Initial attempt + two automatic retry rounds for failed pages.
         for (let round = 0; round < 3 && pending.length; round += 1) {
             if (round > 0) {
                 const hintedWait = Math.max(0, ...lastErrors.map((entry) => entry.error?.retryAfterMs || 0));
@@ -469,6 +604,7 @@
                     }
                 }
             });
+
             await Promise.all(runners);
             lastErrors = failed;
             pending = failed.map((entry) => entry.item);
@@ -480,31 +616,51 @@
     function baseResultText() {
         const info = document.querySelector('[data-result-info]');
         if (!info) return 'Results';
-        if (info.dataset.ebsBase) return info.dataset.ebsBase;
-        const text = (info.textContent || '').replace(/\s+/g, ' ').trim();
-        const match = text.match(/(\d[\d.,\s]*\+?)\s*(results|items)/i);
-        const base = match ? `${match[1].replace(/\s+/g, '')} ${match[2].toLowerCase()}` : 'Results';
-        info.dataset.ebsBase = base;
-        return base;
+
+        // If Etsy replaced the content itself, refresh our cached native count.
+        if (!info.querySelector('.ebs-result-text')) {
+            const text = (info.textContent || '').replace(/\s+/g, ' ').trim();
+            const match = text.match(/(\d[\d.,\s]*\+?)\s*(results|items)/i);
+            if (match) info.dataset.ebsBase = `${match[1].replace(/\s+/g, '')} ${match[2].toLowerCase()}`;
+        }
+
+        return info.dataset.ebsBase || 'Results';
+    }
+
+    function displayedCandidates(queryGroups) {
+        return state.candidates
+            .filter((item) => matchesTitle(item.title, queryGroups))
+            .sort((a, b) => compare(a, b, queryGroups.length));
+    }
+
+    function statusCountLabel(status) {
+        const count = status?.matches || 0;
+        if (cfg.strict) return `${count} strict matches`;
+        return `${count} results`;
     }
 
     function showStatus(status = null) {
         const info = document.querySelector('[data-result-info]');
         if (!info) return;
+
         const base = baseResultText();
         const groupCount = status?.groupCount || groups(query()).length || 1;
-        const multiLabel = cfg.multi && groupCount > 1 ? `${groupCount} searches` : base;
+        const sourceLabel = cfg.multi
+            ? `${groupCount} ${groupCount === 1 ? 'search' : 'searches'}`
+            : base;
         let text = base;
 
-        if (cfg.strict) {
-            if (status?.phase === 'done') text = `${multiLabel} · ${status.matches || 0} strict matches`;
-            else if (status?.phase === 'error') text = `${multiLabel} · ${status.matches || 0} strict matches · scan incomplete`;
-            else if (status?.phase === 'retrying') {
-                text = `${multiLabel} · retrying…`;
-                if ((status.matches || 0) > 0) text += ` ${status.matches} matches`;
+        if (cfg.strict || cfg.multi) {
+            if (status?.phase === 'done') {
+                text = `${sourceLabel} · ${statusCountLabel(status)}`;
+            } else if (status?.phase === 'error') {
+                text = `${sourceLabel} · ${statusCountLabel(status)} · scan incomplete`;
+            } else if (status?.phase === 'retrying') {
+                text = `${sourceLabel} · retrying…`;
+                if ((status?.matches || 0) > 0) text += ` ${statusCountLabel(status)}`;
             } else {
-                text = `${multiLabel} · scanning…`;
-                if ((status?.matches || 0) > 0) text += ` ${status.matches} matches`;
+                text = `${sourceLabel} · scanning…`;
+                if ((status?.matches || 0) > 0) text += ` ${statusCountLabel(status)}`;
             }
         }
 
@@ -546,18 +702,19 @@
     function restoreNative() {
         const grid = state.nativeGrid;
         if (state.rendered && grid?.isConnected) {
-            if (grid.hasAttribute('data-ebs-strict-grid')) {
-                grid.closest('[data-ebs-strict-grid-host]')?.remove();
+            if (grid.hasAttribute('data-ebs-results-grid')) {
+                grid.closest('[data-ebs-results-grid-host]')?.remove();
             } else {
                 grid.innerHTML = state.nativeHTML;
             }
         }
-        document.querySelector('[data-ebs-strict-grid-host]')?.remove();
+
+        document.querySelector('[data-ebs-results-grid-host]')?.remove();
         state.rendered = false;
         state.renderSig = '';
         state.nativeGrid = null;
         state.nativeHTML = '';
-        document.body?.classList.remove('ebs-strict-active');
+        document.body?.classList.remove('ebs-results-active');
     }
 
     function nodeFromHTML(html) {
@@ -565,6 +722,7 @@
         template.innerHTML = html.trim();
         const node = template.content.firstElementChild;
         if (!node) return null;
+
         for (const image of node.querySelectorAll('img')) {
             image.loading = 'lazy';
             image.removeAttribute('fetchpriority');
@@ -576,43 +734,46 @@
         return node;
     }
 
-    function matchedCandidates(queryGroups) {
-        return state.candidates
-            .filter((item) => matchesTitle(item.title, queryGroups))
-            .sort((a, b) => compare(a, b, queryGroups.length));
-    }
-
-    function renderStrict(sig, queryGroups, phase = 'done') {
-        if (!cfg.strict || signature(query(), queryGroups) !== sig) return;
+    function renderResults(sig, queryGroups, phase = 'done') {
+        if (!(cfg.strict || cfg.multi) || signature(query(), queryGroups) !== sig) return;
         const grid = liveResultsGrid();
         if (!grid) return scheduleSync(180);
 
         if (!state.rendered || state.nativeGrid !== grid) {
             state.nativeGrid = grid;
-            state.nativeHTML = grid.hasAttribute('data-ebs-strict-grid') ? '' : grid.innerHTML;
+            state.nativeHTML = grid.hasAttribute('data-ebs-results-grid') ? '' : grid.innerHTML;
         }
 
-        const matched = matchedCandidates(queryGroups);
+        const displayed = displayedCandidates(queryGroups);
         const fragment = document.createDocumentFragment();
-        if (matched.length === 0) {
+
+        if (displayed.length === 0) {
             const empty = document.createElement('li');
             empty.className = 'ebs-empty';
-            empty.textContent = phase === 'done'
-                ? 'No listing titles matched this search.'
-                : 'No matching titles have been found yet.';
+            if (phase !== 'done') {
+                empty.textContent = 'No matching results have been found yet.';
+            } else if (cfg.strict) {
+                empty.textContent = 'No listing titles matched this search.';
+            } else {
+                empty.textContent = 'No results were found across the Multi-search queries.';
+            }
             fragment.append(empty);
         } else {
-            for (const item of matched) {
+            for (const item of displayed) {
                 const node = nodeFromHTML(item.html);
                 if (node) fragment.append(node);
             }
         }
 
         grid.replaceChildren(fragment);
-        document.body?.classList.add('ebs-strict-active');
+        document.body?.classList.add('ebs-results-active');
         state.rendered = true;
         state.renderSig = sig;
-        state.status = { phase, matches: matched.length, groupCount: queryGroups.length };
+        state.status = {
+            phase,
+            matches: displayed.length,
+            groupCount: queryGroups.length,
+        };
         showStatus(state.status);
         scheduleFit();
     }
@@ -624,22 +785,22 @@
         }
         state.retryCount += 1;
 
-        // Three full-scan retries after the per-page retries above. After that we stop
-        // rather than hammer Etsy forever; navigating/refreshing starts a fresh scan.
+        // Three full-scan retries after per-page retries. Then stop rather than hammer Etsy.
         if (state.retryCount > 3) {
             clearTimeout(state.retryTimer);
             state.retryTimer = 0;
-            renderStrict(sig, queryGroups, 'error');
+            renderResults(sig, queryGroups, 'error');
             return;
         }
 
         const delays = [2500, 6500, 15000];
         const delay = delays[state.retryCount - 1] || 15000;
-        renderStrict(sig, queryGroups, 'retrying');
+        renderResults(sig, queryGroups, 'retrying');
         clearTimeout(state.retryTimer);
+
         state.retryTimer = setTimeout(() => {
             state.retryTimer = 0;
-            if (!cfg.strict || !isSearchPage()) return;
+            if (!(cfg.strict || cfg.multi) || !isSearchPage()) return;
             const raw = query();
             const currentGroups = groups(raw);
             if (signature(raw, currentGroups) !== sig) return;
@@ -649,7 +810,7 @@
     }
 
     async function scan() {
-        if (!cfg.strict || !isSearchPage()) return;
+        if (!(cfg.strict || cfg.multi) || !isSearchPage()) return;
         const raw = query();
         if (!raw) return;
         const queryGroups = groups(raw);
@@ -658,7 +819,7 @@
 
         if (state.scanningSig === sig) return showStatus(state.status);
         if (state.retryTimer && state.retrySig === sig) return showStatus(state.status);
-        if (state.cacheReady && state.cacheSig === sig) return renderStrict(sig, queryGroups, 'done');
+        if (state.cacheReady && state.cacheSig === sig) return renderResults(sig, queryGroups, 'done');
 
         if (state.retrySig !== sig) {
             clearAutoRetry(true);
@@ -681,8 +842,8 @@
 
         const progress = (phase = 'scanning') => {
             if (myId !== state.scanId) return;
-            const matchCount = Array.from(map.values()).filter((item) => matchesTitle(item.title, queryGroups)).length;
-            state.status = { phase, matches: matchCount, groupCount: queryGroups.length };
+            const count = Array.from(map.values()).filter((item) => matchesTitle(item.title, queryGroups)).length;
+            state.status = { phase, matches: count, groupCount: queryGroups.length };
             showStatus(state.status);
         };
 
@@ -690,19 +851,25 @@
             const firstResult = await runJobs(firstJobs, 2, async (job) => {
                 const doc = await fetchDoc(scanUrl(job.part, 1), controller.signal);
                 job.total = parseTotalPages(doc);
-                for (const item of cardData(doc, job.groupIndex, 1)) mergeCandidate(map, item, queryGroups.length);
+                for (const item of cardData(doc, job.groupIndex, 1)) {
+                    mergeCandidate(map, item, queryGroups.length);
+                }
                 progress();
             }, controller.signal, () => progress('retrying'));
 
             const queue = [];
             for (const job of firstJobs) {
                 if (!job.total) continue;
-                for (let page = 2; page <= job.total; page += 1) queue.push({ ...job, page });
+                for (let page = 2; page <= job.total; page += 1) {
+                    queue.push({ ...job, page });
+                }
             }
 
             const pageResult = await runJobs(queue, 2, async (job) => {
                 const doc = await fetchDoc(scanUrl(job.part, job.page), controller.signal);
-                for (const item of cardData(doc, job.groupIndex, job.page)) mergeCandidate(map, item, queryGroups.length);
+                for (const item of cardData(doc, job.groupIndex, job.page)) {
+                    mergeCandidate(map, item, queryGroups.length);
+                }
                 progress();
             }, controller.signal, () => progress('retrying'));
 
@@ -719,7 +886,7 @@
                 scheduleAutoRetry(sig, queryGroups);
             } else {
                 clearAutoRetry(true);
-                renderStrict(sig, queryGroups, 'done');
+                renderResults(sig, queryGroups, 'done');
             }
         } catch (error) {
             if (error?.name === 'AbortError' || myId !== state.scanId) return;
@@ -733,31 +900,39 @@
     }
 
     function reapply() {
-        if (!cfg.strict || !isSearchPage()) return showStatus(null);
+        if (!(cfg.strict || cfg.multi) || !isSearchPage()) {
+            restoreNative();
+            return showStatus(null);
+        }
+
         const raw = query();
         const queryGroups = groups(raw);
         const sig = signature(raw, queryGroups);
-        if (state.cacheReady && state.cacheSig === sig) renderStrict(sig, queryGroups, 'done');
+        if (state.cacheReady && state.cacheSig === sig) renderResults(sig, queryGroups, 'done');
         else scan();
     }
 
     function updateButtons() {
         const root = document.querySelector('#ebs-controls');
         if (!root) return;
-        const split = root.querySelector('[data-ebs-split]');
-        const strict = root.querySelector('[data-ebs-strict]');
+
         const keep = root.querySelector('[data-ebs-keep]');
+        const strictSplit = root.querySelector('[data-ebs-strict-split]');
+        const strict = root.querySelector('[data-ebs-strict]');
+        const multiSplit = root.querySelector('[data-ebs-multi-split]');
         const multi = root.querySelector('[data-ebs-multi]');
-        split?.classList.toggle('ebs-active', cfg.strict);
+
         keep?.classList.toggle('ebs-active', cfg.keep);
-        multi?.classList.toggle('ebs-active', cfg.multi);
-        if (strict) {
-            strict.setAttribute('aria-pressed', String(cfg.strict));
-            strict.textContent = cfg.strict ? '✓ Strict title' : 'Strict title';
-        }
+        strictSplit?.classList.toggle('ebs-active', cfg.strict);
+        multiSplit?.classList.toggle('ebs-active', cfg.multi);
+
         if (keep) {
             keep.setAttribute('aria-pressed', String(cfg.keep));
             keep.textContent = cfg.keep ? '✓ Keep filters' : 'Keep filters';
+        }
+        if (strict) {
+            strict.setAttribute('aria-pressed', String(cfg.strict));
+            strict.textContent = cfg.strict ? '✓ Strict title' : 'Strict title';
         }
         if (multi) {
             multi.setAttribute('aria-pressed', String(cfg.multi));
@@ -775,36 +950,22 @@
             root.id = 'ebs-controls';
             root.className = 'wt-action-group__item';
             root.innerHTML = `
-                <span class="ebs-split" data-ebs-split>
-                    <button type="button" class="ebs-main" data-ebs-strict aria-pressed="false">Strict title</button>
-                    <button type="button" class="ebs-caret" data-ebs-settings aria-label="Strict title settings" aria-expanded="false">▾</button>
-                </span>
                 <button type="button" class="ebs-pill" data-ebs-keep aria-pressed="false">Keep filters</button>
-                <button type="button" class="ebs-pill" data-ebs-multi aria-pressed="false">Multi-search</button>
+
+                <span class="ebs-split" data-ebs-strict-split>
+                    <button type="button" class="ebs-main" data-ebs-strict aria-pressed="false">Strict title</button>
+                    <button type="button" class="ebs-caret" data-ebs-strict-settings aria-label="Strict title settings" aria-expanded="false">▾</button>
+                </span>
+
+                <span class="ebs-split" data-ebs-multi-split>
+                    <button type="button" class="ebs-main" data-ebs-multi aria-pressed="false">Multi-search</button>
+                    <button type="button" class="ebs-caret" data-ebs-multi-help aria-label="Multi-search help" aria-expanded="false">▾</button>
+                </span>
             `;
+
             const showFilters = list.querySelector('.sticky-filters-button-lg');
             if (showFilters) showFilters.insertAdjacentElement('afterend', root);
             else list.prepend(root);
-
-            root.querySelector('[data-ebs-strict]').addEventListener('click', () => {
-                const next = !cfg.strict;
-                save('strict', next);
-                if (!next && cfg.multi) save('multi', false);
-                updateButtons();
-                invalidateCache();
-                if (cfg.strict) reapply();
-                else {
-                    stopScan();
-                    restoreNative();
-                    showStatus(null);
-                }
-                scheduleFit();
-            });
-
-            root.querySelector('[data-ebs-settings]').addEventListener('click', (event) => {
-                event.stopPropagation();
-                togglePopup(event.currentTarget);
-            });
 
             root.querySelector('[data-ebs-keep]').addEventListener('click', () => {
                 save('keep', !cfg.keep);
@@ -813,16 +974,34 @@
                 scheduleFit();
             });
 
-            root.querySelector('[data-ebs-multi]').addEventListener('click', () => {
-                const next = !cfg.multi;
-                save('multi', next);
-                // Multi-search only makes sense when the merged results are title-filtered.
-                if (next && !cfg.strict) save('strict', true);
+            root.querySelector('[data-ebs-strict]').addEventListener('click', () => {
+                save('strict', !cfg.strict);
                 updateButtons();
-                stopScan();
-                invalidateCache();
-                if (cfg.strict) reapply();
+
+                // Strict title and Multi-search are independent. If Multi-search is still active,
+                // re-render/re-scan the merged results rather than disabling Multi-search.
+                if (cfg.strict || cfg.multi) reapply();
+                else {
+                    stopScan();
+                    restoreNative();
+                    showStatus(null);
+                }
                 scheduleFit();
+            });
+
+            root.querySelector('[data-ebs-strict-settings]').addEventListener('click', (event) => {
+                event.stopPropagation();
+                togglePopup(event.currentTarget, 'strict');
+            });
+
+            root.querySelector('[data-ebs-multi]').addEventListener('click', () => {
+                switchSearchMode(!cfg.multi);
+                scheduleFit();
+            });
+
+            root.querySelector('[data-ebs-multi-help]').addEventListener('click', (event) => {
+                event.stopPropagation();
+                togglePopup(event.currentTarget, 'multi');
             });
         }
 
@@ -831,28 +1010,47 @@
         scheduleFit();
     }
 
-    function makePopup() {
+    function makePopup(type) {
         const popup = document.createElement('div');
         popup.className = 'ebs-popup';
         popup.hidden = true;
-        popup.innerHTML = `
-            <div class="ebs-popup-title">Title matching</div>
-            <label class="ebs-option"><input type="radio" name="ebs-mode" value="phrase"><span>Exact phrase</span></label>
-            <label class="ebs-option"><input type="radio" name="ebs-mode" value="all"><span>All words</span></label>
-        `;
-        document.body.append(popup);
 
-        popup.addEventListener('change', (event) => {
-            const target = event.target;
-            if (!target.matches('input[name="ebs-mode"]')) return;
-            save('mode', target.value === 'all' ? 'all' : 'phrase');
-            reapply();
-        });
+        if (type === 'strict') {
+            popup.innerHTML = `
+                <div class="ebs-popup-title">Title matching</div>
+                <label class="ebs-option"><input type="radio" name="ebs-mode" value="phrase"><span>Exact phrase</span></label>
+                <label class="ebs-option"><input type="radio" name="ebs-mode" value="all"><span>All words</span></label>
+            `;
+            popup.addEventListener('change', (event) => {
+                const target = event.target;
+                if (!target.matches('input[name="ebs-mode"]')) return;
+                save('mode', target.value === 'all' ? 'all' : 'phrase');
+                reapply();
+            });
+        } else {
+            popup.innerHTML = `
+                <div class="ebs-popup-title">Multi-search</div>
+                <p class="ebs-guide">
+                    Separate independent Etsy searches with commas.
+                    <span class="ebs-example">subahibi, saya no uta, persona</span>
+                </p>
+                <p class="ebs-guide">
+                    Put a shared term in <strong>[brackets]</strong> at the start or end to add it to every search.
+                    <span class="ebs-example">[charm] subahibi, saya no uta, persona</span>
+                    <span class="ebs-example">subahibi, saya no uta, persona [charm]</span>
+                </p>
+                <p class="ebs-guide">
+                    Start brackets put the shared term before each search; end brackets put it after each search.
+                </p>
+            `;
+        }
+
+        document.body.append(popup);
         return popup;
     }
 
     function syncPopup() {
-        if (!state.popup) return;
+        if (!state.popup || state.popupType !== 'strict') return;
         const radio = state.popup.querySelector(`input[name="ebs-mode"][value="${cfg.mode}"]`);
         if (radio) radio.checked = true;
     }
@@ -862,31 +1060,39 @@
         const anchor = state.popupAnchor.getBoundingClientRect();
         const box = state.popup.getBoundingClientRect();
         const pad = 8;
+
         let left = anchor.right - box.width;
         left = Math.max(pad, Math.min(left, innerWidth - box.width - pad));
+
         let top = anchor.bottom + 8;
         if (top + box.height > innerHeight - pad) top = anchor.top - box.height - 8;
+
         state.popup.style.left = `${Math.round(left)}px`;
         state.popup.style.top = `${Math.round(Math.max(pad, top))}px`;
     }
 
-    function togglePopup(anchor) {
-        if (!state.popup) state.popup = makePopup();
-        const open = state.popup.hidden || state.popupAnchor !== anchor;
+    function togglePopup(anchor, type) {
+        const isSameOpen = state.popup && !state.popup.hidden && state.popupType === type && state.popupAnchor === anchor;
+        closePopup();
+        if (isSameOpen) return;
+
+        state.popup = makePopup(type);
+        state.popupType = type;
         state.popupAnchor = anchor;
-        state.popup.hidden = !open;
-        anchor.setAttribute('aria-expanded', String(open));
-        if (open) {
-            syncPopup();
-            requestAnimationFrame(positionPopup);
-        }
+        state.popup.hidden = false;
+        anchor.setAttribute('aria-expanded', 'true');
+
+        syncPopup();
+        requestAnimationFrame(positionPopup);
     }
 
     function closePopup() {
-        if (!state.popup || state.popup.hidden) return;
-        state.popup.hidden = true;
+        if (!state.popup) return;
         state.popupAnchor?.setAttribute('aria-expanded', 'false');
+        state.popup.remove();
+        state.popup = null;
         state.popupAnchor = null;
+        state.popupType = '';
     }
 
     function recommendationWrappers() {
@@ -897,8 +1103,10 @@
     function fitRecommendations() {
         const inner = document.querySelector('[data-search-pathways-inner]');
         if (!inner || !document.querySelector('#ebs-controls')) return;
+
         const wrappers = recommendationWrappers();
         for (const wrapper of wrappers) wrapper.style.removeProperty('display');
+
         requestAnimationFrame(() => {
             for (let i = wrappers.length - 1; i >= 0 && inner.scrollWidth > inner.clientWidth + 2; i -= 1) {
                 wrappers[i].style.display = 'none';
@@ -914,6 +1122,7 @@
     function observeToolbar() {
         const inner = document.querySelector('[data-search-pathways-inner]');
         if (!inner || state.observedInner === inner) return;
+
         state.resizeObserver?.disconnect();
         state.resizeObserver = new ResizeObserver(scheduleFit);
         state.resizeObserver.observe(inner);
@@ -926,19 +1135,27 @@
     }
 
     function sync() {
+        const urlChanged = location.href !== state.lastUrl;
         state.lastUrl = location.href;
+
         if (!isSearchPage()) {
             stopScan();
             closePopup();
-            document.body?.classList.remove('ebs-strict-active');
+            document.body?.classList.remove('ebs-results-active');
             return;
         }
 
         if (maybeRestoreFilters()) return;
         captureFilters();
+        seedQueryState();
+
+        // When Etsy/navigation changes the actual query, remember it for the currently active mode.
+        if (urlChanged && !state.switchingMode) saveActiveQuery();
+        state.switchingMode = false;
+
         ensureUI();
 
-        if (!cfg.strict) {
+        if (!(cfg.strict || cfg.multi)) {
             restoreNative();
             showStatus(null);
             return;
@@ -947,29 +1164,40 @@
         const raw = query();
         if (!raw) return;
         const queryGroups = groups(raw);
-        if (!queryGroups.length) return;
+        if (!queryGroups.length) {
+            restoreNative();
+            showStatus(null);
+            return;
+        }
+
         const sig = signature(raw, queryGroups);
         if (state.rendered && state.renderSig === sig) return showStatus(state.status);
         if (state.scanningSig === sig) return showStatus(state.status);
         if (state.retryTimer && state.retrySig === sig) return showStatus(state.status);
-        if (state.cacheReady && state.cacheSig === sig) return renderStrict(sig, queryGroups, 'done');
+        if (state.cacheReady && state.cacheSig === sig) return renderResults(sig, queryGroups, 'done');
         scan();
     }
 
     document.addEventListener('submit', (event) => {
-        if (!cfg.keep) return;
         const form = event.target?.closest?.('#gnav-search');
         if (!form) return;
+
         const input = form.querySelector('#global-enhancements-search-query, [data-search-input], input[name="search_query"]');
         const q = input?.value?.trim();
         if (!q) return;
+
+        // Always remember the query in the currently active Single/Multi slot.
+        saveActiveQuery(q);
+
+        if (!cfg.keep) return;
+
         event.preventDefault();
         event.stopImmediatePropagation();
         location.assign(searchUrl(q, cfg.filters).href);
     }, true);
 
     document.addEventListener('click', (event) => {
-        if (state.popup && !state.popup.hidden && !state.popup.contains(event.target) && !state.popupAnchor?.contains(event.target)) {
+        if (state.popup && !state.popup.contains(event.target) && !state.popupAnchor?.contains(event.target)) {
             closePopup();
         }
     }, true);
@@ -982,8 +1210,10 @@
         positionPopup();
         scheduleFit();
     }, { passive: true });
+
     window.addEventListener('scroll', positionPopup, { passive: true, capture: true });
     window.addEventListener('popstate', () => scheduleSync(50));
+
     window.addEventListener('pageshow', (event) => {
         if (!event.persisted) return;
         abortActiveScan();
@@ -992,16 +1222,20 @@
         state.rendered = false;
         state.nativeGrid = null;
         state.nativeHTML = '';
-        document.querySelector('[data-ebs-strict-grid-host]')?.remove();
+        document.querySelector('[data-ebs-results-grid-host]')?.remove();
         scheduleSync(50);
     });
+
     window.addEventListener('pagehide', () => abortActiveScan());
 
-    // Etsy replaces search fragments without full page loads. Watch DOM changes, but debounce
-    // heavily so our own rendering does not create a scan loop.
-    new MutationObserver(() => scheduleSync(220)).observe(document.body, { childList: true, subtree: true });
+    // Etsy replaces search fragments without full page loads. Debounce so our own rendering
+    // does not create a scan loop.
+    new MutationObserver(() => scheduleSync(220)).observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
 
-    // Catch URL changes made by Etsy's SPA even when they do not emit popstate.
+    // Catch Etsy SPA URL changes even when they do not emit popstate.
     for (const method of ['pushState', 'replaceState']) {
         const original = history[method];
         history[method] = function (...args) {
@@ -1015,5 +1249,6 @@
         if (location.href !== state.lastUrl) scheduleSync(50);
     }, 700);
 
+    seedQueryState();
     sync();
 })();
