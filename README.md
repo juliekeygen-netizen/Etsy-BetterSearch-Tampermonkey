@@ -70,7 +70,34 @@ The top of the window has four presets:
 - **Fast** — 5 concurrent requests, no spacing, shorter recovery.
 - **Custom** — exposes all scanner controls.
 
-Safe, Balanced, and Fast hide the detailed controls. Custom exposes:
+### Sort coverage
+
+**Sort coverage** is always visible in Scan Settings; it is not hidden inside Custom mode.
+
+It can independently enable any combination of Etsy's native sort modes:
+
+- **Most relevant**
+- **Top reviews**
+- **Newest**
+- **Price: low to high**
+- **Price: high to low**
+
+With every sort toggle **off**, BetterSearch behaves exactly like the earlier versions: it scans only the sort currently selected in Etsy's native dropdown.
+
+When one or more sort modes are enabled, each Strict-title query or generated Multi-search query is scanned once for every enabled sort mode. BetterSearch then merges those candidate pools and removes duplicate listing IDs before applying the title rules.
+
+For example, three Multi-search queries with **Most relevant**, **Top reviews**, and **Newest** enabled create nine candidate passes in total.
+
+The **Merged result display priority** setting controls how the combined result set is ordered:
+
+- **Auto (recommended)** prioritizes enabled modes in this order: Most relevant → Top reviews → Newest → Price low to high → Price high to low.
+- Or choose one enabled sort mode explicitly to make it the primary display order.
+
+Listings found by the primary sort are shown first in that sort's Etsy order. Listings that only exist in lower-priority sort pools are then added using the remaining priority order. A listing found in several sorts is displayed only once.
+
+Enabling more sort modes can materially increase scan time because the scanner has more result pages to fetch. The live page count, average speed, and ETA include those additional sort passes.
+
+Safe, Balanced, and Fast hide the detailed Custom controls. Custom exposes:
 
 ### Performance
 
@@ -99,7 +126,7 @@ Adaptive slowdown temporarily reduces concurrency and adds some spacing during r
 
 ### Optimizations
 
-- **Reuse current Etsy page** — reuses the already-loaded result page when possible instead of requesting it again
+- **Reuse current Etsy page** — reuses the already-loaded result page when possible instead of requesting that page again
 
 The settings window uses the same draft **Cancel / Apply** behavior as Multi-search, and scan settings persist across browser restarts.
 
