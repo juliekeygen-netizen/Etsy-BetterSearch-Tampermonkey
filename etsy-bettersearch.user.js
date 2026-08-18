@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Etsy BetterSearch
 // @namespace    https://github.com/juliekeygen-netizen
-// @version      0.2.1
+// @version      0.2.2
 // @description  Adds strict title matching, multi-search, and persistent Etsy filters while keeping Etsy's native search UI.
 // @homepageURL  https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey
 // @supportURL   https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/issues
@@ -163,7 +163,8 @@
             color: #595959;
             list-style: none;
         }
-        body.ebs-strict-active [data-appears-component-name="search_pagination"] {
+        body.ebs-strict-active [data-appears-component-name="search_pagination"],
+        body.ebs-strict-active [data-no-results] {
             display: none !important;
         }
         @media (max-width: 899px) {
@@ -331,6 +332,36 @@
         return root.querySelector('[data-search-results] [data-search-results-region] [data-results-grid-container]')
             || root.querySelector('[data-search-results-region] [data-results-grid-container]')
             || null;
+    }
+
+    // A comma-filled Multi-search can legitimately produce zero results as one native Etsy
+    // query even though the independent searches have matches. In that case Etsy may omit the
+    // normal grid, so create a temporary grid in the real search-listings area instead of ever
+    // borrowing a personalized/recommendation grid.
+    function liveResultsGrid() {
+        const native = mainResultsGrid(document);
+        if (native) return native;
+
+        const existingHost = document.querySelector('[data-ebs-strict-grid-host]');
+        if (existingHost) return existingHost.querySelector('[data-ebs-strict-grid]');
+
+        const searchGroup = document.querySelector('.search-listings-group');
+        const noResults = document.querySelector('[data-no-results]');
+        if (!searchGroup && !noResults?.parentElement) return null;
+
+        const host = document.createElement('div');
+        host.setAttribute('data-ebs-strict-grid-host', '');
+        host.className = 'wt-grid__item-xs-12 wt-pr-xs-1 wt-pl-xs-1 wt-pl-md-3 wt-pr-md-3';
+
+        const grid = document.createElement('ul');
+        grid.setAttribute('data-results-grid-container', '');
+        grid.setAttribute('data-ebs-strict-grid', '');
+        grid.className = 'wt-grid wt-grid--block wt-pl-xs-0 tab-reorder-container';
+        host.append(grid);
+
+        if (searchGroup) searchGroup.prepend(host);
+        else noResults.insertAdjacentElement('afterend', host);
+        return grid;
     }
 
     function cardData(doc, groupIndex, page) {
@@ -513,10 +544,19 @@
     }
 
     function restoreNative() {
-        const grid = mainResultsGrid(document);
-        if (state.rendered && grid && state.nativeGrid === grid) grid.innerHTML = state.nativeHTML;
+        const grid = state.nativeGrid;
+        if (state.rendered && grid?.isConnected) {
+            if (grid.hasAttribute('data-ebs-strict-grid')) {
+                grid.closest('[data-ebs-strict-grid-host]')?.remove();
+            } else {
+                grid.innerHTML = state.nativeHTML;
+            }
+        }
+        document.querySelector('[data-ebs-strict-grid-host]')?.remove();
         state.rendered = false;
         state.renderSig = '';
+        state.nativeGrid = null;
+        state.nativeHTML = '';
         document.body?.classList.remove('ebs-strict-active');
     }
 
@@ -544,12 +584,12 @@
 
     function renderStrict(sig, queryGroups, phase = 'done') {
         if (!cfg.strict || signature(query(), queryGroups) !== sig) return;
-        const grid = mainResultsGrid(document);
+        const grid = liveResultsGrid();
         if (!grid) return scheduleSync(180);
 
         if (!state.rendered || state.nativeGrid !== grid) {
             state.nativeGrid = grid;
-            state.nativeHTML = grid.innerHTML;
+            state.nativeHTML = grid.hasAttribute('data-ebs-strict-grid') ? '' : grid.innerHTML;
         }
 
         const matched = matchedCandidates(queryGroups);
@@ -952,6 +992,7 @@
         state.rendered = false;
         state.nativeGrid = null;
         state.nativeHTML = '';
+        document.querySelector('[data-ebs-strict-grid-host]')?.remove();
         scheduleSync(50);
     });
     window.addEventListener('pagehide', () => abortActiveScan());
