@@ -36,10 +36,27 @@ function ebsNormalizeSortCoverage(value) {
   const enabled = Array.isArray(source.enabled)
     ? Array.from(new Set(source.enabled.map(String).filter((key) => valid.has(key))))
     : [];
-  const displayPriority = source.displayPriority === 'auto' || valid.has(source.displayPriority)
-    ? source.displayPriority
-    : 'auto';
-  return { enabled, displayPriority };
+
+  let displayMode = source.displayMode === 'custom' ? 'custom' : 'auto';
+  let requestedOrder = Array.isArray(source.displayOrder)
+    ? source.displayOrder.map(String).filter((key) => valid.has(key))
+    : [];
+
+  /* Migrate the v0.6.0 single-priority setting into the new custom-order model. */
+  if (!requestedOrder.length && source.displayPriority && source.displayPriority !== 'auto' && valid.has(source.displayPriority)) {
+    displayMode = 'custom';
+    requestedOrder = [source.displayPriority, ...EBS_SORT_AUTO_PRIORITY.filter((key) => key !== source.displayPriority)];
+  }
+
+  const seen = new Set();
+  const displayOrder = [];
+  for (const key of [...requestedOrder, ...EBS_SORT_AUTO_PRIORITY]) {
+    if (!valid.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    displayOrder.push(key);
+  }
+
+  return { enabled, displayMode, displayOrder };
 }
 
 var sortCoverageCfg = ebsNormalizeSortCoverage(ebsReadStoredObject(SORT_COVERAGE_KEY, {}));
@@ -70,13 +87,8 @@ function ebsSortDisplayOrderKeys(config = sortCoverageCfg) {
   const normalized = ebsNormalizeSortCoverage(config);
   const enabled = new Set(normalized.enabled);
   if (!enabled.size) return [];
-
-  const auto = EBS_SORT_AUTO_PRIORITY.filter((key) => enabled.has(key));
-  const preferred = normalized.displayPriority !== 'auto' && enabled.has(normalized.displayPriority)
-    ? normalized.displayPriority
-    : auto[0];
-  if (!preferred) return auto;
-  return [preferred, ...auto.filter((key) => key !== preferred)];
+  const source = normalized.displayMode === 'custom' ? normalized.displayOrder : EBS_SORT_AUTO_PRIORITY;
+  return source.filter((key) => enabled.has(key));
 }
 
 function ebsActiveSortVariants(config = sortCoverageCfg) {
@@ -84,7 +96,7 @@ function ebsActiveSortVariants(config = sortCoverageCfg) {
   if (!normalized.enabled.length) {
     return [{
       key: '__current__',
-      label: `Current Etsy sort`,
+      label: 'Current Etsy sort',
       order: null,
       priority: 0,
       current: true,
@@ -101,7 +113,8 @@ function ebsActiveSortVariants(config = sortCoverageCfg) {
 
 function ebsSortCoverageSignature(config = sortCoverageCfg) {
   const normalized = ebsNormalizeSortCoverage(config);
-  return `${normalized.enabled.slice().sort().join(',')}|${normalized.displayPriority}`;
+  const order = normalized.displayMode === 'custom' ? normalized.displayOrder.join(',') : 'auto';
+  return `${normalized.enabled.slice().sort().join(',')}|${normalized.displayMode}|${order}`;
 }
 
 function ebsSortRankForCandidate(candidate) {
