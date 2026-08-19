@@ -88,12 +88,15 @@ When one or more sort modes are enabled, each Strict-title query or generated Mu
 
 For example, three Multi-search queries with **Most relevant**, **Top reviews**, and **Newest** enabled create nine candidate passes in total.
 
-The **Merged result display priority** setting controls how the combined result set is ordered:
+The **Merged result display order** editor controls how the combined result set is ordered:
 
-- **Auto (recommended)** prioritizes enabled modes in this order: Most relevant → Top reviews → Newest → Price low to high → Price high to low.
-- Or choose one enabled sort mode explicitly to make it the primary display order.
+- **Auto (recommended)** uses: Most relevant → Top reviews → Newest → Price low to high → Price high to low, using only the sort modes that are enabled.
+- **Custom order** unlocks a row list of the enabled sort modes. Drag the rows into any order you want. Small **↑ / ↓** buttons provide the same reordering on touch/mobile devices.
+- Your Custom order is remembered if you temporarily switch back to Auto.
 
-Listings found by the primary sort are shown first in that sort's Etsy order. Listings that only exist in lower-priority sort pools are then added using the remaining priority order. A listing found in several sorts is displayed only once.
+Listings found by the first display-order sort are shown first in that sort's Etsy order. Listings that only exist in lower-priority sort pools are then added using the remaining order. A listing found in several sorts is displayed only once.
+
+Existing v0.6.0 single-priority settings are migrated into the new Custom-order model, with the previously selected sort placed first.
 
 Enabling more sort modes can materially increase scan time because the scanner has more result pages to fetch. The live page count, average speed, and ETA include those additional sort passes.
 
