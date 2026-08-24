@@ -1,0 +1,49 @@
+name: CI and extension builds
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install package metadata
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Run repository checks
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build Chrome and Firefox
+        run: npm run build
+
+      - name: Upload Chrome build
+        uses: actions/upload-artifact@v4
+        with:
+          name: etsy-bettersearch-chrome
+          path: dist/chrome
+          if-no-files-found: error
+
+      - name: Upload Firefox build
+        uses: actions/upload-artifact@v4
+        with:
+          name: etsy-bettersearch-firefox
+          path: dist/firefox
+          if-no-files-found: error
