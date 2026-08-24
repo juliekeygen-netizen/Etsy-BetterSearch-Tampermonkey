@@ -171,23 +171,36 @@ Named collections use the same control order with Etsy's native **Search within 
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
 
-The filter rail mirrors Etsy's disclosure-row spacing and chevrons more closely. Sections start closed, and whichever section you open stays open while changing options/reapplying filters. Clicking the **Filters** heading itself closes the filter rail. The Search section uses the same split-pill interaction as marketplace search: the main halves toggle **Strict title** / **Multi-search**, while the caret opens Strict settings or the Multi-search rule editor.
+The Favorites filter rail now mirrors Etsy's marketplace filter rail much more closely: native-style accordion rows, matching divider/spacing behavior, compact checkboxes/radios/selects, a dual-thumb price slider with paired price inputs, Etsy-like disclosure chevrons, category/color “Show more” patterns, and small help popovers rather than permanent explanatory copy. Sections remember their open/closed state while filters reapply. Clicking the **Filters** heading itself closes the rail.
+
+The custom **Search** drawer remains at the top. **Strict title** and **Multi-search** use split pills; Strict's caret opens **Exact phrase / All words directly between Strict title and Multi-search**, while Multi-search's caret opens the rule editor.
 
 The real Favorites listing section is handled separately from Etsy recommendation modules such as **Discover similar items**; recommendation cards are never included in the Favorites result pool.
 
 ### Favorites filters
 
-The Favorites rail contains these sections:
+The rail includes Etsy's normal filter structure first, then BetterSearch-specific Favorites filters:
 
 - **Search** — Strict Title and rule-based Multi-search
-- **Price** — minimum/maximum price and minimum discount percentage
-- **Availability** — available only, on sale, free shipping
-- **Item format** — all / physical / digital
+- **Category** — All categories plus Etsy-style category links and Show more
+- **Special offers** — Free shipping / On sale
+- **Item format** — All items / Exclude digital downloads / Digital downloads only
+- **Etsy's best** — Etsy's Picks / Star Seller, with native-style `?` info popovers
+- **Ships from** — Anywhere / Europe / current country / Near a city / Another country
+- **Ready to ship in** — 1 day / 1–3 days
+- **Price** — native-style range slider plus minimum/maximum price inputs
+- **Color** — swatch checkboxes with Show more
+- **Item type** — Vintage
+- **Ordering options** — Accepts Etsy gift cards / Can be gift-wrapped / Customizable
+- **Ship to** — country selector
+- **Availability & discount** — BetterSearch's available-only and minimum-discount controls
 - **Rating & reviews** — minimum rating and minimum review count
-- **Seller** — Star Seller and shop selector
-- **Listing features** — Best Seller, personalizable, has variations, has video
+- **Seller** — shop selector
+- **Listing features** — Best Seller / variations / video
 - **Popularity & stock** — low-stock signal and minimum reported cart count
-- **Delivery** — maximum shipping cost, returns accepted, exchanges accepted
+- **Delivery** — maximum shipping cost / returns / exchanges
+
+Filters for which the current Favorites JSON already exposes reliable metadata are wired into local filtering. Native controls whose required metadata is not currently present in the Favorites dataset — for example Category, Etsy's Picks, Ships from, Ready to ship, Color, Vintage, gift-card/gift-wrap, and Ship to — already have their UI/state implemented but are intentionally not used to reject listings yet. This avoids pretending unknown metadata is false; the data wiring can be added later without another UI redesign.
 
 For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
 
