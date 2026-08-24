@@ -199,8 +199,24 @@ function observeToolbar() {
     state.observedInner = inner;
 }
 
+function pageScrollLockAllowsKey(event) {
+    const target = event.target;
+    if (target?.matches?.('button, a[href], input, textarea, select, [contenteditable="true"]')) return true;
+    return Boolean(target?.closest?.('.ebs-modal-editor, .ebs-modal-body, .ebsf-overlay-body'));
+}
+
+function pageScrollLockBlock(event) {
+    if (event.type === 'keydown') {
+        if (!['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key) || pageScrollLockAllowsKey(event)) return;
+    } else if (event.target?.closest?.('.ebs-modal-editor, .ebs-modal-body, .ebsf-overlay-body')) return;
+    event.preventDefault();
+}
+
 function lockPageScroll() {
-    if (state.scrollLock) return;
+    if (state.scrollLock) {
+        state.scrollLock.count += 1;
+        return;
+    }
     const html = document.documentElement;
     const body = document.body;
     const x = window.scrollX || 0;
@@ -209,8 +225,9 @@ function lockPageScroll() {
     const scrollbarWidth = Math.max(0, viewportWidth - html.clientWidth);
     const paddingRight = Number.parseFloat(getComputedStyle(body).paddingRight) || 0;
     state.scrollLock = {
-        x, y,
+        count: 1, x, y,
         htmlOverflow: html.style.overflow,
+        htmlOverscrollBehavior: html.style.overscrollBehavior,
         bodyOverflow: body.style.overflow,
         position: body.style.position,
         top: body.style.top,
@@ -220,6 +237,7 @@ function lockPageScroll() {
         paddingRight: body.style.paddingRight,
     };
     html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
     body.style.overflow = 'hidden';
     body.style.position = 'fixed';
     body.style.top = `${-y}px`;
@@ -227,15 +245,21 @@ function lockPageScroll() {
     body.style.right = '0';
     body.style.width = 'auto';
     if (scrollbarWidth) body.style.paddingRight = `${paddingRight + scrollbarWidth}px`;
+    document.addEventListener('wheel', pageScrollLockBlock, { capture: true, passive: false });
+    document.addEventListener('touchmove', pageScrollLockBlock, { capture: true, passive: false });
+    document.addEventListener('keydown', pageScrollLockBlock, true);
 }
 
 function unlockPageScroll() {
     const saved = state.scrollLock;
     if (!saved) return;
+    saved.count -= 1;
+    if (saved.count > 0) return;
     state.scrollLock = null;
     const html = document.documentElement;
     const body = document.body;
     html.style.overflow = saved.htmlOverflow;
+    html.style.overscrollBehavior = saved.htmlOverscrollBehavior;
     body.style.overflow = saved.bodyOverflow;
     body.style.position = saved.position;
     body.style.top = saved.top;
@@ -243,6 +267,9 @@ function unlockPageScroll() {
     body.style.right = saved.right;
     body.style.width = saved.width;
     body.style.paddingRight = saved.paddingRight;
+    document.removeEventListener('wheel', pageScrollLockBlock, true);
+    document.removeEventListener('touchmove', pageScrollLockBlock, true);
+    document.removeEventListener('keydown', pageScrollLockBlock, true);
     window.scrollTo(saved.x, saved.y);
 }
 

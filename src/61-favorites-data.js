@@ -245,4 +245,30 @@ function favGroupNativeQueryMatch(item){if(favCfg.strict||favCfg.multi||favScope
 
 function favFilteredRecords(){const f=favCfg.filters,multiPlan=favCfg.multi?compileMultiPlan(favCfg.multiRules):null,strictQuery=favCfg.strict?normalize(favNativeQuery()):'';const titleMatch=(item)=>{if(!favGroupNativeQueryMatch(item))return false;const source=normalize(item.title);if(strictQuery){if(favCfg.strictMode==='phrase'&&!` ${source} `.includes(` ${strictQuery} `))return false;if(favCfg.strictMode==='all'){const tokens=new Set(source.split(' ').filter(Boolean));if(!strictQuery.split(' ').filter(Boolean).every((part)=>tokens.has(part)))return false;}}if(!multiPlan)return true;for(const rule of multiPlan.shared)if(!ruleMatchesTitle(item.title,rule))return false;if(multiPlan.branches.length&&!multiPlan.branches.some((rule)=>ruleMatchesTitle(item.title,rule)))return false;for(const rule of multiPlan.exclude)if(ruleMatchesTitle(item.title,rule))return false;return true;};const out=favState.records.filter((item)=>{if(!titleMatch(item))return false;if(!favNumericFilter(item.price,f.minPrice,(a,b)=>a>=b)||!favNumericFilter(item.price,f.maxPrice,(a,b)=>a<=b)||!favNumericFilter(item.discountPercent,f.minDiscount,(a,b)=>a>=b))return false;if(f.availableOnly&&(item.isSoldOut||item.isShopOnVacation))return false;if(f.onSale&&!item.isOnSale)return false;if(f.freeShipping&&!item.hasFreeShipping&&item.shipping!==0)return false;if(f.itemFormat==='digital'&&!(item.known?.isDownload&&item.isDownload))return false;if(f.itemFormat==='physical'&&item.known?.isDownload&&item.isDownload)return false;if(!favNumericFilter(item.rating,f.minRating,(a,b)=>a>=b)||!favNumericFilter(item.reviews,f.minReviews,(a,b)=>a>=b))return false;if(f.starSeller&&!item.isStarSeller)return false;if(f.bestSeller&&!item.isBestSeller)return false;if(f.personalizable&&!item.isPersonalizable)return false;if(f.hasVariations&&!item.hasVariations)return false;if(f.hasVideo&&!item.videoSources.length)return false;if(f.shop&&item.shopName!==f.shop)return false;if(!favNumericFilter(item.shipping,f.maxShipping,(a,b)=>a<=b))return false;if(f.returns&&!item.acceptsReturns)return false;if(f.exchanges&&!item.acceptsExchanges)return false;if(f.lowStock&&!Number.isFinite(item.stockLeft))return false;if(!favNumericFilter(item.carts,f.minCarts,(a,b)=>a>=b))return false;return true;});return favSortRecords(out);}
 
-function favSortRecords(items){const list=items.slice(),text=(a,b)=>String(a||'').localeCompare(String(b||''),undefined,{sensitivity:'base',numeric:true}),number=(a,b,dir=1)=>((Number.isFinite(a)?a:(dir>0?Infinity:-Infinity))-(Number.isFinite(b)?b:(dir>0?Infinity:-Infinity)))*dir;const cmp={etsy:(a,b)=>a.order-b.order,priceAsc:(a,b)=>number(a.price,b.price)||a.order-b.order,priceDesc:(a,b)=>number(a.price,b.price,-1)||a.order-b.order,discountDesc:(a,b)=>number(a.discountPercent,b.discountPercent,-1)||a.order-b.order,ratingDesc:(a,b)=>number(a.rating,b.rating,-1)||number(a.reviews,b.reviews,-1)||a.order-b.order,reviewsDesc:(a,b)=>number(a.reviews,b.reviews,-1)||a.order-b.order,titleAsc:(a,b)=>text(a.title,b.title)||a.order-b.order,titleDesc:(a,b)=>text(b.title,a.title)||a.order-b.order,shopAsc:(a,b)=>text(a.shopName,b.shopName)||a.order-b.order,shippingAsc:(a,b)=>number(a.shipping,b.shipping)||a.order-b.order,cartsDesc:(a,b)=>number(a.carts,b.carts,-1)||a.order-b.order,lowStock:(a,b)=>number(a.stockLeft,b.stockLeft)||a.order-b.order}[favCfg.sort]||((a,b)=>a.order-b.order);return list.sort(cmp);}
+function favCompareKnownNumber(a, b, direction = 1) {
+    const aKnown = Number.isFinite(a), bKnown = Number.isFinite(b);
+    if (aKnown !== bKnown) return aKnown ? -1 : 1;
+    if (!aKnown) return 0;
+    return (a - b) * direction;
+}
+
+function favSortRecords(items) {
+    const list = items.slice();
+    if (favCfg.sort === 'etsy') return list.sort((a, b) => a.order - b.order);
+    const reverse = favCfg.sortReversed === true;
+    const text = (a, b) => String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: true });
+    const numeric = (field, normalDirection) => (a, b) => favCompareKnownNumber(a[field], b[field], reverse ? -normalDirection : normalDirection);
+    const textual = (field) => (a, b) => (reverse ? text(b[field], a[field]) : text(a[field], b[field]));
+    const comparator = {
+        price: numeric('price', 1),
+        rating: (a, b) => numeric('rating', 1)(a, b) || favCompareKnownNumber(a.reviews, b.reviews, reverse ? 1 : -1),
+        reviews: numeric('reviews', -1),
+        discount: numeric('discountPercent', -1),
+        title: textual('title'),
+        shop: textual('shopName'),
+        shipping: numeric('shipping', 1),
+        carts: numeric('carts', -1),
+        stock: numeric('stockLeft', 1),
+    }[favCfg.sort] || ((a, b) => a.order - b.order);
+    return list.sort((a, b) => comparator(a, b) || a.order - b.order);
+}

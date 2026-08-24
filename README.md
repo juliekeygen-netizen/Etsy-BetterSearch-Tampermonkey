@@ -183,7 +183,7 @@ Named collections use the same control order with Etsy's native **Search within 
 - **Show filters** is styled after Etsy's native search filter button.
 - The native Favorites/collection search form stays in place and continues to work normally.
 - The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
-- The cog opens Favorites Settings with index totals, current job state, last full-sync time, manual sync/cancel controls, and the saved auto-sync toggle.
+- The shared outline cog opens a compact Favorites Settings view with active Favorite/shop totals, current job state, last full-sync time, manual sync/cancel controls, and the saved auto-sync toggle. Its Deep Metadata section is deliberately disabled until listing-page scanning exists.
 - At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort + Settings stay reachable beside the shrinking native search field, wrapping only on genuinely small screens.
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
@@ -232,19 +232,20 @@ When Strict Title or Multi-search is active, BetterSearch can load the full curr
 
 ### Favorites sorting
 
-Favorites sorting is local after the current Favorites scope has been loaded, so switching sort modes is immediate:
+Favorites sorting is local after the current Favorites scope has been loaded, so switching sort modes is immediate. Each row except Etsy order has a reverse button; the selected base sort and its direction persist separately:
 
 - **Etsy order**
 - **Price: low to high**
-- **Price: high to low**
-- **Rating: high to low**
+- **Rating: low to high**
 - **Most reviews**
 - **Discount: high to low**
-- **Title: A to Z / Z to A**
+- **Title: A to Z**
 - **Shop: A to Z**
 - **Shipping: low to high**
 - **Most carts**
 - **Low stock first**
+
+Reversing updates the visible label (for example, **Shop: Z to A**) without creating a duplicate menu row. Unknown shipping, cart, stock, and other numeric metadata stays unknown and sorts after known values in either direction. Existing pre-v0.9.1 ascending/descending settings migrate to the equivalent base sort and direction.
 
 BetterSearch keeps local Favorites pagination at about Etsy's normal 20-listing page size and shows a small `favorites · shown` counter when local filtering/sorting is active.
 
@@ -254,7 +255,9 @@ Favorites loading uses Etsy's own logged-in Favorites JSON requests and structur
 
 Reliable current-page and loaded-scope metadata is also merged into a dedicated IndexedDB index with versioned `listings`, `shops`, and `scopes` stores. Each metadata field retains known/unknown state, source, observation time, and parser version. Direct unfavorites deactivate the record and memberships without deleting cached metadata; later observations can reactivate the same record. A partial scope observation never proves absence, while only a completed authoritative scope may deactivate missing membership.
 
-On the user's own Favorites pages, conservative auto-sync checks the complete unfiltered **All Items** scope when it has never completed or its snapshot is at least 12 hours old. The current custom collection, generated group, or native query scope is synchronized separately when due. Pages are fetched sequentially with retry/backoff and cancellation; partial/failed jobs keep useful observations but cannot infer unfavorites. During a meaningful sync, a restrained progress display temporarily occupies the native search field's footprint without removing or rebuilding Etsy's form.
+On the user's own Favorites pages, conservative auto-sync checks the complete unfiltered **All Items** scope when it has never completed or its snapshot is at least 12 hours old. The current custom collection, generated group, or native query scope is synchronized separately when due. Pages are fetched sequentially with retry/backoff and cancellation; partial/failed jobs keep useful observations but cannot infer unfavorites. During a meaningful sync, a restrained progress display temporarily occupies the native search field's exact footprint without removing or rebuilding Etsy's form.
+
+**Favorites sync** means this fast Favorites API/card/auxiliary-data refresh into the durable index. A future **deep metadata scan** will fetch individual listing/shop pages for fields Etsy does not expose in Favorites; it is not implemented and its Settings actions remain visibly disabled.
 
 Cards already present on the current Etsy Favorites page reuse their original DOM nodes so native event handlers survive. Off-page Favorites have to be reconstructed from Etsy's structured data; their heart action uses BetterSearch's same-site favorite bridge. For reconstructed cards, Add to cart / Multiple options opens the listing page when Etsy's original frontend handler is unavailable.
 

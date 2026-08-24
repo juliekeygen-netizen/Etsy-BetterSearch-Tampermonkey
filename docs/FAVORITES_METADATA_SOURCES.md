@@ -1,6 +1,8 @@
 # Favorites metadata source evidence
 
-This document records concrete Etsy signals already observed for Favorites filtering and the preferred acquisition order for each field. The durable index foundation is implemented; the deep scanner remains future work.
+This document records concrete Etsy signals already observed for Favorites filtering and the preferred acquisition order for each field. The durable index and cheap Favorites synchronization are implemented; the deep scanner remains future work.
+
+In UI and documentation, **Favorites sync** specifically means the fast Favorites structured/card/auxiliary-data refresh. **Deep metadata scan** means future individual listing/shop-page requests for otherwise unavailable fields. Sync must never be presented as a deep scan.
 
 ## Acquisition priority
 
@@ -244,7 +246,7 @@ Remove it from the active Favorites rail until a reliable data source exists.
 
 ### Future deep-metadata controls
 
-Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card support, gift wrapping, and Ship to retain their saved schema values but are visibly disabled with a compact `Requires listing metadata` status. Cheap fields such as Star Seller, digital, Best Seller, personalization, variations, and video remain active when their source marks them known. The settings UI explicitly says listing-page scanning is not enabled and offers no fake deep-scan actions.
+Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card support, gift wrapping, and Ship to retain their saved schema values but are visibly disabled with a compact `Requires listing metadata` status. Cheap fields such as Star Seller, digital, Best Seller, personalization, variations, and video remain active when their source marks them known. The settings UI shows future deep-metadata coverage/status deliberately, but its future scan/update actions are visibly disabled and produce no fake progress or results.
 
 ## Parser testing requirements
 

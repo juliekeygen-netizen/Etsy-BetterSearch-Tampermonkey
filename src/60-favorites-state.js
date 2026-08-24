@@ -2,6 +2,37 @@
 
 var FAV_STORAGE_KEY = 'etsy-bettersearch.favorites.config.v1';
 
+var FAV_SORT_DEFINITIONS = [
+    { key: 'etsy', normal: 'Etsy order', reversed: '', reversible: false },
+    { key: 'price', normal: 'Price: low to high', reversed: 'Price: high to low', reversible: true },
+    { key: 'rating', normal: 'Rating: low to high', reversed: 'Rating: high to low', reversible: true },
+    { key: 'reviews', normal: 'Most reviews', reversed: 'Least reviews', reversible: true },
+    { key: 'discount', normal: 'Discount: high to low', reversed: 'Discount: low to high', reversible: true },
+    { key: 'title', normal: 'Title: A to Z', reversed: 'Title: Z to A', reversible: true },
+    { key: 'shop', normal: 'Shop: A to Z', reversed: 'Shop: Z to A', reversible: true },
+    { key: 'shipping', normal: 'Shipping: low to high', reversed: 'Shipping: high to low', reversible: true },
+    { key: 'carts', normal: 'Most carts', reversed: 'Fewest reported carts', reversible: true },
+    { key: 'stock', normal: 'Low stock first', reversed: 'High stock first', reversible: true },
+];
+
+function favNormalizeSort(source = {}) {
+    const legacy = {
+        etsy: ['etsy', false], priceAsc: ['price', false], priceDesc: ['price', true],
+        ratingDesc: ['rating', true], reviewsDesc: ['reviews', false], discountDesc: ['discount', false],
+        titleAsc: ['title', false], titleDesc: ['title', true], shopAsc: ['shop', false],
+        shippingAsc: ['shipping', false], cartsDesc: ['carts', false], lowStock: ['stock', false],
+    };
+    if (legacy[source.sort]) return { sort: legacy[source.sort][0], sortReversed: legacy[source.sort][1] };
+    const definition = FAV_SORT_DEFINITIONS.find((entry) => entry.key === source.sort);
+    if (!definition) return { sort: 'etsy', sortReversed: false };
+    return { sort: definition.key, sortReversed: definition.reversible && source.sortReversed === true };
+}
+
+function favSortLabel(sort, reversed = false) {
+    const definition = FAV_SORT_DEFINITIONS.find((entry) => entry.key === sort) || FAV_SORT_DEFINITIONS[0];
+    return reversed && definition.reversible ? definition.reversed : definition.normal;
+}
+
 function favDefaultConfig() {
     return {
         strict: false,
@@ -9,6 +40,7 @@ function favDefaultConfig() {
         multi: false,
         multiRules: [defaultRule('or', '')],
         sort: 'etsy',
+        sortReversed: false,
         autoSync: true,
         filters: {
             minPrice: '', maxPrice: '', minDiscount: '',
@@ -31,12 +63,13 @@ function favNormalizeConfig(raw) {
     const base = favDefaultConfig();
     const source = raw && typeof raw === 'object' ? raw : {};
     const filters = source.filters && typeof source.filters === 'object' ? source.filters : {};
+    const normalizedSort = favNormalizeSort(source);
     return {
         strict: source.strict === true,
         strictMode: source.strictMode === 'all' ? 'all' : 'phrase',
         multi: source.multi === true,
         multiRules: normalizeRules(Array.isArray(source.multiRules) && source.multiRules.length ? source.multiRules : base.multiRules),
-        sort: ['etsy','priceAsc','priceDesc','discountDesc','ratingDesc','reviewsDesc','titleAsc','titleDesc','shopAsc','shippingAsc','cartsDesc','lowStock'].includes(source.sort) ? source.sort : 'etsy',
+        ...normalizedSort,
         autoSync: source.autoSync !== false,
         filters: {
             minPrice: String(filters.minPrice ?? ''), maxPrice: String(filters.maxPrice ?? ''), minDiscount: String(filters.minDiscount ?? ''),
@@ -374,5 +407,5 @@ function favEnhancementActive() {
 
 function favNeedsExtraInfo() {
     const f = favCfg.filters;
-    return Boolean(f.freeShipping || f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts || ['shippingAsc','cartsDesc','lowStock'].includes(favCfg.sort));
+    return Boolean(f.freeShipping || f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts || ['shipping','carts','stock'].includes(favCfg.sort));
 }

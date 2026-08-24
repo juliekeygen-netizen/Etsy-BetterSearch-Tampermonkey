@@ -173,10 +173,11 @@ Implemented behavior:
 UI:
 
 - The native search form is preserved and visually covered only while a meaningful sync displays progress such as `Syncing favorites… 40 / 61`.
-- Favorites Settings reports index counts/state and provides manual sync, cancellation, and auto-sync controls.
+- Favorites Settings presents active Favorites, distinct shops, sync state, and last-full-sync time in a compact 2×2 summary, with manual sync, cancellation, and auto-sync controls.
+- v0.9.1 consolidates Favorites sorts into a migrated base-sort plus reverse-direction model, keeps unknown numeric metadata last, restores useful native-search width, and shares one scoped chevron/icon language.
 - Recommendation modules such as "Discover similar items" remain explicitly excluded.
 
-Implementation boundary: this phase synchronizes cheap/current Favorites sources only. It does not crawl listing pages, provide future deep-filter metadata, or implement the persistent deep-scan queue.
+Terminology and implementation boundary: **Favorites sync** is the implemented, cheap Favorites API/card/auxiliary-data index refresh. A **deep metadata scan** is the future individual listing/shop-page crawler. This phase does not crawl those pages, provide future deep-filter metadata, or implement the persistent deep-scan queue.
 
 ---
 

@@ -53,10 +53,10 @@ function favNativeSection(title, body, key) {
     const id = `ebsf-filter-section-${++favSectionCounter}`;
     const trigger = document.createElement('button');
     trigger.type = 'button';
-    trigger.className = 'wt-btn wt-btn--transparent wt-content-toggle--btn wt-content-toggle--with-icon collapsible-filter-trigger wt-width-full ebsf-native-section-trigger';
+    trigger.className = 'wt-btn wt-btn--transparent wt-width-full ebsf-native-section-trigger';
     trigger.setAttribute('aria-controls', id);
     trigger.setAttribute('aria-expanded', String(open));
-    trigger.innerHTML = `<span class="wt-flex-xs-auto wt-width-full ebsf-native-section-title"></span><span aria-hidden="true" class="wt-content-toggle--btn__icon"></span>`;
+    trigger.innerHTML = `<span class="wt-flex-xs-auto wt-width-full ebsf-native-section-title"></span>${favChevronMarkup()}`;
     trigger.querySelector('.ebsf-native-section-title').textContent = title;
 
     const content = document.createElement('div');

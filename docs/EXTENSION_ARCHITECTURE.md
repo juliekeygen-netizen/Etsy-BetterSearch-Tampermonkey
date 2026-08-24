@@ -140,6 +140,8 @@ The biggest unavoidable difference is background lifetime:
 
 Feature semantics should otherwise remain the same where practical.
 
+The shared UI uses **Favorites sync** only for the implemented cheap Favorites endpoint/card/auxiliary refresh. **Deep metadata scan** remains reserved for future individual listing/shop-page work and its persistent background queue; neither browser build performs that crawl yet.
+
 ## Settings migration
 
 Extension settings are **not automatically imported from Tampermonkey** in the first conversion.

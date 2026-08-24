@@ -18,9 +18,50 @@ async function loadState() {
     defaultRule: (logic, value) => ({ id: 'rule', enabled: true, logic, polarity: 'match', operator: 'contains', value, options: {} }),
     normalizeRules: (rules) => structuredClone(rules),
   });
-  vm.runInContext(`${source}\nglobalThis.testApi={favDefaultConfig,favNormalizeConfig,favActiveSectionKeys,favInitializeOpenSections,favSetSearchMode,favSaveConfig,getConfig:()=>favCfg,getState:()=>favState};`, context);
+  vm.runInContext(`${source}\nglobalThis.testApi={FAV_SORT_DEFINITIONS,favDefaultConfig,favNormalizeSort,favNormalizeConfig,favSortLabel,favActiveSectionKeys,favInitializeOpenSections,favSetSearchMode,favSaveConfig,getConfig:()=>favCfg,getState:()=>favState};`, context);
   context.testApi.getSaved = () => holder.saved;
   return context.testApi;
+}
+
+async function loadSorting() {
+  const source = await readFile(resolve(ROOT, 'src/61-favorites-data.js'), 'utf8');
+  const context = vm.createContext({ console, favCfg: { sort: 'etsy', sortReversed: false } });
+  vm.runInContext(`${source}\nglobalThis.testApi={favCompareKnownNumber,favSortRecords,setSort:(sort,sortReversed=false)=>{favCfg={sort,sortReversed};}};`, context);
+  return context.testApi;
+}
+
+async function loadUiHelpers() {
+  const stateSource = await readFile(resolve(ROOT, 'src/60-favorites-state.js'), 'utf8');
+  const uiSource = await readFile(resolve(ROOT, 'src/62-favorites-ui.js'), 'utf8');
+  const context = vm.createContext({
+    console, URL, location: { href: 'https://www.etsy.com/people/test/favorites', pathname: '/people/test/favorites' },
+    document: { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {} },
+    window: { addEventListener: () => {} }, GM_getValue: () => ({}), GM_setValue: () => {},
+    defaultRule: (logic, value) => ({ id: 'rule', logic, value }), normalizeRules: (rules) => rules,
+  });
+  vm.runInContext(`${stateSource}\n${uiSource}\nglobalThis.testApi={favChevronMarkup,favReverseSortIconMarkup,favSortTriggerWidth};`, context);
+  return context.testApi;
+}
+
+async function loadScrollLock() {
+  const source = await readFile(resolve(ROOT, 'src/40-toolbar.js'), 'utf8');
+  const selected = source.slice(source.indexOf('function pageScrollLockAllowsKey'), source.indexOf('function modalCounts'));
+  const listeners = new Map();
+  const html = { clientWidth: 1180, style: { overflow: 'clip', overscrollBehavior: 'contain' } };
+  const body = { style: { overflow: 'auto', position: 'relative', top: '1px', left: '2px', right: '3px', width: '90%', paddingRight: '4px' } };
+  const scrolls = [];
+  const context = vm.createContext({
+    state: { scrollLock: null },
+    document: {
+      documentElement: html, body,
+      addEventListener: (type, handler) => listeners.set(type, handler),
+      removeEventListener: (type) => listeners.delete(type),
+    },
+    window: { scrollX: 17, scrollY: 231, innerWidth: 1200, scrollTo: (x, y) => scrolls.push([x, y]) },
+    getComputedStyle: () => ({ paddingRight: '4px' }),
+  });
+  vm.runInContext(`${selected}\nglobalThis.testApi={lockPageScroll,unlockPageScroll,getLock:()=>state.scrollLock};`, context);
+  return { ...context.testApi, html, body, listeners, scrolls };
 }
 
 async function loadIndex({ currentListings = [], liveIds = [] } = {}) {
@@ -71,6 +112,106 @@ test('Favorites config normalization preserves durable defaults and future index
   assert.equal(cfg.autoSync, true);
   const disabled = api.favNormalizeConfig({ autoSync: false });
   assert.equal(disabled.autoSync, false);
+});
+
+test('legacy Favorites sort values migrate to base sort and direction without resetting', async () => {
+  const api = await loadState();
+  const expected = {
+    etsy: ['etsy', false], priceAsc: ['price', false], priceDesc: ['price', true],
+    ratingDesc: ['rating', true], reviewsDesc: ['reviews', false], discountDesc: ['discount', false],
+    titleAsc: ['title', false], titleDesc: ['title', true], shopAsc: ['shop', false],
+    shippingAsc: ['shipping', false], cartsDesc: ['carts', false], lowStock: ['stock', false],
+  };
+  for (const [legacy, [sort, sortReversed]] of Object.entries(expected)) {
+    const migrated = api.favNormalizeConfig({ sort: legacy });
+    assert.equal(migrated.sort, sort, legacy);
+    assert.equal(migrated.sortReversed, sortReversed, legacy);
+  }
+  assert.equal(api.favNormalizeConfig({ sort: 'shop', sortReversed: true }).sortReversed, true);
+  Object.assign(api.getConfig(), { sort: 'shop', sortReversed: true });
+  api.favSaveConfig();
+  assert.equal(api.getSaved().sort, 'shop');
+  assert.equal(api.getSaved().sortReversed, true);
+});
+
+test('every reversible Favorites sort flips direction and keeps unknown numbers last', async () => {
+  const api = await loadSorting();
+  const cases = {
+    price: [{ price: 1 }, { price: 9 }], rating: [{ rating: 1, reviews: 2 }, { rating: 5, reviews: 9 }],
+    reviews: [{ reviews: 20 }, { reviews: 2 }], discount: [{ discountPercent: 40 }, { discountPercent: 5 }],
+    title: [{ title: 'Alpha' }, { title: 'Zulu' }], shop: [{ shopName: 'Alpha' }, { shopName: 'Zulu' }],
+    shipping: [{ shipping: 1 }, { shipping: 9 }], carts: [{ carts: 20 }, { carts: 2 }],
+    stock: [{ stockLeft: 1 }, { stockLeft: 9 }],
+  };
+  for (const [sort, pair] of Object.entries(cases)) {
+    const items = pair.map((item, order) => ({ ...item, order, id: String(order) }));
+    api.setSort(sort, false);
+    const normal = api.favSortRecords(items).map((item) => item.id).join('');
+    api.setSort(sort, true);
+    const reversed = api.favSortRecords(items).map((item) => item.id).join('');
+    assert.notEqual(normal, reversed, sort);
+  }
+  for (const [sort, field] of Object.entries({ price: 'price', rating: 'rating', reviews: 'reviews', discount: 'discountPercent', shipping: 'shipping', carts: 'carts', stock: 'stockLeft' })) {
+    const items = [{ [field]: Number.NaN, order: 0, id: 'unknown' }, { [field]: 3, order: 1, id: 'known' }];
+    for (const reversed of [false, true]) {
+      api.setSort(sort, reversed);
+      assert.equal(api.favSortRecords(items).at(-1).id, 'unknown', `${sort}/${reversed}`);
+    }
+  }
+});
+
+test('Favorites sort labels reverse immediately, including Shop, while Etsy order stays native', async () => {
+  const stateApi = await loadState();
+  assert.equal(stateApi.favSortLabel('shop', false), 'Shop: A to Z');
+  assert.equal(stateApi.favSortLabel('shop', true), 'Shop: Z to A');
+  assert.equal(stateApi.favSortLabel('reviews', true), 'Least reviews');
+  const sorting = await loadSorting();
+  const items = [{ order: 2, id: 'two' }, { order: 0, id: 'zero' }, { order: 1, id: 'one' }];
+  sorting.setSort('etsy', true);
+  assert.deepEqual(Array.from(sorting.favSortRecords(items), (item) => item.id), ['zero', 'one', 'two']);
+});
+
+test('Favorites UI helpers provide stable sort width, outline icons, and one shared chevron', async () => {
+  const api = await loadUiHelpers();
+  assert.equal(api.favSortTriggerWidth((label) => label.length), 'Shipping: high to low'.length + 54);
+  assert.equal((api.favChevronMarkup().match(/class="ebsf-chevron"/g) || []).length, 1);
+  assert.match(api.favReverseSortIconMarkup(), /fill="none"/);
+
+  const iconSource = await readFile(resolve(ROOT, 'src/45-scan-settings-ui.js'), 'utf8');
+  assert.match(iconSource, /viewBox="0 0 24 24" fill="none" stroke="currentColor"/);
+  assert.doesNotMatch(iconSource.match(/function ebsSettingsIconMarkup[\s\S]*?\n}/)?.[0] || '', /fill="currentColor"/);
+
+  const railSource = await readFile(resolve(ROOT, 'src/62b-favorites-filter-ui.js'), 'utf8');
+  assert.match(railSource, /favChevronMarkup\(\)/);
+  assert.doesNotMatch(railSource, /wt-content-toggle--btn__icon/);
+});
+
+test('shared modal scroll lock is balanced and restores exact page state', async () => {
+  const api = await loadScrollLock();
+  const originalBody = { ...api.body.style };
+  api.lockPageScroll();
+  api.lockPageScroll();
+  assert.equal(api.getLock().count, 2);
+  assert.equal(api.body.style.position, 'fixed');
+  assert.equal(api.body.style.top, '-231px');
+  assert.equal(api.listeners.has('wheel'), true);
+  api.unlockPageScroll();
+  assert.equal(api.getLock().count, 1);
+  assert.equal(api.body.style.position, 'fixed');
+  api.unlockPageScroll();
+  assert.equal(api.getLock(), null);
+  assert.deepEqual(api.body.style, originalBody);
+  assert.deepEqual(api.scrolls, [[17, 231]]);
+  assert.equal(api.listeners.size, 0);
+});
+
+test('Favorites search progress preserves the native form and restores it on every terminal state', async () => {
+  const source = await readFile(resolve(ROOT, 'src/62-favorites-ui.js'), 'utf8');
+  assert.match(source, /anchor\.form\.classList\.add\('ebsf-native-search-sync-hidden'\)/);
+  assert.match(source, /form\.offsetWidth/);
+  assert.match(source, /form\.offsetHeight/);
+  assert.match(source, /classList\.remove\('ebsf-native-search-sync-hidden'\)/);
+  assert.match(source, /if\(favSyncState\.status==='running'\)favRenderSyncProgress\(\);else favHideSyncProgress\(\)/);
 });
 
 test('active Favorites values determine initial accordion sections without persisting manual disclosure state', async () => {
