@@ -31,6 +31,16 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tag matches project version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          EXPECTED="v${{ steps.version.outputs.version }}"
+          if [ "$GITHUB_REF_NAME" != "$EXPECTED" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match project version $EXPECTED" >&2
+            exit 1
+          fi
+
       - name: Package extensions
         shell: bash
         run: |
