@@ -3,6 +3,7 @@ import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import {
+  EXTENSION_DESCRIPTION,
   ROOT,
   localRequirePaths,
   makeManifest,
@@ -59,4 +60,14 @@ test('Firefox manifest uses background scripts and a stable Gecko id', () => {
     manifest.browser_specific_settings.gecko.id,
     'etsy-bettersearch@juliekeygen-netizen.github.io'
   );
+});
+
+test('manifest falls back to a browser-store-safe description', () => {
+  const manifest = makeManifest('chrome', {
+    version: '1.2.3',
+    name: 'Etsy BetterSearch',
+    description: 'x'.repeat(200)
+  });
+  assert.equal(manifest.description, EXTENSION_DESCRIPTION);
+  assert.ok(manifest.description.length <= 132);
 });
