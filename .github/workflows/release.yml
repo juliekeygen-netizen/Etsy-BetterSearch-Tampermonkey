@@ -1,0 +1,64 @@
+name: Release browser builds
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check, test, and build
+        run: npm run ci
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package extensions
+        shell: bash
+        run: |
+          (cd dist/chrome && zip -qr "../etsy-bettersearch-chrome-${{ steps.version.outputs.version }}.zip" .)
+          (cd dist/firefox && zip -qr "../etsy-bettersearch-firefox-${{ steps.version.outputs.version }}.zip" .)
+
+      - name: Create or update GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --generate-notes --title "Etsy BetterSearch $GITHUB_REF_NAME"
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            "dist/etsy-bettersearch-chrome-${{ steps.version.outputs.version }}.zip" \
+            "dist/etsy-bettersearch-firefox-${{ steps.version.outputs.version }}.zip" \
+            etsy-bettersearch.user.js \
+            --clobber
+
+      - name: Upload manual-run artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: etsy-bettersearch-release-builds
+          path: |
+            dist/etsy-bettersearch-chrome-${{ steps.version.outputs.version }}.zip
+            dist/etsy-bettersearch-firefox-${{ steps.version.outputs.version }}.zip
+            etsy-bettersearch.user.js
+          if-no-files-found: error
