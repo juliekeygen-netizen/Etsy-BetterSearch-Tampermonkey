@@ -152,21 +152,26 @@ If Chrome throttles the hidden tab and requests start failing, BetterSearch paus
 
 ## Favorites filters and sorting
 
-BetterSearch also enhances Etsy's Favorites Items and collection pages while preserving Etsy's own **Search your favorites**, Items/categories, Collections, and Shops navigation.
+BetterSearch also enhances Etsy's Favorites Items and collection pages while preserving Etsy's own **Search your favorites**, **Search within this collection**, Items/categories, Collections, and Shops navigation.
 
 ### Native-style Favorites UI
 
-On desktop the Favorites header becomes approximately:
+On desktop the Favorites search row becomes approximately:
 
 ```text
-[ Show filters ] [ Search your favorites... ] [ Etsy order ▾ ]
+[ Show filters ] [ Etsy order ▾ ] [ Search your favorites... ]
 ```
 
+Named collections use the same control order with Etsy's native **Search within this collection** field. BetterSearch does not consume the search field's normal desktop width: Filter and Sort sit to its left, while the native form remains the flexible search control.
+
 - **Show filters** is styled after Etsy's native search filter button.
-- The native **Search your favorites** form is left in place and continues to work normally.
+- The native Favorites/collection search form stays in place and continues to work normally.
 - The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
+- At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort stay to the left of the shrinking native search field on one row when space permits.
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
+
+The filter rail mirrors Etsy's disclosure-row spacing and chevrons more closely. Sections start closed, and whichever section you open stays open while changing options/reapplying filters. Clicking the **Filters** heading itself closes the filter rail. The Search section uses the same split-pill interaction as marketplace search: the main halves toggle **Strict title** / **Multi-search**, while the caret opens Strict settings or the Multi-search rule editor.
 
 The real Favorites listing section is handled separately from Etsy recommendation modules such as **Discover similar items**; recommendation cards are never included in the Favorites result pool.
 
@@ -190,7 +195,7 @@ For popularity/stock, BetterSearch only treats a value as known when Etsy actual
 
 Favorites has its own saved Strict Title / Multi-search state, separate from marketplace search.
 
-- **Strict title** applies Exact Phrase or All Words matching to the native **Search your favorites** text.
+- **Strict title** applies Exact Phrase or All Words matching to the current native Favorites search text.
 - **Multi-search** uses the same Title-rule model as marketplace Multi-search: OR branches, shared AND rules, Match/Exclude, Contains/Equals/Starts with/Ends with, rule reordering, enable/disable, duplicate/delete, and Search Preview.
 - Favorites Strict Title and Favorites Multi-search are mutually exclusive.
 
