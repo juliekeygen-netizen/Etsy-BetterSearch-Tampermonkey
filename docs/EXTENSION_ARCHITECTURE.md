@@ -80,6 +80,7 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 - same-site fetches already used by BetterSearch
 - extension settings through the compatibility adapter
 - versioned Favorites IndexedDB interface and cheap metadata/scope observations
+- conservative authoritative Favorites synchronization, cancellation, progress, and auto-sync freshness decisions
 
 **Background**
 
@@ -106,7 +107,7 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 - durable resume after browser worker suspension/restart
 - send indexed updates back to relevant Etsy tabs
 
-**Database (foundation implemented; queue stores future)**
+**Database (index and cheap synchronization implemented; queue stores future)**
 
 - listing records
 - shop records
@@ -122,7 +123,7 @@ Use `storage.local` for the existing relatively small settings/rules because tha
 
 ### Metadata foundation (implemented)
 
-The large Favorites index is not stored in one settings object. `src/61a-favorites-index.js` provides a versioned IndexedDB abstraction with separate `listings`, `shops`, and `scopes` stores, provenance-aware field merging, partial/complete scope semantics, and dormant unfavorite records.
+The large Favorites index is not stored in one settings object. `src/61a-favorites-index.js` provides a versioned IndexedDB abstraction with separate `listings`, `shops`, and `scopes` stores, provenance-aware field merging, batched observations, partial/complete scope semantics, and dormant unfavorite records. `src/61b-favorites-sync.js` owns conservative same-site pagination, runtime job state, cancellation/stale-job rejection, and 12-hour auto-sync freshness checks.
 
 The public API hides the backing store and works in the Etsy page/content context for Tampermonkey, Chrome, and Firefox. A future background queue can adopt an extension-owned database/message adapter without changing filter feature semantics.
 

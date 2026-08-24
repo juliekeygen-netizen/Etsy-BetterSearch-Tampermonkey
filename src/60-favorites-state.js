@@ -9,6 +9,7 @@ function favDefaultConfig() {
         multi: false,
         multiRules: [defaultRule('or', '')],
         sort: 'etsy',
+        autoSync: true,
         filters: {
             minPrice: '', maxPrice: '', minDiscount: '',
             availableOnly: false, onSale: false, freeShipping: false,
@@ -36,6 +37,7 @@ function favNormalizeConfig(raw) {
         multi: source.multi === true,
         multiRules: normalizeRules(Array.isArray(source.multiRules) && source.multiRules.length ? source.multiRules : base.multiRules),
         sort: ['etsy','priceAsc','priceDesc','discountDesc','ratingDesc','reviewsDesc','titleAsc','titleDesc','shopAsc','shippingAsc','cartsDesc','lowStock'].includes(source.sort) ? source.sort : 'etsy',
+        autoSync: source.autoSync !== false,
         filters: {
             minPrice: String(filters.minPrice ?? ''), maxPrice: String(filters.maxPrice ?? ''), minDiscount: String(filters.minDiscount ?? ''),
             availableOnly: filters.availableOnly === true, onSale: filters.onSale === true, freeShipping: filters.freeShipping === true,
@@ -64,6 +66,8 @@ var favState = {
     loadKey: '',
     loading: false,
     controller: null,
+    loadPromise: null,
+    loadComplete: false,
     records: [],
     recordsById: new Map(),
     total: 0,
@@ -72,9 +76,12 @@ var favState = {
     pageSize: 20,
     extraReady: false,
     extraLoading: false,
+    extraPromise: null,
+    extraKey: '',
     nativeGrid: null,
     nativeOrder: [],
     nativeNodes: new Map(),
+    nativeCaptured: false,
     rendered: false,
     rendering: false,
     toolbar: null,
@@ -99,6 +106,9 @@ var favState = {
     strictSettingsOpen: false,
     settingsModal: null,
     settingsReturnFocus: null,
+    groupQueryResolved: false,
+    autoSyncCheckKey: '',
+    autoSyncCheckAt: 0,
 };
 
 function favSaveConfig() {
@@ -130,6 +140,14 @@ function favProps(root = document) {
     return null;
 }
 
+function favIsOwnFavoritesPage(props = favProps()) {
+    if (!props) return false;
+    if (props.isOwnProfile === true || props.isOwner === true || props.isSelf === true) return true;
+    const owner = String(props.profileOwnerUserId || '');
+    const viewer = String(props.viewerUserId || props.currentUserId || props.userId || '');
+    return Boolean(owner && viewer && owner === viewer);
+}
+
 function favProfileLogin() {
     const match = location.pathname.match(/\/people\/([^/]+)/i);
     return match ? decodeURIComponent(match[1]) : '';
@@ -146,9 +164,11 @@ function favScope() {
 }
 
 function favSearchInput() {
-    const header = document.querySelector('.favorites-landing-phase3-header-search-container');
-    return header?.querySelector('input[placeholder="Search your favorites"], input[data-clg-id="WtInput"]')
-        || document.querySelector('input[placeholder="Search your favorites"]');
+    const selectors = ['input[placeholder="Search within this collection"]','.favorites-landing-phase3-header-search-container input[placeholder="Search your favorites"]','input[placeholder="Search your favorites"]'];
+    const candidates = selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
+    return candidates.find((input) => input.isConnected && input.getClientRects().length > 0)
+        || candidates[0]
+        || document.querySelector('.favorites-landing-phase3-header-search-container input[data-clg-id="WtInput"]');
 }
 
 function favNativeQuery() {
@@ -223,6 +243,14 @@ function favParseMoney(value) {
     return Number.isFinite(n) ? n : NaN;
 }
 
+function favDecodeEntities(value) {
+    const text = String(value || '');
+    if (!/[&][a-zA-Z#0-9]+;/.test(text)) return text;
+    const area = document.createElement('textarea');
+    area.innerHTML = text;
+    return area.value;
+}
+
 function favRecordFromListing(listing, node, order) {
     const idValue = String(listing?.listingId ?? favListingIdFromNode(node));
     const price = listing?.priceDetails || {};
@@ -233,7 +261,7 @@ function favRecordFromListing(listing, node, order) {
     const videoValue = listing?.videoSources;
     return {
         id: idValue,
-        title: String(listing?.title || node?.querySelector?.('img[alt]')?.alt || '').replace(/&quot;/g, '"'),
+        title: favDecodeEntities(listing?.title || node?.querySelector?.('img[alt]')?.alt || ''),
         url: String(listing?.url || node?.querySelector?.('a[href*="/listing/"]')?.href || ''),
         imageUrl: String(listing?.imageUrl || ''),
         secondaryImageUrl: String(listing?.secondaryImageUrl || ''),
@@ -252,7 +280,7 @@ function favRecordFromListing(listing, node, order) {
         hasFreeShipping: price.hasFreeShipping === true,
         rating: favParseNumber(rating.rating),
         reviews: favParseNumber(rating.count),
-        shopName: String(listing?.shop?.shopName || ''),
+        shopName: favDecodeEntities(listing?.shop?.shopName || ''),
         shopId: String(listing?.shop?.shopId || ''),
         shopUrl: String(listing?.shop?.shopUrl || ''),
         isStarSeller: listing?.shop?.isStarSeller === true,
@@ -346,5 +374,5 @@ function favEnhancementActive() {
 
 function favNeedsExtraInfo() {
     const f = favCfg.filters;
-    return Boolean(f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts || ['shippingAsc','cartsDesc','lowStock'].includes(favCfg.sort));
+    return Boolean(f.freeShipping || f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts || ['shippingAsc','cartsDesc','lowStock'].includes(favCfg.sort));
 }

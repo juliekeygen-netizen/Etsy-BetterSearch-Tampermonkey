@@ -196,6 +196,10 @@ Deep scanning should concentrate on metadata that is genuinely absent from the c
 
 `src/61a-favorites-index.js` owns a versioned IndexedDB abstraction shared by Tampermonkey, Chrome, and Firefox builds. It stores listing, shop, and scope records separately, merges stronger/newer field observations without collapsing known `false`/`0` into unknown, and accepts partial versus completed scope observations. Current embedded/card records and completed existing Favorites loads feed it automatically. Direct heart unfavorites preserve dormant metadata.
 
+`src/61b-favorites-sync.js` now owns authoritative cheap-data synchronization. It fetches Etsy Favorites JSON sequentially for the unfiltered All Items scope and separately for generated groups, custom collections, and native query scopes. Per-page observations are partial. Only the final deduplicated write after every page succeeds marks the scope complete; therefore cancellation, request failure, repeated-page protection, and route-stale rejection cannot infer absence. Only completed unfiltered All Items absence is a global unfavorite signal.
+
+The runtime also observes current page structured/card data on a debounce without turning DOM churn into full-network synchronization. Auto-sync is enabled by default for the user's own Favorites pages, runs when a relevant scope has never completed or is at least 12 hours stale, and does not crawl listing pages. The search-field-footprint progress UI represents only these meaningful pagination jobs.
+
 The future scan queue should be **field-aware**, not simply "scan every favorite page again".
 
 Example:
@@ -214,7 +218,7 @@ This makes the automatic scanner much faster and avoids unnecessary Etsy request
 
 When a listing is unfavorited, keep cached metadata but mark it inactive as already planned. It should leave active Favorite results immediately; dormant metadata can later be cleaned by retention policy.
 
-## Filter-rail UI decisions implemented in v0.8.0
+## Filter-rail UI decisions implemented in v0.8.0 and v0.9.0
 
 ### Prevent accidental text selection
 
@@ -237,6 +241,10 @@ Accordion manual state remains in memory for the page session; a fresh page deri
 ### Color drawer
 
 Remove it from the active Favorites rail until a reliable data source exists.
+
+### Future deep-metadata controls
+
+Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card support, gift wrapping, and Ship to retain their saved schema values but are visibly disabled with a compact `Requires listing metadata` status. Cheap fields such as Star Seller, digital, Best Seller, personalization, variations, and video remain active when their source marks them known. The settings UI explicitly says listing-page scanning is not enabled and offers no fake deep-scan actions.
 
 ## Parser testing requirements
 

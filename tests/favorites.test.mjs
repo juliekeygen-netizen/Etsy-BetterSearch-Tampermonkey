@@ -23,10 +23,39 @@ async function loadState() {
   return context.testApi;
 }
 
-async function loadIndex() {
+async function loadIndex({ currentListings = [], liveIds = [] } = {}) {
   const source = await readFile(resolve(ROOT, 'src/61a-favorites-index.js'), 'utf8');
-  const context = vm.createContext({ console, Date, encodeURIComponent, indexedDB: {} });
-  vm.runInContext(`${source}\nglobalThis.testApi={favIndexUnknown,favIndexField,favIndexMergeField,favIndexEmptyListing,favIndexScopeKey,favIndexPatchFromRecord,favIndexMergeListing,favIndexMarkListingUnfavorite,favIndexMarkListingAvailability,favIndexApplyScopeCompletion,favIndexMergeShop};`, context);
+  const liveNodes = new Map(liveIds.map((id) => [String(id), {}]));
+  const context = vm.createContext({ console, Date, encodeURIComponent, indexedDB: {}, document: {}, favProps: () => ({}), favListingsFromProps: () => currentListings, favCardMap: () => liveNodes, favRecordsFromListings: (items) => items.map((item) => ({ ...item, id: String(item.listingId), known: {}, videoSources: [] })), favIndexCurrentScope: () => ({ scopeKey: 'current' }) });
+  vm.runInContext(`${source}\nglobalThis.testApi={favIndexUnknown,favIndexField,favIndexMergeField,favIndexEmptyListing,favIndexScopeKey,favIndexPatchFromRecord,favIndexMergeListing,favIndexMarkListingUnfavorite,favIndexMarkListingAvailability,favIndexApplyScopeCompletion,favIndexMergeShop,favIndexObserveRecordsNow,favIndexObserveCurrentPage,setObservationDeps:(read,write)=>{favIndexReadObservation=read;favIndexWrite=write;},setObserve:(fn)=>{favIndexObserveRecords=fn;},setCurrentScope:(fn)=>{favIndexCurrentScope=fn;}};`, context);
+  return context.testApi;
+}
+
+async function loadSync({ fetchJson, observe } = {}) {
+  const source = await readFile(resolve(ROOT, 'src/61b-favorites-sync.js'), 'utf8');
+  let fetchImpl = fetchJson || (async () => ({ listings: [] }));
+  let observeImpl = observe || (async () => []);
+  const events = [];
+  const context = vm.createContext({
+    console, Date, Map, Set, URL, AbortController, DOMException,
+    document: { dispatchEvent: (event) => events.push(event.detail) },
+    CustomEvent: class { constructor(_name, options) { this.detail = options.detail; } },
+    favIndexScopeKey: (scope) => [scope.owner || '', scope.type || 'items', scope.id || '', scope.query || ''].join('|'),
+    favScope: () => ({ owner: 'owner', login: 'test', type: 'items', id: '' }), favDatasetKey: () => 'owner|items|||',
+    favNativeQuery: () => '', favProps: () => ({ totalListings: 0 }),
+    favCardMap: () => new Map(), favApiUrlForScope: () => 'endpoint',
+    favFetchJson: (...args) => fetchImpl(...args),
+    favApiListings: (payload) => payload.listings || [],
+    favRecordsFromListings: (listings, offset) => listings.map((item, index) => ({ ...item, id: String(item.id), order: offset + index, known: {} })),
+    favIndexObserveRecords: (...args) => observeImpl(...args),
+    sleep: (_ms, signal) => signal?.aborted ? Promise.reject(new DOMException('Aborted', 'AbortError')) : Promise.resolve(),
+    favIndexGetScope: async () => null, favCfg: { autoSync: true }, favState: {},
+    isFavoritesPage: () => true, favIsOwnFavoritesPage: () => true,
+  });
+  vm.runInContext(`${source}\nglobalThis.testApi={favSyncCreateState,favSyncIsDue,favSyncScopeDescriptor,favSyncJobIsCurrent,favSyncProgressModel,favSyncScope,favCancelSync,getState:()=>favSyncState,setFetch:(fn)=>{favFetchJson=fn;},setObserve:(fn)=>{favIndexObserveRecords=fn;}};`, context);
+  context.testApi.events = events;
+  context.testApi.setFetchImpl = (fn) => { fetchImpl = fn; };
+  context.testApi.setObserveImpl = (fn) => { observeImpl = fn; };
   return context.testApi;
 }
 
@@ -39,6 +68,9 @@ test('Favorites config normalization preserves durable defaults and future index
   assert.equal(cfg.filters.shipsFrom, 'country');
   assert.equal('colors' in cfg.filters, false);
   assert.equal(cfg.filters.ready1Day, false);
+  assert.equal(cfg.autoSync, true);
+  const disabled = api.favNormalizeConfig({ autoSync: false });
+  assert.equal(disabled.autoSync, false);
 });
 
 test('active Favorites values determine initial accordion sections without persisting manual disclosure state', async () => {
@@ -101,6 +133,10 @@ test('listing upsert preserves deep metadata through unfavorite and refavorite l
   listing = api.favIndexMarkListingUnfavorite(listing, 200);
   assert.equal(listing.isFavorite, false);
   assert.equal(listing.listingMetadata.vintage.value, true);
+  const stalePatch = api.favIndexPatchFromRecord({ ...record, indexObservedAt: 150 }, scope, 250);
+  listing = api.favIndexMergeListing(listing, stalePatch, 250);
+  assert.equal(listing.isFavorite, false);
+  assert.equal(listing.favoriteScopes.all.active, false);
   listing = api.favIndexMergeListing(listing, api.favIndexPatchFromRecord(record, scope, 300), 300);
   assert.equal(listing.isFavorite, true);
   assert.equal(listing.unfavoritedAt, 0);
@@ -140,4 +176,124 @@ test('fresh cheap Star Seller metadata updates the normalized shop record', asyn
   assert.equal(updated.starSeller.known, true);
   assert.equal(updated.starSeller.value, true);
   assert.equal(updated.lastObservedAt, 20);
+});
+
+test('complete All Items reconciliation is authoritative while a partial pass is not', async () => {
+  const api = await loadIndex();
+  const listing = api.favIndexEmptyListing('lost', 1);
+  listing.favoriteScopes = { all: { active: true, lastSeenAt: 1 } };
+  const partial = api.favIndexApplyScopeCompletion([listing], { scopeKey: 'all', authoritativeFavoriteScope: false }, [], 2)[0];
+  assert.equal(partial.isFavorite, true);
+  const complete = api.favIndexApplyScopeCompletion([listing], { scopeKey: 'all', authoritativeFavoriteScope: true }, [], 3)[0];
+  assert.equal(complete.isFavorite, false);
+  assert.equal(complete.favoriteScopes.all.active, false);
+});
+
+test('large scope reconciliation uses set semantics and removes only absent memberships', async () => {
+  const api = await loadIndex();
+  const listings = Array.from({ length: 5000 }, (_, index) => {
+    const listing = api.favIndexEmptyListing(String(index), 1);
+    listing.favoriteScopes = { collection: { active: true } };
+    return listing;
+  });
+  const seen = Array.from({ length: 2500 }, (_, index) => String(index * 2));
+  const reconciled = api.favIndexApplyScopeCompletion(listings, { scopeKey: 'collection', authoritativeFavoriteScope: false }, seen, 2);
+  assert.equal(reconciled.filter((listing) => listing.favoriteScopes.collection.active).length, 2500);
+  assert.equal(reconciled.every((listing) => listing.isFavorite), true);
+});
+
+test('bulk observations deduplicate listing IDs and use one read plus one atomic write', async () => {
+  const api = await loadIndex();
+  let reads = 0, writes = 0;
+  const puts = { listings: [], shops: [], scopes: [] };
+  api.setObservationDeps(async () => { reads += 1; return { listings: [], shops: [], shopIds: [], scope: null }; }, async (stores, writer) => {
+    writes += 1;
+    assert.deepEqual(Array.from(stores), ['listings', 'shops', 'scopes']);
+    writer({ objectStore: (name) => ({ put: (value) => puts[name].push(value) }) });
+  });
+  const record = { id: '1', title: 'new', shopId: '7', shopName: 'Shop', price: 1, known: {}, videoSources: [] };
+  await api.favIndexObserveRecordsNow([{ ...record, title: 'old' }, record], { scope: { owner: 'o', type: 'items', scopeKey: 'all' }, complete: false, observedAt: 10 });
+  assert.equal(reads, 1);
+  assert.equal(writes, 1);
+  assert.equal(puts.listings.length, 1);
+  assert.equal(puts.listings[0].title, 'new');
+  assert.equal(puts.scopes[0].listingIds.length, 1);
+});
+
+test('current-page observation is partial and excludes structured modules outside the Favorites grid', async () => {
+  const api = await loadIndex({ currentListings: [{ listingId: 'favorite' }, { listingId: 'recommendation' }], liveIds: ['favorite'] });
+  let captured;
+  api.setObserve(async (records, options) => { captured = { records, options }; return records; });
+  api.setCurrentScope(() => ({ scopeKey: 'current' }));
+  await api.favIndexObserveCurrentPage();
+  assert.deepEqual(Array.from(captured.records, (record) => record.id), ['favorite']);
+  assert.equal(captured.options.complete, false);
+});
+
+test('timestamps and provenance reject unknown or stale observations without losing false/zero', async () => {
+  const api = await loadIndex();
+  const zero = api.favIndexField(0, { known: true, source: 'favorites-aux-json', observedAt: 20 });
+  const unknown = api.favIndexField(null, { known: false, observedAt: 30 });
+  assert.equal(api.favIndexMergeField(zero, unknown).value, 0);
+  const stale = api.favIndexField(5, { known: true, source: 'favorites-aux-json', observedAt: 10 });
+  assert.equal(api.favIndexMergeField(zero, stale).value, 0);
+  const fresh = api.favIndexField(false, { known: true, source: 'favorites-aux-json', observedAt: 40 });
+  assert.equal(api.favIndexMergeField(zero, fresh).value, false);
+});
+
+test('auto-sync due decisions honor never-synced, fresh, and stale timestamps', async () => {
+  const api = await loadSync();
+  assert.equal(api.favSyncIsDue(null, 1000, 100), true);
+  assert.equal(api.favSyncIsDue({ lastCompleteSyncAt: 950 }, 1000, 100), false);
+  assert.equal(api.favSyncIsDue({ lastCompleteSyncAt: 800 }, 1000, 100), true);
+});
+
+test('authoritative synchronization deduplicates pages and completes only after the last page', async () => {
+  const observations = [];
+  let page = 0;
+  const api = await loadSync({
+    fetchJson: async () => ({ listings: page++ === 0 ? Array.from({ length: 20 }, (_, index) => ({ id: index })) : [{ id: 5 }, { id: 20 }] }),
+    observe: async (records, options) => { observations.push({ ids: records.map((record) => record.id), ...options }); },
+  });
+  const scope = api.favSyncScopeDescriptor({ owner: 'owner', type: 'items', id: '' }, '');
+  await api.favSyncScope(scope, { expectedTotal: 21 });
+  assert.equal(api.getState().status, 'completed');
+  assert.equal(api.getState().processed, 21);
+  assert.equal(observations.at(-1).complete, true);
+  assert.equal(new Set(observations.at(-1).ids).size, 21);
+});
+
+test('failed partial synchronization preserves observations but never emits completion', async () => {
+  const observations = [];
+  let call = 0;
+  const api = await loadSync({
+    fetchJson: async () => { if (call++ === 0) return { listings: Array.from({ length: 20 }, (_, index) => ({ id: index })) }; throw new Error('network'); },
+    observe: async (_records, options) => observations.push(options),
+  });
+  await api.favSyncScope(api.favSyncScopeDescriptor({ owner: 'owner', type: 'items', id: '' }, ''));
+  assert.equal(api.getState().status, 'error');
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0].complete, false);
+});
+
+test('sync cancellation rejects the active request and does not complete its scope', async () => {
+  const observations = [];
+  const api = await loadSync({
+    fetchJson: (_url, signal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })),
+    observe: async (_records, options) => observations.push(options),
+  });
+  const promise = api.favSyncScope(api.favSyncScopeDescriptor({ owner: 'owner', type: 'items', id: '' }, ''));
+  assert.equal(api.favCancelSync('test'), true);
+  await promise;
+  assert.equal(api.getState().status, 'cancelled');
+  assert.equal(observations.some((entry) => entry.complete), false);
+});
+
+test('job identity rejects stale scope results and progress model is UI-ready', async () => {
+  const api = await loadSync();
+  assert.equal(api.favSyncJobIsCurrent(99, 'other'), false);
+  const model = api.favSyncProgressModel({ processed: 40, expectedTotal: 61, pagesProcessed: 2, estimatedRemainingMs: 4100 });
+  assert.equal(model.title, 'Syncing favorites… 40 / 61');
+  assert.match(model.detail, /2 pages remaining/);
+  assert.equal(Math.round(model.ratio * 100), 66);
 });

@@ -38,7 +38,7 @@ For normal downloadable builds, use the GitHub Actions artifacts or tagged GitHu
 
 ## Current conversion status
 
-The extension build runs the same BetterSearch feature modules as Tampermonkey through a small compatibility adapter backed by extension storage. The shared content runtime now includes the versioned Favorites IndexedDB foundation. Browser parity and lifecycle behavior are still being proven before deep listing/shop scanning and its persistent queue move into the background extension context.
+The extension build runs the same BetterSearch feature modules as Tampermonkey through a small compatibility adapter backed by extension storage. The shared content runtime includes the versioned Favorites IndexedDB index plus authoritative cheap-data synchronization, auto-sync freshness checks, cancellation, and progress UI. Browser parity and lifecycle behavior are still being proven before deep listing/shop scanning and its persistent queue move into the background extension context.
 
 See:
 

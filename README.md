@@ -14,7 +14,7 @@ The userscript remains the established install path.
 
 ### Chrome / Firefox extension builds
 
-Chrome and Firefox builds are generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. Favorites now has a shared, versioned IndexedDB knowledge layer; deep listing/shop scanning and the background update queue are still deliberately deferred.
+Chrome and Firefox builds are generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. Favorites now has a shared, versioned IndexedDB knowledge layer and authoritative cheap-data synchronization; deep listing/shop scanning and the persistent background update queue are still deliberately deferred.
 
 - See [`extension/README.md`](extension/README.md) for local build and unpacked-install instructions.
 - See [`docs/EXTENSION_ARCHITECTURE.md`](docs/EXTENSION_ARCHITECTURE.md) for the shared-core/background design.
@@ -183,7 +183,7 @@ Named collections use the same control order with Etsy's native **Search within 
 - **Show filters** is styled after Etsy's native search filter button.
 - The native Favorites/collection search form stays in place and continues to work normally.
 - The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
-- The cog opens a Favorites settings framework that reports the local-index/deep-scanner boundary without offering fake scan actions.
+- The cog opens Favorites Settings with index totals, current job state, last full-sync time, manual sync/cancel controls, and the saved auto-sync toggle.
 - At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort + Settings stay reachable beside the shrinking native search field, wrapping only on genuinely small screens.
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
@@ -216,7 +216,7 @@ The rail includes Etsy's normal filter structure first, then BetterSearch-specif
 - **Popularity & stock** — low-stock signal and minimum reported cart count
 - **Delivery** — maximum shipping cost / returns / exchanges
 
-Filters for which the current Favorites JSON already exposes reliable metadata are wired into local filtering. Controls whose required metadata is not currently present — for example Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card/gift-wrap, and Ship to — persist their future index-backed state but do not reject listings yet. Color is hidden entirely because no reliable source is known. This avoids pretending unknown metadata is false.
+Filters for which the current Favorites JSON already exposes reliable metadata are wired into local filtering. Controls whose required metadata is not currently present — Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card/gift-wrap, and Ship to — are visibly unavailable and marked **Requires listing metadata**; previously saved future values remain intact. Color is hidden entirely because no reliable source is known. This avoids pretending unknown metadata is false.
 
 For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
 
@@ -253,6 +253,8 @@ BetterSearch keeps local Favorites pagination at about Etsy's normal 20-listing 
 Favorites loading uses Etsy's own logged-in Favorites JSON requests and structured page data; it does not use an Etsy Open API key. BetterSearch loads additional shipping/returns/urgency metadata only when a filter or sort needs it.
 
 Reliable current-page and loaded-scope metadata is also merged into a dedicated IndexedDB index with versioned `listings`, `shops`, and `scopes` stores. Each metadata field retains known/unknown state, source, observation time, and parser version. Direct unfavorites deactivate the record and memberships without deleting cached metadata; later observations can reactivate the same record. A partial scope observation never proves absence, while only a completed authoritative scope may deactivate missing membership.
+
+On the user's own Favorites pages, conservative auto-sync checks the complete unfiltered **All Items** scope when it has never completed or its snapshot is at least 12 hours old. The current custom collection, generated group, or native query scope is synchronized separately when due. Pages are fetched sequentially with retry/backoff and cancellation; partial/failed jobs keep useful observations but cannot infer unfavorites. During a meaningful sync, a restrained progress display temporarily occupies the native search field's footprint without removing or rebuilding Etsy's form.
 
 Cards already present on the current Etsy Favorites page reuse their original DOM nodes so native event handlers survive. Off-page Favorites have to be reconstructed from Etsy's structured data; their heart action uses BetterSearch's same-site favorite bridge. For reconstructed cards, Add to cart / Multiple options opens the listing page when Etsy's original frontend handler is unavailable.
 
@@ -319,12 +321,11 @@ The next large work is intentionally phased rather than mixed into the browser c
 
 1. Chrome/Firefox behavior parity and smoke testing.
 2. Continue hardening the implemented Favorites listing/shop/scope database and migrations.
-3. Complete automatic/background authoritative Favorites synchronization.
-4. Deep listing-page metadata parser.
-5. Persistent background scan queue with resumable retries.
-6. Wire currently-unknown Category/Shipping/etc. filters only once metadata is verified; keep Color hidden until a dependable source exists.
-7. Native-style UI/mobile hardening and large-library testing.
-8. Explicit Tampermonkey ↔ extension settings export/import and release hardening.
+3. Deep listing-page metadata parser.
+4. Persistent background scan queue with resumable retries.
+5. Wire currently-unknown Category/Shipping/etc. filters only once metadata is verified; keep Color hidden until a dependable source exists.
+6. Continue browser/UI smoke testing and large-library hardening.
+7. Explicit Tampermonkey ↔ extension settings export/import and release hardening.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan, including unfavorite/refavorite lifecycle, metadata unknown/stale states, scanner priorities, shop-level deduplication, UI edge cases, and release phases.
 

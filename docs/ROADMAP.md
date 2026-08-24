@@ -2,7 +2,7 @@
 
 This roadmap is the implementation plan for evolving BetterSearch from a userscript-first project into one shared codebase that can ship as Tampermonkey, Chrome, and Firefox builds while adding a durable Favorites metadata index and deeper filtering later.
 
-The shared build, Favorites UI parity pass, and durable metadata/index foundation are now implemented. Deep listing/shop scanning and its background queue remain deliberately phased future work.
+The shared build, Favorites UI parity pass, durable metadata index, and authoritative cheap Favorites synchronization are now implemented. Deep listing/shop scanning and its persistent background queue remain deliberately phased future work.
 
 ## Guiding rules
 
@@ -156,25 +156,27 @@ Current implementation notes:
 
 ---
 
-## Phase 3 — Authoritative Favorites scope synchronization
+## Phase 3 — Authoritative Favorites scope synchronization **(implemented in v0.9.0)**
 
 Goal: know the complete active Favorite set without opening every listing page.
 
-Order of operations:
+Implemented behavior:
 
-1. Read current embedded Favorites state/card data.
-2. Determine current scope: all items, Etsy auto group, custom collection, or native Favorites search.
-3. Use Etsy's same-site Favorites pagination/JSON requests to fetch the remaining Favorite records for that scope.
-4. Dedupe by listing ID.
-5. Update collection/scope memberships.
-6. Only after a **complete** sync may absent IDs be considered removed from that authoritative scope.
-7. Cache the scope signature so local filter/sort changes do not refetch the same Favorites set.
+1. Current embedded Favorites state/card data is observed continuously as a partial cheap source.
+2. A dedicated controller synchronizes All Items, generated groups, custom collections, and native Favorites queries through Etsy's same-site pagination JSON.
+3. Sequential pages are deduplicated by listing ID and written to IndexedDB in batches.
+4. Partial observations survive a retry failure or cancellation without changing the previous complete snapshot.
+5. Only a completed unfiltered All Items job may infer a global unfavorite by absence; collection completion removes only that membership.
+6. The default auto-sync checks a scope at most when entering/changing Favorites routes and only refreshes a completed snapshot after a 12-hour stale interval.
+7. Route changes cancel view-bound work, while an intentionally independent All Items job may finish if its owner remains valid.
 
 UI:
 
-- Keep loading subtle for ordinary accounts, e.g. `Loading favorites… 40 / 61`.
-- Very large accounts can expose progress and cancel/retry controls.
+- The native search form is preserved and visually covered only while a meaningful sync displays progress such as `Syncing favorites… 40 / 61`.
+- Favorites Settings reports index counts/state and provides manual sync, cancellation, and auto-sync controls.
 - Recommendation modules such as "Discover similar items" remain explicitly excluded.
+
+Implementation boundary: this phase synchronizes cheap/current Favorites sources only. It does not crawl listing pages, provide future deep-filter metadata, or implement the persistent deep-scan queue.
 
 ---
 

@@ -133,6 +133,7 @@ function favIndexKnown(record, key, value, observedAt, source = 'favorites-json'
 
 function favIndexPatchFromRecord(record, scope, observedAt = Date.now()) {
     const idValue = String(record?.id || record?.listingId || '');
+    observedAt = Math.max(0, Number(record?.indexObservedAt) || Number(observedAt) || Date.now());
     const scopeKey = scope?.scopeKey || favIndexScopeKey(scope);
     const finite = (value) => Number.isFinite(value);
     return {
@@ -183,8 +184,11 @@ function favIndexPatchFromRecord(record, scope, observedAt = Date.now()) {
 
 function favIndexMergeListing(existing, incoming, observedAt = Date.now()) {
     const base = existing ? { ...existing } : favIndexEmptyListing(incoming.listingId, observedAt);
+    const incomingSeenAt = Number(incoming.lastSeenFavoriteAt) || observedAt;
+    const staleRefavorite = base.isFavorite === false && (base.unfavoritedAt || 0) > incomingSeenAt;
     const scopes = { ...(base.favoriteScopes || {}) };
     for (const [key, membership] of Object.entries(incoming.favoriteScopes || {})) {
+        if (staleRefavorite && membership.active) continue;
         scopes[key] = { ...(scopes[key] || {}), ...membership };
     }
     return {
@@ -192,11 +196,11 @@ function favIndexMergeListing(existing, incoming, observedAt = Date.now()) {
         url: incoming.url || base.url || '',
         title: incoming.title || base.title || '',
         shopId: incoming.shopId || base.shopId || '',
-        isFavorite: incoming.isFavorite !== false,
+        isFavorite: incoming.isFavorite === false ? false : (staleRefavorite ? false : true),
         favoriteScopes: scopes,
         firstSeenAt: base.firstSeenAt || observedAt,
         lastSeenFavoriteAt: Math.max(base.lastSeenFavoriteAt || 0, incoming.lastSeenFavoriteAt || observedAt),
-        unfavoritedAt: incoming.isFavorite === false ? (incoming.unfavoritedAt || observedAt) : 0,
+        unfavoritedAt: incoming.isFavorite === false ? (incoming.unfavoritedAt || observedAt) : (staleRefavorite ? base.unfavoritedAt : 0),
         lastCardRefreshAt: Math.max(base.lastCardRefreshAt || 0, incoming.lastCardRefreshAt || 0),
         metadataVersion: FAV_INDEX_METADATA_VERSION,
         cardMetadata: favIndexMergeMetadata(base.cardMetadata, incoming.cardMetadata),
@@ -294,9 +298,21 @@ async function favIndexGet(storeName, key) {
     return favIndexRequest(db.transaction(storeName, 'readonly').objectStore(storeName).get(key));
 }
 
-async function favIndexGetAll(storeName) {
+async function favIndexReadObservation(patches, scopeKey, complete) {
     const db = await favIndexOpen();
-    return favIndexRequest(db.transaction(storeName, 'readonly').objectStore(storeName).getAll());
+    const transaction = db.transaction(['listings', 'shops', 'scopes'], 'readonly');
+    const listingStore = transaction.objectStore('listings');
+    const shopStore = transaction.objectStore('shops');
+    const shopIds = Array.from(new Set(patches.map((patch) => patch.shop?.shopId).filter(Boolean)));
+    const listingsPromise = complete
+        ? favIndexRequest(listingStore.getAll())
+        : Promise.all(patches.map((patch) => favIndexRequest(listingStore.get(patch.listingId))));
+    const [listings, shops, scope] = await Promise.all([
+        listingsPromise,
+        Promise.all(shopIds.map((shopId) => favIndexRequest(shopStore.get(shopId)))),
+        favIndexRequest(transaction.objectStore('scopes').get(scopeKey)),
+    ]);
+    return { listings, shops, shopIds, scope };
 }
 
 async function favIndexWrite(stores, writer) {
@@ -314,31 +330,43 @@ async function favIndexObserveRecordsNow(records, options = {}) {
     const observedAt = Number(options.observedAt) || Date.now();
     const scope = options.scope || favIndexCurrentScope();
     const scopeKey = scope.scopeKey || favIndexScopeKey(scope);
-    const patches = (records || []).map((record) => favIndexPatchFromRecord(record, { ...scope, scopeKey }, observedAt)).filter((patch) => patch.listingId);
-    const existing = await Promise.all(patches.map((patch) => favIndexGet('listings', patch.listingId)));
-    const merged = patches.map((patch, index) => favIndexMergeListing(existing[index], patch, observedAt));
+    const patchMap = new Map();
+    for (const record of records || []) {
+        const patch = favIndexPatchFromRecord(record, { ...scope, scopeKey }, observedAt);
+        if (patch.listingId) patchMap.set(patch.listingId, patch);
+    }
+    const patches = Array.from(patchMap.values());
+    const complete = options.complete === true;
+    const snapshot = await favIndexReadObservation(patches, scopeKey, complete);
+    const existingById = new Map(snapshot.listings.filter(Boolean).map((listing) => [String(listing.listingId), listing]));
+    const merged = patches.map((patch) => favIndexMergeListing(existingById.get(patch.listingId), patch, observedAt));
     const shops = new Map();
     for (const patch of patches) if (patch.shop) shops.set(patch.shop.shopId, patch.shop);
-    const existingShops = await Promise.all(Array.from(shops.keys(), (shopId) => favIndexGet('shops', shopId)));
-    const mergedShops = Array.from(shops.values(), (patch, index) => favIndexMergeShop(existingShops[index], patch));
-    const oldScope = await favIndexGet('scopes', scopeKey);
+    const existingShops = new Map(snapshot.shopIds.map((shopId, index) => [shopId, snapshot.shops[index]]));
+    const mergedShops = Array.from(shops.values(), (patch) => favIndexMergeShop(existingShops.get(patch.shopId), patch));
+    const oldScope = snapshot.scope;
     const observedIds = patches.map((patch) => patch.listingId);
+    const observedSet = new Set(observedIds);
     let absentUpdates = [];
-    if (options.complete === true && oldScope?.listingIds?.length) {
-        const absentIds = oldScope.listingIds.filter((idValue) => !observedIds.includes(String(idValue)));
-        const absent = await Promise.all(absentIds.map((idValue) => favIndexGet('listings', String(idValue))));
-        absentUpdates = favIndexApplyScopeCompletion(absent.filter(Boolean), { ...scope, scopeKey }, observedIds, observedAt);
+    if (complete && oldScope?.listingIds?.length) {
+        const absent = oldScope.listingIds
+            .map(String)
+            .filter((idValue) => !observedSet.has(idValue))
+            .map((idValue) => existingById.get(idValue))
+            .filter(Boolean);
+        absentUpdates = favIndexApplyScopeCompletion(absent, { ...scope, scopeKey }, observedSet, observedAt);
     }
     const scopeRecord = {
         ...(oldScope || {}),
         ...scope,
         scopeKey,
-        listingIds: options.complete === true
+        listingIds: complete
             ? observedIds
             : Array.from(new Set([...(oldScope?.listingIds || []), ...observedIds])),
         lastObservedAt: observedAt,
-        lastCompleteSyncAt: options.complete === true ? observedAt : (oldScope?.lastCompleteSyncAt || 0),
-        complete: options.complete === true,
+        lastCompleteSyncAt: complete ? observedAt : (oldScope?.lastCompleteSyncAt || 0),
+        complete: complete || oldScope?.complete === true,
+        lastSyncState: complete ? 'completed' : (options.syncState || oldScope?.lastSyncState || 'partial'),
         schemaVersion: FAV_INDEX_METADATA_VERSION,
     };
     await favIndexWrite(['listings', 'shops', 'scopes'], (transaction) => {
@@ -357,9 +385,10 @@ function favIndexObserveRecords(records, options = {}) {
 
 function favIndexObserveCurrentPage() {
     const props = favProps();
-    const listings = favListingsFromProps(props);
+    const liveNodes = favCardMap(document);
+    const listings = favListingsFromProps(props).filter((listing) => liveNodes.has(String(listing?.listingId ?? listing?.listing_id ?? '')));
     if (!listings.length) return Promise.resolve([]);
-    const records = favRecordsFromListings(listings, 0, favCardMap(document));
+    const records = favRecordsFromListings(listings, 0, liveNodes);
     return favIndexObserveRecords(records, { scope: favIndexCurrentScope(), complete: false });
 }
 
@@ -372,6 +401,34 @@ async function favIndexMarkUnfavoriteNow(listingId, observedAt = Date.now()) {
         transaction.objectStore('listings').put(favIndexMarkListingUnfavorite(existing, observedAt));
     });
     return true;
+}
+
+async function favIndexGetScope(scopeKey) {
+    return favIndexGet('scopes', scopeKey);
+}
+
+async function favIndexGetStats(owner = '') {
+    const db = await favIndexOpen();
+    const transaction = db.transaction(['listings', 'shops', 'scopes'], 'readonly');
+    const [listings, shops, scopes] = await Promise.all([
+        favIndexRequest(transaction.objectStore('listings').getAll()),
+        favIndexRequest(transaction.objectStore('shops').getAll()),
+        favIndexRequest(transaction.objectStore('scopes').getAll()),
+    ]);
+    const ownedScopes = owner ? scopes.filter((scope) => String(scope.owner || '') === String(owner)) : scopes;
+    const allItems = ownedScopes
+        .filter((scope) => scope.type === 'items' && !scope.query)
+        .sort((a,b) => (b.lastCompleteSyncAt || 0) - (a.lastCompleteSyncAt || 0))[0];
+    const indexedIds = new Set(ownedScopes.flatMap((scope) => scope.listingIds || []).map(String));
+    const ownedListings = owner ? listings.filter((listing) => indexedIds.has(String(listing.listingId))) : listings;
+    const ownedShopIds = new Set(ownedListings.map((listing) => String(listing.shopId || '')).filter(Boolean));
+    return {
+        indexedFavorites: ownedListings.length,
+        activeFavorites: ownedListings.filter((listing) => listing.isFavorite === true).length,
+        indexedShops: owner ? shops.filter((shop) => ownedShopIds.has(String(shop.shopId))).length : shops.length,
+        lastFullSyncAt: allItems?.lastCompleteSyncAt || 0,
+        allItemsScope: allItems || null,
+    };
 }
 
 function favIndexMarkUnfavorite(listingId, observedAt = Date.now()) {
