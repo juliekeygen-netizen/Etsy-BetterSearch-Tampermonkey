@@ -25,10 +25,18 @@ test('Favorites settings expose pages, active-drawer preference, and sync interv
   assert.match(source, /data-ebsf-auto-sync-interval/);
 });
 
-test('Favorites polish module loads before the Favorites runtime', async () => {
+test('reversed Etsy order keeps the local Favorites renderer active', async () => {
+  const source = await readFile(resolve(ROOT, 'src/67-favorites-sort-activation.js'), 'utf8');
+  assert.match(source, /favCfg\.sort === 'etsy'/);
+  assert.match(source, /favCfg\.sortReversed === true/);
+});
+
+test('Favorites polish modules load before the Favorites runtime', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
   const polish = userscript.indexOf('src/66-favorites-settings-sort-polish.js');
+  const activation = userscript.indexOf('src/67-favorites-sort-activation.js');
   const runtime = userscript.indexOf('src/63-favorites-runtime.js');
   assert.ok(polish >= 0);
-  assert.ok(runtime > polish);
+  assert.ok(activation > polish);
+  assert.ok(runtime > activation);
 });
