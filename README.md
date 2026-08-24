@@ -1,8 +1,6 @@
 # Etsy BetterSearch
 
-A Tampermonkey userscript that makes Etsy search more literal and useful while preserving Etsy's normal filters, sorting, and listing-card UI.
-
-It adds compact **Keep filters**, **Strict title**, **Multi-search**, and **Scan settings** controls beside Etsy's **Show filters** button.
+A Tampermonkey userscript that makes Etsy search more literal and useful while preserving Etsy's normal filters, sorting, and listing-card UI. It also adds advanced filtering, sorting, Strict Title, and Multi-search tools to your Etsy Favorites.
 
 ## Install
 
@@ -10,11 +8,15 @@ It adds compact **Keep filters**, **Strict title**, **Multi-search**, and **Scan
 2. Open the [Etsy BetterSearch userscript](https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js).
 3. Confirm the installation and refresh Etsy.
 
-## Keep filters
+## Marketplace search
+
+On normal Etsy search pages BetterSearch adds compact **Keep filters**, **Strict title**, **Multi-search**, and **Scan settings** controls beside Etsy's native **Show filters** button.
+
+### Keep filters
 
 **Keep filters** remembers Etsy's native search/filter URL state and carries it into the next search submitted through Etsy's normal search bar. Temporary navigation, tracking, pagination, and old-query parameters are not carried forward.
 
-## Strict title
+### Strict title
 
 **Strict title** scans the Etsy result pages available for a normal search and only shows listings whose titles genuinely match.
 
@@ -34,7 +36,7 @@ Only one enhanced search mode can be active at a time.
 
 The normal Single-search and Multi-search query states remain stored separately, so switching modes does not erase the other setup.
 
-## Rule-based Multi-search
+### Rule-based Multi-search
 
 Click the **Multi-search** arrow to open the rule editor. Its layout is adapted from the Advanced Filter editor in the Rule34Video Media Filter project.
 
@@ -61,7 +63,7 @@ Applied rules, order, enabled states, operators, options, and values persist thr
 
 ## Scan settings
 
-Click the **gear icon** to open scanner settings. They affect whichever enhanced mode is active.
+Click the **gear icon** to open scanner settings. They affect whichever marketplace enhanced mode is active.
 
 The top of the window has four presets:
 
@@ -82,21 +84,15 @@ It can independently enable any combination of Etsy's native sort modes:
 - **Price: low to high**
 - **Price: high to low**
 
-With every sort toggle **off**, BetterSearch behaves exactly like the earlier versions: it scans only the sort currently selected in Etsy's native dropdown.
+With every sort toggle **off**, BetterSearch scans only the sort currently selected in Etsy's native dropdown.
 
-When one or more sort modes are enabled, each Strict-title query or generated Multi-search query is scanned once for every enabled sort mode. BetterSearch then merges those candidate pools and removes duplicate listing IDs before applying the title rules.
-
-For example, three Multi-search queries with **Most relevant**, **Top reviews**, and **Newest** enabled create nine candidate passes in total.
+When one or more sort modes are enabled, each Strict-title query or generated Multi-search query is scanned once for every enabled sort mode. BetterSearch merges those candidate pools and removes duplicate listing IDs before applying the title rules.
 
 The **Merged result display order** editor controls how the combined result set is ordered:
 
-- **Auto (recommended)** uses: Most relevant → Top reviews → Newest → Price low to high → Price high to low, using only the sort modes that are enabled.
-- **Custom order** unlocks a row list of the enabled sort modes. Drag the rows into any order you want. Small **↑ / ↓** buttons provide the same reordering on touch/mobile devices.
-- Your Custom order is remembered if you temporarily switch back to Auto.
-
-Listings found by the first display-order sort are shown first in that sort's Etsy order. Listings that only exist in lower-priority sort pools are then added using the remaining order. A listing found in several sorts is displayed only once.
-
-Existing v0.6.0 single-priority settings are migrated into the new Custom-order model, with the previously selected sort placed first.
+- **Auto (recommended)** uses: Most relevant → Top reviews → Newest → Price low to high → Price high to low, using only enabled modes.
+- **Custom order** unlocks draggable rows. Small **↑ / ↓** buttons provide the same reordering on touch/mobile devices.
+- Custom order is remembered if you temporarily switch back to Auto.
 
 Enabling more sort modes can materially increase scan time because the scanner has more result pages to fetch. The live page count, average speed, and ETA include those additional sort passes.
 
@@ -133,13 +129,11 @@ Adaptive slowdown temporarily reduces concurrency and adds some spacing during r
 
 The settings window uses the same draft **Cancel / Apply** behavior as Multi-search, and scan settings persist across browser restarts.
 
-## Scanning
+## Marketplace scanning
 
 During a normal full scan, BetterSearch temporarily replaces the listing gallery with a dedicated progress screen. Custom mode can instead show matching cards progressively while scanning.
 
-The progress screen reports pages checked and matches found, plus a rolling **average pages/second** and an **estimated time remaining** once enough pages have completed to calculate a useful rate. The speed is smoothed over recent page completions so several concurrent requests finishing together do not make it jump wildly. If a retry is happening, ETA is temporarily marked for recalculation. Returning from a heavily throttled background tab also restarts the timing window so stale background timing does not distort the estimate.
-
-Example:
+The progress screen reports pages checked and matches found, plus a rolling **average pages/second** and an **estimated time remaining** once enough pages have completed to calculate a useful rate.
 
 ```text
 Scanning pages 83 / 160 · 513 matches found
@@ -152,17 +146,89 @@ Results are rebuilt into a dense grid with no gaps. Native pagination is hidden 
 
 ### Background tabs / Alt-Tab behavior
 
-BetterSearch does not cancel an active scan just because the Etsy tab becomes hidden. First-pass fetches are allowed to continue normally in the background.
+BetterSearch does not cancel an active marketplace scan just because the Etsy tab becomes hidden. First-pass fetches are allowed to continue normally in the background.
 
-If Chrome throttles the hidden tab and requests start failing, BetterSearch pauses retry rounds and whole-scan recovery until the Etsy tab becomes visible again. Hidden time therefore does not burn through the retry budget and immediately turn into `scan incomplete`. Returning to the tab automatically resumes recovery.
+If Chrome throttles the hidden tab and requests start failing, BetterSearch pauses retry rounds and whole-scan recovery until the Etsy tab becomes visible again. Hidden time therefore does not burn through the retry budget and immediately turn into `scan incomplete`.
 
-A genuine repeated failure while the tab is active can still eventually end as `scan incomplete` after the configured retry limits are exhausted.
+## Favorites filters and sorting
 
-## Favorite hearts
+BetterSearch also enhances Etsy's Favorites Items and collection pages while preserving Etsy's own **Search your favorites**, Items/categories, Collections, and Shops navigation.
 
-Cards already present on the current Etsy page reuse their original DOM nodes so Etsy's native event handlers are preserved. Imported cards from background-scanned pages use a separate same-site helper path for their heart action because their original page JavaScript listeners cannot be copied with HTML alone.
+### Native-style Favorites UI
+
+On desktop the Favorites header becomes approximately:
+
+```text
+[ Show filters ] [ Search your favorites... ] [ Etsy order ▾ ]
+```
+
+- **Show filters** is styled after Etsy's native search filter button.
+- The native **Search your favorites** form is left in place and continues to work normally.
+- The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
+- Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
+- On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
+
+The real Favorites listing section is handled separately from Etsy recommendation modules such as **Discover similar items**; recommendation cards are never included in the Favorites result pool.
+
+### Favorites filters
+
+The Favorites rail contains these sections:
+
+- **Search** — Strict Title and rule-based Multi-search
+- **Price** — minimum/maximum price and minimum discount percentage
+- **Availability** — available only, on sale, free shipping
+- **Item format** — all / physical / digital
+- **Rating & reviews** — minimum rating and minimum review count
+- **Seller** — Star Seller and shop selector
+- **Listing features** — Best Seller, personalizable, has variations, has video
+- **Popularity & stock** — low-stock signal and minimum reported cart count
+- **Delivery** — maximum shipping cost, returns accepted, exchanges accepted
+
+For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
+
+### Favorites Strict Title and Multi-search
+
+Favorites has its own saved Strict Title / Multi-search state, separate from marketplace search.
+
+- **Strict title** applies Exact Phrase or All Words matching to the native **Search your favorites** text.
+- **Multi-search** uses the same Title-rule model as marketplace Multi-search: OR branches, shared AND rules, Match/Exclude, Contains/Equals/Starts with/Ends with, rule reordering, enable/disable, duplicate/delete, and Search Preview.
+- Favorites Strict Title and Favorites Multi-search are mutually exclusive.
+
+When Strict Title or Multi-search is active, BetterSearch can load the full current Favorites scope and apply the title rules locally rather than being limited to the 20 cards visible on the current page.
+
+### Favorites sorting
+
+Favorites sorting is local after the current Favorites scope has been loaded, so switching sort modes is immediate:
+
+- **Etsy order**
+- **Price: low to high**
+- **Price: high to low**
+- **Rating: high to low**
+- **Most reviews**
+- **Discount: high to low**
+- **Title: A to Z / Z to A**
+- **Shop: A to Z**
+- **Shipping: low to high**
+- **Most carts**
+- **Low stock first**
+
+BetterSearch keeps local Favorites pagination at about Etsy's normal 20-listing page size and shows a small `favorites · shown` counter when local filtering/sorting is active.
+
+### Favorites data and reconstructed cards
+
+Favorites loading uses Etsy's own logged-in Favorites JSON requests and structured page data; it does not use an Etsy Open API key. BetterSearch loads additional shipping/returns/urgency metadata only when a filter or sort needs it.
+
+Cards already present on the current Etsy Favorites page reuse their original DOM nodes so native event handlers survive. Off-page Favorites have to be reconstructed from Etsy's structured data; their heart action uses BetterSearch's same-site favorite bridge. For reconstructed cards, Add to cart / Multiple options opens the listing page when Etsy's original frontend handler is unavailable.
+
+Favorites filter/sort settings and rules persist through Tampermonkey storage. **Reset** clears the active Favorites filters/sort/modes while keeping your saved Multi-search rule definitions available for later reuse.
+
+## Favorite hearts on marketplace results
+
+Cards already present on the current Etsy search page reuse their original DOM nodes so Etsy's native event handlers are preserved. Imported cards from background-scanned pages use a separate same-site helper path for their heart action because their original page JavaScript listeners cannot be copied with HTML alone.
 
 ## UI and mobile layout
+
+Marketplace search:
 
 ```text
 Show filters | Keep filters | Strict title ▾ | Multi-search ▾ | ⚙ | Etsy filters...
@@ -176,10 +242,12 @@ The Multi-search and Scan settings windows both have responsive phone layouts. M
 
 `etsy-bettersearch.user.js` is the Tampermonkey install/update entry point. The implementation is split into ordered modules under `src/` and loaded with `@require`.
 
+Marketplace search and Favorites use separate state/data/rendering paths so a Favorites filter cannot alter the marketplace search configuration accidentally.
+
 ## Notes
 
-BetterSearch does not use the Etsy API. It can only process the result pages Etsy makes available for each search and cannot find listings Etsy never returns as candidates.
+BetterSearch does not use the Etsy Open API. It operates on Etsy pages and the logged-in Etsy web requests those pages use.
 
-Etsy can change its page structure at any time, so selectors may occasionally need updating.
+Etsy can change its page structure or internal web endpoints at any time, so selectors/request adapters may occasionally need updating.
 
 This project is unofficial and is not affiliated with Etsy.
