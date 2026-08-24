@@ -45,11 +45,12 @@ function favSyncProgressModel(state = favSyncState) {
     const expected = Math.max(0, Number(state.expectedTotal) || 0);
     const ratio = expected ? Math.min(1, processed / expected) : 0;
     const remainingPages = expected ? Math.max(0, Math.ceil((expected - processed) / 20)) : 0;
+    const eta = state.estimatedRemainingMs ? ` · ~${Math.max(1, Math.round(state.estimatedRemainingMs / 1000))}s` : '';
     return {
-        title: expected ? `Syncing favorites… ${processed} / ${expected}` : `Syncing favorites… ${processed} indexed`,
-        detail: remainingPages
-            ? `${remainingPages} ${remainingPages === 1 ? 'page' : 'pages'} remaining${state.estimatedRemainingMs ? ` · ~${Math.max(1, Math.round(state.estimatedRemainingMs / 1000))}s` : ''}`
-            : `${state.pagesProcessed || 0} ${state.pagesProcessed === 1 ? 'page' : 'pages'} processed`,
+        title: 'Syncing',
+        detail: expected
+            ? `${processed} / ${expected}${remainingPages ? ` · ${remainingPages} ${remainingPages === 1 ? 'page' : 'pages'} left` : ''}${eta}`
+            : `${processed} indexed · ${state.pagesProcessed || 0} ${state.pagesProcessed === 1 ? 'page' : 'pages'} processed${eta}`,
         ratio,
     };
 }
