@@ -2,7 +2,7 @@
 
 This roadmap is the implementation plan for evolving BetterSearch from a userscript-first project into one shared codebase that can ship as Tampermonkey, Chrome, and Firefox builds while adding a durable Favorites metadata index and deeper filtering later.
 
-The current conversion work intentionally does **not** move the large Favorites metadata/deep-scanner feature into production yet. The first goal is platform parity and safe infrastructure.
+The shared build, Favorites UI parity pass, and durable metadata/index foundation are now implemented. Deep listing/shop scanning and its background queue remain deliberately phased future work.
 
 ## Guiding rules
 
@@ -17,7 +17,7 @@ The current conversion work intentionally does **not** move the large Favorites 
 
 ---
 
-## Phase 0 — Cross-browser build foundation **(current)**
+## Phase 0 — Cross-browser build foundation **(implemented; browser smoke testing continues)**
 
 Goal: make the existing BetterSearch source buildable as a Chrome or Firefox extension without rewriting the working feature modules.
 
@@ -68,11 +68,11 @@ Do **not** start the deep scanner until fetch/session behavior is proven in both
 
 ---
 
-## Phase 2 — Durable Favorites metadata database
+## Phase 2 — Durable Favorites metadata database **(foundation implemented in v0.8.0)**
 
 Goal: separate "what is currently displayed" from "what we know about each favorite".
 
-Recommended stores:
+Implemented stores behind the shared IndexedDB interface:
 
 ### `listings`
 
@@ -142,6 +142,17 @@ An unfavorite should normally **not delete metadata immediately**.
 - Optional future maintenance action: "Clean unused metadata" for dormant records older than a chosen retention period.
 
 This design avoids needless rescanning and makes refavoriting instant.
+
+Current implementation notes:
+
+- `src/61a-favorites-index.js` is shared by Tampermonkey, Chrome, and Firefox.
+- Small preferences remain in the Favorites GM/storage namespace; the potentially large index is not one settings object.
+- Current embedded/card observations and records loaded by the existing Favorites runtime update the index.
+- Field values preserve `known`, `source`, `observedAt`, and `parserVersion` semantics.
+- Fresh structured Star Seller data updates the shop store instead of requiring a shop/listing scan.
+- Scope observations explicitly distinguish partial from complete; only completed scope observations reconcile absence.
+- Direct unfavorite/refavorite lifecycle preserves reusable metadata.
+- IndexedDB schema migrations beyond version 1, retention cleanup, export, and a background owner remain future work.
 
 ---
 
@@ -321,12 +332,12 @@ Build the Favorites category tree dynamically from categories actually present i
 
 ---
 
-## Phase 7 — Favorites UI/native-parity pass
+## Phase 7 — Favorites UI/native-parity pass **(substantially implemented in v0.8.0)**
 
 Desktop layout remains:
 
 ```text
-[ Filters ] [ Etsy order ▾ ] [ native Search your favorites... ]
+[ Filters ] [ Etsy order ▾ ] [ Settings ] [ native Search your favorites... ]
 ```
 
 Rules:
@@ -339,6 +350,10 @@ Rules:
 - Strict title and Multi-search stay near the top of the Favorites filter rail and remain mutually exclusive.
 - BetterSearch filters persist across Favorite scopes unless Reset is used.
 - Current native Favorites search/scope changes update the underlying candidate pool; metadata filters then apply locally.
+- Desktop rail scrolls with the document and has no independent scrollbar.
+- Fresh pages auto-open sections with active values; arbitrary manual accordion state is not persisted.
+- Ordinary control changes keep the mounted rail DOM; structural controls update only their affected section where practical.
+- Color remains hidden because no reliable metadata source is known.
 
 Edge cases to test:
 
@@ -392,7 +407,7 @@ Ongoing work:
 
 ```text
 0.8.x  cross-browser extension parity + build/test infrastructure
-0.9.x  durable Favorites index + scope synchronization
+0.9.x  complete authoritative/background Favorites synchronization and index migration hardening
 0.10.x deep listing/shop parser + persistent queue
 0.11.x wire richer metadata filters/sorts
 0.12.x UI/native-parity and large-library hardening

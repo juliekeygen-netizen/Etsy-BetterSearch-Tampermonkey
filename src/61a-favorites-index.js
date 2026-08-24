@@ -1,0 +1,379 @@
+'use strict';
+
+/* Durable Favorites knowledge store. Feature code talks to this interface and
+ * does not depend on Tampermonkey/extension preference storage. IndexedDB is
+ * available to both delivery targets in Etsy's page context and is suitable for
+ * the much larger listing/shop index planned for later scanner phases. */
+var FAV_INDEX_DB_NAME = 'etsy-bettersearch-favorites';
+var FAV_INDEX_DB_VERSION = 1;
+var FAV_INDEX_METADATA_VERSION = 1;
+var FAV_INDEX_PARSER_VERSION = 'favorites-card-v1';
+var FAV_INDEX_SOURCE_PRIORITY = {
+    'favorites-json': 10,
+    'favorites-card-dom': 20,
+    'favorites-aux-json': 30,
+    'listing-page-html': 40,
+    'shop-page-html': 50,
+    unknown: 100,
+};
+var favIndexDatabasePromise = null;
+var favIndexOperationQueue = Promise.resolve();
+
+function favIndexEnqueue(operation) {
+    const result = favIndexOperationQueue.then(operation);
+    favIndexOperationQueue = result.catch(() => {});
+    return result;
+}
+
+function favIndexUnknown(source = 'unknown') {
+    return { value: null, known: false, source, observedAt: 0, parserVersion: '' };
+}
+
+function favIndexField(value, options = {}) {
+    const known = options.known !== false;
+    return {
+        value: known ? value : null,
+        known,
+        source: String(options.source || (known ? 'favorites-json' : 'unknown')),
+        observedAt: Math.max(0, Number(options.observedAt) || 0),
+        parserVersion: String(options.parserVersion || (known ? FAV_INDEX_PARSER_VERSION : '')),
+    };
+}
+
+function favIndexNormalizeField(field) {
+    if (!field || typeof field !== 'object') return favIndexUnknown();
+    return favIndexField(field.value, { ...field, known: field.known === true });
+}
+
+function favIndexMergeField(existing, incoming) {
+    const oldField = favIndexNormalizeField(existing);
+    const newField = favIndexNormalizeField(incoming);
+    if (!newField.known) {
+        if (!oldField.known && newField.observedAt >= oldField.observedAt) return newField;
+        return oldField;
+    }
+    if (!oldField.known) return newField;
+    const oldPriority = FAV_INDEX_SOURCE_PRIORITY[oldField.source] ?? 90;
+    const newPriority = FAV_INDEX_SOURCE_PRIORITY[newField.source] ?? 90;
+    if (newPriority < oldPriority) return newField;
+    if (newPriority > oldPriority) return oldField;
+    return newField.observedAt >= oldField.observedAt ? newField : oldField;
+}
+
+function favIndexMergeMetadata(existing = {}, incoming = {}) {
+    const merged = { ...existing };
+    for (const [key, field] of Object.entries(incoming || {})) {
+        merged[key] = favIndexMergeField(existing[key], field);
+    }
+    return merged;
+}
+
+function favIndexEmptyListing(listingId, observedAt = Date.now()) {
+    return {
+        listingId: String(listingId),
+        url: '',
+        title: '',
+        shopId: '',
+        isFavorite: true,
+        favoriteScopes: {},
+        firstSeenAt: observedAt,
+        lastSeenFavoriteAt: observedAt,
+        unfavoritedAt: 0,
+        lastCardRefreshAt: 0,
+        lastDeepScanAt: 0,
+        availabilityState: 'unknown',
+        metadataVersion: FAV_INDEX_METADATA_VERSION,
+        cardMetadata: {},
+        listingMetadata: {
+            etsysPick: favIndexUnknown(),
+            vintage: favIndexUnknown(),
+            vintageEra: favIndexUnknown(),
+            giftWrap: favIndexUnknown(),
+            category: favIndexUnknown(),
+        },
+        shippingMetadata: {
+            shipsFromCountry: favIndexUnknown(),
+            processingDays: favIndexUnknown(),
+            shipsTo: favIndexUnknown(),
+        },
+        urgencyMetadata: {
+            carts: favIndexUnknown(),
+            lowStock: favIndexUnknown(),
+            stockLeft: favIndexUnknown(),
+        },
+    };
+}
+
+function favIndexScopeKey(scope) {
+    const value = scope && typeof scope === 'object' ? scope : {};
+    return [value.owner || '', value.type || 'items', value.id || '', value.query || '']
+        .map((part) => encodeURIComponent(String(part)))
+        .join('|');
+}
+
+function favIndexCurrentScope() {
+    const scope = favScope();
+    const query = favDatasetQuery();
+    return {
+        ...scope,
+        query,
+        nativeQuery: favNativeQuery(),
+        scopeKey: favIndexScopeKey({ ...scope, query }),
+        authoritativeFavoriteScope: scope.type === 'items' && !query,
+    };
+}
+
+function favIndexKnown(record, key, value, observedAt, source = 'favorites-json') {
+    return favIndexField(value, {
+        known: record?.known?.[key] === true,
+        source: record?.knownSource?.[key] || source,
+        observedAt,
+    });
+}
+
+function favIndexPatchFromRecord(record, scope, observedAt = Date.now()) {
+    const idValue = String(record?.id || record?.listingId || '');
+    const scopeKey = scope?.scopeKey || favIndexScopeKey(scope);
+    const finite = (value) => Number.isFinite(value);
+    return {
+        listingId: idValue,
+        url: String(record?.url || ''),
+        title: String(record?.title || ''),
+        shopId: String(record?.shopId || ''),
+        isFavorite: true,
+        lastSeenFavoriteAt: observedAt,
+        lastCardRefreshAt: observedAt,
+        favoriteScopes: scopeKey ? { [scopeKey]: { active: true, lastSeenAt: observedAt } } : {},
+        cardMetadata: {
+            price: favIndexField(record?.price, { known: finite(record?.price), observedAt }),
+            originalPrice: favIndexField(record?.originalPrice, { known: finite(record?.originalPrice), observedAt }),
+            discountPercent: favIndexKnown(record, 'discountPercent', record?.discountPercent, observedAt),
+            onSale: favIndexKnown(record, 'isOnSale', record?.isOnSale === true, observedAt),
+            freeShipping: favIndexKnown(record, 'hasFreeShipping', record?.hasFreeShipping === true, observedAt),
+            soldOut: favIndexKnown(record, 'isSoldOut', record?.isSoldOut === true, observedAt),
+            digital: favIndexKnown(record, 'isDownload', record?.isDownload === true, observedAt),
+            rating: favIndexKnown(record, 'rating', record?.rating, observedAt),
+            reviewCount: favIndexKnown(record, 'reviews', record?.reviews, observedAt),
+            bestSeller: favIndexKnown(record, 'isBestSeller', record?.isBestSeller === true, observedAt),
+            personalizable: favIndexKnown(record, 'isPersonalizable', record?.isPersonalizable === true, observedAt),
+            hasVariations: favIndexKnown(record, 'hasVariations', record?.hasVariations === true, observedAt),
+            hasVideo: favIndexKnown(record, 'hasVideo', Boolean(record?.videoSources?.length), observedAt),
+        },
+        listingMetadata: {},
+        shippingMetadata: {
+            cost: favIndexField(record?.shipping, { known: finite(record?.shipping), source: 'favorites-aux-json', observedAt }),
+            estimatedDelivery: favIndexField(record?.estimatedDelivery, { known: Boolean(record?.estimatedDelivery), source: 'favorites-aux-json', observedAt }),
+            returnsAccepted: favIndexField(record?.acceptsReturns === true, { known: record?.known?.acceptsReturns === true, source: 'favorites-aux-json', observedAt }),
+            exchangesAccepted: favIndexField(record?.acceptsExchanges === true, { known: record?.known?.acceptsExchanges === true, source: 'favorites-aux-json', observedAt }),
+        },
+        urgencyMetadata: {
+            carts: favIndexField(record?.carts, { known: finite(record?.carts), source: 'favorites-aux-json', observedAt }),
+            lowStock: favIndexField(finite(record?.stockLeft), { known: finite(record?.stockLeft), source: 'favorites-aux-json', observedAt }),
+            stockLeft: favIndexField(record?.stockLeft, { known: finite(record?.stockLeft), source: 'favorites-aux-json', observedAt }),
+        },
+        shop: record?.shopId ? {
+            shopId: String(record.shopId),
+            shopName: String(record.shopName || ''),
+            shopUrl: String(record.shopUrl || ''),
+            starSeller: favIndexKnown(record, 'isStarSeller', record?.isStarSeller === true, observedAt),
+            observedAt,
+        } : null,
+    };
+}
+
+function favIndexMergeListing(existing, incoming, observedAt = Date.now()) {
+    const base = existing ? { ...existing } : favIndexEmptyListing(incoming.listingId, observedAt);
+    const scopes = { ...(base.favoriteScopes || {}) };
+    for (const [key, membership] of Object.entries(incoming.favoriteScopes || {})) {
+        scopes[key] = { ...(scopes[key] || {}), ...membership };
+    }
+    return {
+        ...base,
+        url: incoming.url || base.url || '',
+        title: incoming.title || base.title || '',
+        shopId: incoming.shopId || base.shopId || '',
+        isFavorite: incoming.isFavorite !== false,
+        favoriteScopes: scopes,
+        firstSeenAt: base.firstSeenAt || observedAt,
+        lastSeenFavoriteAt: Math.max(base.lastSeenFavoriteAt || 0, incoming.lastSeenFavoriteAt || observedAt),
+        unfavoritedAt: incoming.isFavorite === false ? (incoming.unfavoritedAt || observedAt) : 0,
+        lastCardRefreshAt: Math.max(base.lastCardRefreshAt || 0, incoming.lastCardRefreshAt || 0),
+        metadataVersion: FAV_INDEX_METADATA_VERSION,
+        cardMetadata: favIndexMergeMetadata(base.cardMetadata, incoming.cardMetadata),
+        listingMetadata: favIndexMergeMetadata(base.listingMetadata, incoming.listingMetadata),
+        shippingMetadata: favIndexMergeMetadata(base.shippingMetadata, incoming.shippingMetadata),
+        urgencyMetadata: favIndexMergeMetadata(base.urgencyMetadata, incoming.urgencyMetadata),
+    };
+}
+
+function favIndexMarkListingUnfavorite(existing, observedAt = Date.now()) {
+    if (!existing) return null;
+    const scopes = {};
+    for (const [key, membership] of Object.entries(existing.favoriteScopes || {})) {
+        scopes[key] = { ...membership, active: false, removedAt: observedAt };
+    }
+    return { ...existing, isFavorite: false, unfavoritedAt: observedAt, favoriteScopes: scopes };
+}
+
+function favIndexMarkListingAvailability(existing, availabilityState, observedAt = Date.now()) {
+    if (!existing) return null;
+    const allowed = ['unknown', 'available', 'sold-out', 'unavailable', 'deleted'];
+    const state = allowed.includes(availabilityState) ? availabilityState : 'unknown';
+    return { ...existing, availabilityState: state, availabilityObservedAt: observedAt };
+}
+
+function favIndexApplyScopeCompletion(listings, scope, observedIds, observedAt = Date.now()) {
+    const scopeKey = scope.scopeKey || favIndexScopeKey(scope);
+    const seen = new Set(Array.from(observedIds || [], String));
+    return (listings || []).map((listing) => {
+        const membership = listing?.favoriteScopes?.[scopeKey];
+        if (!membership?.active || seen.has(String(listing.listingId))) return listing;
+        const favoriteScopes = {
+            ...listing.favoriteScopes,
+            [scopeKey]: { ...membership, active: false, removedAt: observedAt },
+        };
+        if (scope.authoritativeFavoriteScope) {
+            return favIndexMarkListingUnfavorite({ ...listing, favoriteScopes }, observedAt);
+        }
+        return { ...listing, favoriteScopes };
+    });
+}
+
+function favIndexMergeShop(existing, patch) {
+    const base = existing || {
+        shopId: patch.shopId,
+        shopName: '',
+        shopUrl: '',
+        starSeller: favIndexUnknown(),
+        giftCardSupport: favIndexUnknown(),
+        shopRating: favIndexUnknown(),
+        shopReviewCount: favIndexUnknown(),
+        salesCount: favIndexUnknown(),
+        tenure: favIndexUnknown(),
+        lastScannedAt: 0,
+    };
+    return {
+        ...base,
+        shopName: patch.shopName || base.shopName,
+        shopUrl: patch.shopUrl || base.shopUrl,
+        starSeller: favIndexMergeField(base.starSeller, patch.starSeller),
+        lastObservedAt: Math.max(base.lastObservedAt || 0, patch.observedAt || 0),
+    };
+}
+
+function favIndexOpen() {
+    if (favIndexDatabasePromise) return favIndexDatabasePromise;
+    favIndexDatabasePromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(FAV_INDEX_DB_NAME, FAV_INDEX_DB_VERSION);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains('listings')) {
+                const listings = db.createObjectStore('listings', { keyPath: 'listingId' });
+                listings.createIndex('isFavorite', 'isFavorite', { unique: false });
+                listings.createIndex('shopId', 'shopId', { unique: false });
+            }
+            if (!db.objectStoreNames.contains('shops')) db.createObjectStore('shops', { keyPath: 'shopId' });
+            if (!db.objectStoreNames.contains('scopes')) db.createObjectStore('scopes', { keyPath: 'scopeKey' });
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => { favIndexDatabasePromise = null; reject(request.error); };
+        request.onblocked = () => { favIndexDatabasePromise = null; reject(new Error('Favorites index upgrade is blocked by another tab.')); };
+    });
+    return favIndexDatabasePromise;
+}
+
+function favIndexRequest(request) {
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function favIndexGet(storeName, key) {
+    const db = await favIndexOpen();
+    return favIndexRequest(db.transaction(storeName, 'readonly').objectStore(storeName).get(key));
+}
+
+async function favIndexGetAll(storeName) {
+    const db = await favIndexOpen();
+    return favIndexRequest(db.transaction(storeName, 'readonly').objectStore(storeName).getAll());
+}
+
+async function favIndexWrite(stores, writer) {
+    const db = await favIndexOpen();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(stores, 'readwrite');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error || new Error('Favorites index transaction aborted.'));
+        writer(transaction);
+    });
+}
+
+async function favIndexObserveRecordsNow(records, options = {}) {
+    const observedAt = Number(options.observedAt) || Date.now();
+    const scope = options.scope || favIndexCurrentScope();
+    const scopeKey = scope.scopeKey || favIndexScopeKey(scope);
+    const patches = (records || []).map((record) => favIndexPatchFromRecord(record, { ...scope, scopeKey }, observedAt)).filter((patch) => patch.listingId);
+    const existing = await Promise.all(patches.map((patch) => favIndexGet('listings', patch.listingId)));
+    const merged = patches.map((patch, index) => favIndexMergeListing(existing[index], patch, observedAt));
+    const shops = new Map();
+    for (const patch of patches) if (patch.shop) shops.set(patch.shop.shopId, patch.shop);
+    const existingShops = await Promise.all(Array.from(shops.keys(), (shopId) => favIndexGet('shops', shopId)));
+    const mergedShops = Array.from(shops.values(), (patch, index) => favIndexMergeShop(existingShops[index], patch));
+    const oldScope = await favIndexGet('scopes', scopeKey);
+    const observedIds = patches.map((patch) => patch.listingId);
+    let absentUpdates = [];
+    if (options.complete === true && oldScope?.listingIds?.length) {
+        const absentIds = oldScope.listingIds.filter((idValue) => !observedIds.includes(String(idValue)));
+        const absent = await Promise.all(absentIds.map((idValue) => favIndexGet('listings', String(idValue))));
+        absentUpdates = favIndexApplyScopeCompletion(absent.filter(Boolean), { ...scope, scopeKey }, observedIds, observedAt);
+    }
+    const scopeRecord = {
+        ...(oldScope || {}),
+        ...scope,
+        scopeKey,
+        listingIds: options.complete === true
+            ? observedIds
+            : Array.from(new Set([...(oldScope?.listingIds || []), ...observedIds])),
+        lastObservedAt: observedAt,
+        lastCompleteSyncAt: options.complete === true ? observedAt : (oldScope?.lastCompleteSyncAt || 0),
+        complete: options.complete === true,
+        schemaVersion: FAV_INDEX_METADATA_VERSION,
+    };
+    await favIndexWrite(['listings', 'shops', 'scopes'], (transaction) => {
+        const listingStore = transaction.objectStore('listings');
+        for (const listing of [...merged, ...absentUpdates]) listingStore.put(listing);
+        const shopStore = transaction.objectStore('shops');
+        for (const shop of mergedShops) shopStore.put(shop);
+        transaction.objectStore('scopes').put(scopeRecord);
+    });
+    return merged;
+}
+
+function favIndexObserveRecords(records, options = {}) {
+    return favIndexEnqueue(() => favIndexObserveRecordsNow(records, options));
+}
+
+function favIndexObserveCurrentPage() {
+    const props = favProps();
+    const listings = favListingsFromProps(props);
+    if (!listings.length) return Promise.resolve([]);
+    const records = favRecordsFromListings(listings, 0, favCardMap(document));
+    return favIndexObserveRecords(records, { scope: favIndexCurrentScope(), complete: false });
+}
+
+async function favIndexMarkUnfavoriteNow(listingId, observedAt = Date.now()) {
+    const idValue = String(listingId || '');
+    if (!idValue) return false;
+    const existing = await favIndexGet('listings', idValue);
+    if (!existing) return false;
+    await favIndexWrite(['listings'], (transaction) => {
+        transaction.objectStore('listings').put(favIndexMarkListingUnfavorite(existing, observedAt));
+    });
+    return true;
+}
+
+function favIndexMarkUnfavorite(listingId, observedAt = Date.now()) {
+    return favIndexEnqueue(() => favIndexMarkUnfavoriteNow(listingId, observedAt));
+}

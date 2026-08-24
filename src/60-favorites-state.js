@@ -17,6 +17,11 @@ function favDefaultConfig() {
             hasVariations: false, hasVideo: false, shop: '',
             maxShipping: '', returns: false, exchanges: false,
             lowStock: false, minCarts: '',
+            category: '', etsysPick: false,
+            shipsFrom: 'anywhere', shipsFromCity: '', shipsFromCountry: '',
+            ready1Day: false, ready3Days: false,
+            vintage: false, giftCards: false, giftWrap: false,
+            shipTo: '',
         },
     };
 }
@@ -40,6 +45,12 @@ function favNormalizeConfig(raw) {
             hasVariations: filters.hasVariations === true, hasVideo: filters.hasVideo === true, shop: String(filters.shop ?? ''),
             maxShipping: String(filters.maxShipping ?? ''), returns: filters.returns === true, exchanges: filters.exchanges === true,
             lowStock: filters.lowStock === true, minCarts: String(filters.minCarts ?? ''),
+            category: String(filters.category ?? ''), etsysPick: filters.etsysPick === true,
+            shipsFrom: ['anywhere','europe','local','near','country'].includes(filters.shipsFrom) ? filters.shipsFrom : 'anywhere',
+            shipsFromCity: String(filters.shipsFromCity ?? ''), shipsFromCountry: String(filters.shipsFromCountry ?? ''),
+            ready1Day: filters.ready1Day === true, ready3Days: filters.ready3Days === true,
+            vintage: filters.vintage === true, giftCards: filters.giftCards === true, giftWrap: filters.giftWrap === true,
+            shipTo: String(filters.shipTo ?? ''),
         },
     };
 }
@@ -83,6 +94,11 @@ var favState = {
     ruleDraft: null,
     ruleDragId: '',
     ruleMenu: null,
+    openSections: new Set(),
+    openSectionsInitialized: false,
+    strictSettingsOpen: false,
+    settingsModal: null,
+    settingsReturnFocus: null,
 };
 
 function favSaveConfig() {
@@ -211,6 +227,10 @@ function favRecordFromListing(listing, node, order) {
     const idValue = String(listing?.listingId ?? favListingIdFromNode(node));
     const price = listing?.priceDetails || {};
     const rating = listing?.ratingDetails || {};
+    const has = (object, key) => Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
+    const digitalCard = Boolean(node?.querySelector?.('clg-icon[name="downloadarrow"]'))
+        || /\bdigital download\b/i.test(node?.textContent || '');
+    const videoValue = listing?.videoSources;
     return {
         id: idValue,
         title: String(listing?.title || node?.querySelector?.('img[alt]')?.alt || '').replace(/&quot;/g, '"'),
@@ -228,7 +248,7 @@ function favRecordFromListing(listing, node, order) {
         originalPriceFormatted: String(price.originalPrice || ''),
         discountPercent: Number(price.discountPercent) || 0,
         isOnSale: price.isOnSale === true || Number(price.discountPercent) > 0,
-        isDownload: price.isDownload === true,
+        isDownload: price.isDownload === true || (!has(price, 'isDownload') && digitalCard),
         hasFreeShipping: price.hasFreeShipping === true,
         rating: favParseNumber(rating.rating),
         reviews: favParseNumber(rating.count),
@@ -248,7 +268,67 @@ function favRecordFromListing(listing, node, order) {
         urgency: '',
         carts: NaN,
         stockLeft: NaN,
+        known: {
+            isBestSeller: has(listing, 'isBestSeller'),
+            isSoldOut: has(listing, 'isSoldOut'),
+            isDownload: has(price, 'isDownload') || digitalCard,
+            hasFreeShipping: has(price, 'hasFreeShipping'),
+            isOnSale: has(price, 'isOnSale') || has(price, 'discountPercent'),
+            discountPercent: has(price, 'discountPercent'),
+            rating: has(rating, 'rating'),
+            reviews: has(rating, 'count'),
+            isStarSeller: has(listing?.shop, 'isStarSeller'),
+            hasVariations: has(listing, 'hasVariations'),
+            isPersonalizable: has(listing, 'isPersonalizable'),
+            hasVideo: has(listing, 'videoSources') || Array.isArray(videoValue),
+        },
+        knownSource: {
+            isDownload: has(price, 'isDownload') ? 'favorites-json' : (digitalCard ? 'favorites-card-dom' : 'unknown'),
+        },
     };
+}
+
+function favSetSearchMode(mode, enabled, config = favCfg) {
+    const next = enabled === true;
+    if (mode === 'strict') {
+        config.strict = next;
+        if (next) config.multi = false;
+    } else if (mode === 'multi') {
+        config.multi = next;
+        if (next) config.strict = false;
+    }
+    return config;
+}
+
+function favActiveSectionKeys(config = favCfg) {
+    const cfg = favNormalizeConfig(config);
+    const f = cfg.filters;
+    const active = new Set();
+    if (cfg.strict || cfg.multi) active.add('search');
+    if (f.category) active.add('category');
+    if (f.freeShipping || f.onSale) active.add('special-offers');
+    if (f.itemFormat !== 'all') active.add('item-format');
+    if (f.etsysPick || f.starSeller) active.add('etsys-best');
+    if (f.shipsFrom !== 'anywhere' || f.shipsFromCity || f.shipsFromCountry) active.add('ships-from');
+    if (f.ready1Day || f.ready3Days) active.add('ready-to-ship-in');
+    if (f.minPrice || f.maxPrice) active.add('price');
+    if (f.vintage) active.add('item-type');
+    if (f.giftCards || f.giftWrap || f.personalizable) active.add('ordering-options');
+    if (f.shipTo) active.add('ship-to');
+    if (f.availableOnly || f.minDiscount) active.add('availability');
+    if (f.minRating || f.minReviews) active.add('rating-and-reviews');
+    if (f.shop) active.add('seller');
+    if (f.bestSeller || f.hasVariations || f.hasVideo) active.add('listing-features');
+    if (f.lowStock || f.minCarts) active.add('popularity-and-stock');
+    if (f.maxShipping || f.returns || f.exchanges) active.add('delivery');
+    return active;
+}
+
+function favInitializeOpenSections() {
+    if (favState.openSectionsInitialized) return favState.openSections;
+    favState.openSections = favActiveSectionKeys(favCfg);
+    favState.openSectionsInitialized = true;
+    return favState.openSections;
 }
 
 function favHasActiveFilters() {

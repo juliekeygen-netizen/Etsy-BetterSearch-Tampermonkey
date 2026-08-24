@@ -79,6 +79,7 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 - existing Etsy DOM integration
 - same-site fetches already used by BetterSearch
 - extension settings through the compatibility adapter
+- versioned Favorites IndexedDB interface and cheap metadata/scope observations
 
 **Background**
 
@@ -105,13 +106,13 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 - durable resume after browser worker suspension/restart
 - send indexed updates back to relevant Etsy tabs
 
-**Database**
+**Database (foundation implemented; queue stores future)**
 
 - listing records
 - shop records
 - Favorite scope memberships
 - metadata freshness/versioning
-- persistent jobs
+- persistent jobs (future)
 
 ## Browser storage strategy
 
@@ -119,11 +120,11 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 
 Use `storage.local` for the existing relatively small settings/rules because that maps cleanly to the current GM storage behavior.
 
-### Metadata phase
+### Metadata foundation (implemented)
 
-Do not put a large listing index into one giant settings object. Use a dedicated data layer, most likely IndexedDB in an extension-owned context, with schema/version migrations.
+The large Favorites index is not stored in one settings object. `src/61a-favorites-index.js` provides a versioned IndexedDB abstraction with separate `listings`, `shops`, and `scopes` stores, provenance-aware field merging, partial/complete scope semantics, and dormant unfavorite records.
 
-The public API to feature code should hide the backing store so Tampermonkey can use a compatible IndexedDB implementation while extensions use the preferred extension context.
+The public API hides the backing store and works in the Etsy page/content context for Tampermonkey, Chrome, and Firefox. A future background queue can adopt an extension-owned database/message adapter without changing filter feature semantics.
 
 ## Tampermonkey compatibility
 

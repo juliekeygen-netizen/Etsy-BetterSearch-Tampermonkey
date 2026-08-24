@@ -14,7 +14,7 @@ The userscript remains the established install path.
 
 ### Chrome / Firefox extension builds
 
-Chrome and Firefox builds are now generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. The browser-extension conversion is currently in its parity/testing phase; the large future Favorites metadata index/deep-scanner work has deliberately not been moved into production yet.
+Chrome and Firefox builds are generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. Favorites now has a shared, versioned IndexedDB knowledge layer; deep listing/shop scanning and the background update queue are still deliberately deferred.
 
 - See [`extension/README.md`](extension/README.md) for local build and unpacked-install instructions.
 - See [`docs/EXTENSION_ARCHITECTURE.md`](docs/EXTENSION_ARCHITECTURE.md) for the shared-core/background design.
@@ -175,19 +175,20 @@ BetterSearch also enhances Etsy's Favorites Items and collection pages while pre
 On desktop the Favorites search row becomes approximately:
 
 ```text
-[ Show filters ] [ Etsy order ▾ ] [ Search your favorites... ]
+[ Show filters ] [ Etsy order ▾ ] [ Settings ⚙ ] [ Search your favorites... ]
 ```
 
-Named collections use the same control order with Etsy's native **Search within this collection** field. BetterSearch does not consume the search field's normal desktop width: Filter and Sort sit to its left, while the native form remains the flexible search control.
+Named collections use the same control order with Etsy's native **Search within this collection** field. BetterSearch preserves the native form as the flexible search control and only shrinks it when the viewport needs room for the three controls.
 
 - **Show filters** is styled after Etsy's native search filter button.
 - The native Favorites/collection search form stays in place and continues to work normally.
 - The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
-- At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort stay to the left of the shrinking native search field on one row when space permits.
+- The cog opens a Favorites settings framework that reports the local-index/deep-scanner boundary without offering fake scan actions.
+- At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort + Settings stay reachable beside the shrinking native search field, wrapping only on genuinely small screens.
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
 
-The Favorites filter rail mirrors Etsy's marketplace filter rail closely: native-style accordion rows, matching divider/spacing behavior, compact checkboxes/radios/selects, a dual-thumb price slider with paired price inputs, Etsy-like disclosure chevrons, category/color “Show more” patterns, and small help popovers rather than permanent explanatory copy. Sections remember their open/closed state while filters reapply. Clicking the **Filters** heading itself closes the rail.
+The Favorites filter rail mirrors Etsy's marketplace filter rail closely: native-style accordion rows, clean hover behavior, matching dividers/spacing, compact non-overflowing controls, a dual-thumb price slider, centered disclosure chevrons, Category Show more/less, and accessible help popovers. The desktop rail participates in normal document scrolling instead of creating its own viewport. On a fresh page, only sections containing active values open automatically; manual disclosure changes live only for the current page session. Ordinary value changes keep the mounted rail and focused controls intact. Clicking the **Filters** heading itself closes the rail.
 
 The custom **Search** drawer remains at the top. **Strict title** and **Multi-search** use split pills; Strict's caret opens **Exact phrase / All words directly between Strict title and Multi-search**, while Multi-search's caret opens the rule editor.
 
@@ -205,7 +206,6 @@ The rail includes Etsy's normal filter structure first, then BetterSearch-specif
 - **Ships from** — Anywhere / Europe / current country / Near a city / Another country
 - **Ready to ship in** — 1 day / 1–3 days
 - **Price** — native-style range slider plus minimum/maximum price inputs
-- **Color** — swatch checkboxes with Show more
 - **Item type** — Vintage
 - **Ordering options** — Accepts Etsy gift cards / Can be gift-wrapped / Customizable
 - **Ship to** — country selector
@@ -216,7 +216,7 @@ The rail includes Etsy's normal filter structure first, then BetterSearch-specif
 - **Popularity & stock** — low-stock signal and minimum reported cart count
 - **Delivery** — maximum shipping cost / returns / exchanges
 
-Filters for which the current Favorites JSON already exposes reliable metadata are wired into local filtering. Native controls whose required metadata is not currently present in the Favorites dataset — for example Category, Etsy's Picks, Ships from, Ready to ship, Color, Vintage, gift-card/gift-wrap, and Ship to — already have their UI/state implemented but are intentionally not used to reject listings yet. This avoids pretending unknown metadata is false; the data wiring can be added later without another UI redesign.
+Filters for which the current Favorites JSON already exposes reliable metadata are wired into local filtering. Controls whose required metadata is not currently present — for example Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card/gift-wrap, and Ship to — persist their future index-backed state but do not reject listings yet. Color is hidden entirely because no reliable source is known. This avoids pretending unknown metadata is false.
 
 For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
 
@@ -251,6 +251,8 @@ BetterSearch keeps local Favorites pagination at about Etsy's normal 20-listing 
 ### Favorites data and reconstructed cards
 
 Favorites loading uses Etsy's own logged-in Favorites JSON requests and structured page data; it does not use an Etsy Open API key. BetterSearch loads additional shipping/returns/urgency metadata only when a filter or sort needs it.
+
+Reliable current-page and loaded-scope metadata is also merged into a dedicated IndexedDB index with versioned `listings`, `shops`, and `scopes` stores. Each metadata field retains known/unknown state, source, observation time, and parser version. Direct unfavorites deactivate the record and memberships without deleting cached metadata; later observations can reactivate the same record. A partial scope observation never proves absence, while only a completed authoritative scope may deactivate missing membership.
 
 Cards already present on the current Etsy Favorites page reuse their original DOM nodes so native event handlers survive. Off-page Favorites have to be reconstructed from Etsy's structured data; their heart action uses BetterSearch's same-site favorite bridge. For reconstructed cards, Add to cart / Multiple options opens the listing page when Etsy's original frontend handler is unavailable.
 
@@ -302,25 +304,25 @@ etsy-bettersearch.user.js   userscript metadata + shared module order
 src/                        shared BetterSearch feature modules
 extension/                  browser platform adapter/background shell + guide
 scripts/                    consistency checks and Chrome/Firefox builder
-tests/                      Node tests for metadata/build/manifests
+tests/                      Node tests for config, index lifecycle, metadata, builds, and manifests
 docs/                       extension architecture and phased roadmap
 .github/workflows/           CI builds/tests and tagged release packaging
 ```
 
 The extension builder reads the userscript's exact `@require` order and bundles those same modules into its content script. Marketplace search and Favorites continue to use separate state/data/rendering paths so a Favorites filter cannot alter marketplace search configuration accidentally.
 
-Current extension persistence uses `browser.storage.local` / `chrome.storage.local` behind the small GM compatibility adapter. Tampermonkey storage and extension storage remain separate until an explicit versioned export/import migration is implemented.
+Small settings use `browser.storage.local` / `chrome.storage.local` behind the GM compatibility adapter. The larger Favorites knowledge index uses the shared IndexedDB interface while an Etsy page/content script is alive. Tampermonkey and extension data remain separate until an explicit versioned export/import migration is implemented.
 
 ## Roadmap
 
 The next large work is intentionally phased rather than mixed into the browser conversion:
 
 1. Chrome/Firefox behavior parity and smoke testing.
-2. Durable Favorites listing/shop/scope database.
-3. Authoritative Favorites synchronization.
+2. Continue hardening the implemented Favorites listing/shop/scope database and migrations.
+3. Complete automatic/background authoritative Favorites synchronization.
 4. Deep listing-page metadata parser.
 5. Persistent background scan queue with resumable retries.
-6. Wire currently-unknown Category/Color/Shipping/etc. filters only once metadata is verified.
+6. Wire currently-unknown Category/Shipping/etc. filters only once metadata is verified; keep Color hidden until a dependable source exists.
 7. Native-style UI/mobile hardening and large-library testing.
 8. Explicit Tampermonkey ↔ extension settings export/import and release hardening.
 

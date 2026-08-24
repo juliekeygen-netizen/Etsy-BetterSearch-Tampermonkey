@@ -36,7 +36,8 @@ const checkFiles = [
   'scripts/project.mjs',
   'scripts/build.mjs',
   'scripts/check.mjs',
-  'tests/project.test.mjs'
+  'tests/project.test.mjs',
+  'tests/favorites.test.mjs'
 ];
 
 for (const file of checkFiles) {

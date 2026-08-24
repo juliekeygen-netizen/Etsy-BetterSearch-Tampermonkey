@@ -1,68 +1,55 @@
 'use strict';
 
-/* v0.7.9 Favorites filter-rail parity pass.
+/* v0.8.0 Favorites filter-rail parity/index-foundation pass.
  *
  * The Favorites rail intentionally uses Etsy's filter-rail structure/classes
  * where practical, with local fallbacks for pages that do not load marketplace
  * filter CSS. Native-like controls that need listing metadata we do not yet have
- * are persisted as UI-only state; existing supported Favorites filters remain
+ * are persisted as index-backed future state; existing supported Favorites filters remain
  * fully wired.
  */
-
-var favDefaultConfigBaseV079 = favDefaultConfig;
-favDefaultConfig = function favDefaultConfigV079() {
-    const cfg = favDefaultConfigBaseV079();
-    Object.assign(cfg.filters, {
-        category: '', etsysPick: false,
-        shipsFrom: 'anywhere', shipsFromCity: '', shipsFromCountry: '',
-        ready1Day: false, ready3Days: false,
-        colors: [], vintage: false, giftCards: false, giftWrap: false,
-        shipTo: '',
-    });
-    return cfg;
-};
-
-var favNormalizeConfigBaseV079 = favNormalizeConfig;
-favNormalizeConfig = function favNormalizeConfigV079(raw) {
-    const cfg = favNormalizeConfigBaseV079(raw);
-    const f = raw && raw.filters && typeof raw.filters === 'object' ? raw.filters : {};
-    Object.assign(cfg.filters, {
-        category: String(f.category ?? ''),
-        etsysPick: f.etsysPick === true,
-        shipsFrom: ['anywhere','europe','local','near','country'].includes(f.shipsFrom) ? f.shipsFrom : 'anywhere',
-        shipsFromCity: String(f.shipsFromCity ?? ''),
-        shipsFromCountry: String(f.shipsFromCountry ?? ''),
-        ready1Day: f.ready1Day === true,
-        ready3Days: f.ready3Days === true,
-        colors: Array.isArray(f.colors) ? [...new Set(f.colors.map(String).filter(Boolean))] : [],
-        vintage: f.vintage === true,
-        giftCards: f.giftCards === true,
-        giftWrap: f.giftWrap === true,
-        shipTo: String(f.shipTo ?? ''),
-    });
-    return cfg;
-};
-
-favCfg = favNormalizeConfig(GM_getValue(FAV_STORAGE_KEY, favCfg));
 favState.categoryExpanded = favState.categoryExpanded === true;
-favState.colorExpanded = favState.colorExpanded === true;
 favState.infoPopover = null;
 favState.infoAnchor = null;
 
 function favSaveAndApplyV079(reapply = true) {
     favSaveConfig();
     favState.localPage = 1;
-    if (favState.filterOpen) favRefreshRail();
     return reapply ? favReapply() : Promise.resolve();
 }
 
-function favSaveUiOnlyV079(refresh = false) {
+function favSaveUiOnlyV079() {
     favSaveConfig();
-    if (refresh && favState.filterOpen) favRefreshRail();
+}
+
+function favReplaceSectionBodyV079(key, builder) {
+    const section = favState.rail?.querySelector?.(`[data-ebsf-section="${key}"]`);
+    const body = section?.querySelector?.('.ebsf-section-body');
+    if (!body) return;
+    body.replaceChildren(builder());
+}
+
+function favAnimateSectionV079(content, opening) {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches || typeof content.animate !== 'function') {
+        content.hidden = !opening;
+        return;
+    }
+    content.getAnimations().forEach((animation) => animation.cancel());
+    if (opening) content.hidden = false;
+    const height = content.scrollHeight;
+    content.style.setProperty('overflow', 'hidden', 'important');
+    const animation = content.animate(
+        opening
+            ? [{ height: '0px', opacity: 0 }, { height: `${height}px`, opacity: 1 }]
+            : [{ height: `${height}px`, opacity: 1 }, { height: '0px', opacity: 0 }],
+        { duration: 150, easing: 'ease-out' }
+    );
+    animation.onfinish = () => { content.hidden = !opening; content.style.height = ''; content.style.opacity = ''; content.style.removeProperty('overflow'); };
 }
 
 var favSectionCounterV079 = 0;
 function favNativeSectionV079(title, body, key) {
+    favInitializeOpenSections();
     const sectionKey = key || favSectionKeyV078(title);
     const open = favState.openSections.has(sectionKey);
     const root = document.createElement('div');
@@ -88,13 +75,10 @@ function favNativeSectionV079(title, body, key) {
     trigger.addEventListener('click', () => {
         const next = trigger.getAttribute('aria-expanded') !== 'true';
         trigger.setAttribute('aria-expanded', String(next));
-        content.hidden = !next;
         content.setAttribute('aria-hidden', String(!next));
+        favAnimateSectionV079(content, next);
         if (next) favState.openSections.add(sectionKey);
-        else {
-            favState.openSections.delete(sectionKey);
-            if (sectionKey === 'search') favState.strictSettingsOpen = false;
-        }
+        else favState.openSections.delete(sectionKey);
     });
     root.append(trigger, content);
     return root;
@@ -246,15 +230,21 @@ function favBuildSearchV079() {
     strictMain.type = 'button'; strictMain.className = 'ebs-main'; strictMain.textContent = 'Strict title';
     strictMain.setAttribute('aria-pressed', String(favCfg.strict));
     strictMain.addEventListener('click', () => {
-        favCfg.strict = !favCfg.strict;
-        if (favCfg.strict) favCfg.multi = false;
+        favSetSearchMode('strict', !favCfg.strict);
+        strict.classList.toggle('ebs-active', favCfg.strict);
+        strictMain.setAttribute('aria-pressed', String(favCfg.strict));
+        multi.classList.remove('ebs-active');
+        multiMain.setAttribute('aria-pressed', 'false');
         favSaveAndApplyV079(true);
     });
     const strictCaret = document.createElement('button');
     strictCaret.type = 'button'; strictCaret.className = 'ebs-caret'; strictCaret.textContent = '▾';
     strictCaret.setAttribute('aria-label', 'Strict title settings');
     strictCaret.setAttribute('aria-expanded', String(favState.strictSettingsOpen));
-    strictCaret.addEventListener('click', () => { favState.strictSettingsOpen = !favState.strictSettingsOpen; favRefreshRail(); });
+    strictCaret.addEventListener('click', () => {
+        favState.strictSettingsOpen = !favState.strictSettingsOpen;
+        favReplaceSectionBodyV079('search', favBuildSearchV079);
+    });
     strict.append(strictMain, strictCaret);
     wrap.append(strict);
 
@@ -274,8 +264,11 @@ function favBuildSearchV079() {
     multiMain.type = 'button'; multiMain.className = 'ebs-main'; multiMain.textContent = 'Multi-search';
     multiMain.setAttribute('aria-pressed', String(favCfg.multi));
     multiMain.addEventListener('click', () => {
-        favCfg.multi = !favCfg.multi;
-        if (favCfg.multi) favCfg.strict = false;
+        favSetSearchMode('multi', !favCfg.multi);
+        multi.classList.toggle('ebs-active', favCfg.multi);
+        multiMain.setAttribute('aria-pressed', String(favCfg.multi));
+        strict.classList.remove('ebs-active');
+        strictMain.setAttribute('aria-pressed', 'false');
         favSaveAndApplyV079(true);
     });
     const multiCaret = document.createElement('button');
@@ -299,18 +292,18 @@ function favBuildCategoryV079() {
     const wrap = document.createElement('div'); wrap.className = 'ebsf-native-group ebsf-category-list';
     const all = document.createElement('button'); all.type='button'; all.className='ebsf-native-link'; all.textContent='All categories';
     all.classList.toggle('is-selected', !favCfg.filters.category);
-    all.addEventListener('click', () => { favCfg.filters.category=''; favSaveUiOnlyV079(true); });
+    all.addEventListener('click', () => { favCfg.filters.category=''; favSaveUiOnlyV079(); favReplaceSectionBodyV079('category',favBuildCategoryV079); });
     wrap.append(all);
     const shown = favState.categoryExpanded ? FAV_NATIVE_CATEGORIES_V079 : FAV_NATIVE_CATEGORIES_V079.slice(0,5);
     for (const [value,label] of shown) {
         const b=document.createElement('button'); b.type='button'; b.className='ebsf-native-link'; b.textContent=label;
         b.classList.toggle('is-selected', favCfg.filters.category===value);
         b.title='Category filtering UI is ready; Favorites category metadata wiring is pending.';
-        b.addEventListener('click',()=>{favCfg.filters.category=value;favSaveUiOnlyV079(true);});
+        b.addEventListener('click',()=>{favCfg.filters.category=value;favSaveUiOnlyV079();favReplaceSectionBodyV079('category',favBuildCategoryV079);});
         wrap.append(b);
     }
     const more=document.createElement('button'); more.type='button'; more.className='ebsf-native-show-more'; more.textContent=favState.categoryExpanded?'Show less':'Show more';
-    more.addEventListener('click',()=>{favState.categoryExpanded=!favState.categoryExpanded;favRefreshRail();}); wrap.append(more);
+    more.addEventListener('click',()=>{favState.categoryExpanded=!favState.categoryExpanded;favReplaceSectionBodyV079('category',favBuildCategoryV079);}); wrap.append(more);
     return wrap;
 }
 
@@ -359,7 +352,7 @@ function favBuildShipsFromV079() {
     const f=favCfg.filters, wrap=document.createElement('div');wrap.className='ebsf-native-group';
     const country=String(favProps()?.countryIsoCode||'FI').toUpperCase();
     const localLabel=favCountryNameV079(country);
-    const set=(value)=>{f.shipsFrom=value;favSaveUiOnlyV079(true);};
+    const set=(value)=>{f.shipsFrom=value;favSaveUiOnlyV079();favReplaceSectionBodyV079('ships-from',favBuildShipsFromV079);};
     wrap.append(
         favRadioV079({name:'ebsf-ships-from-v079',value:'anywhere',checked:f.shipsFrom==='anywhere',label:'Anywhere',onChange:set}).row,
         favRadioV079({name:'ebsf-ships-from-v079',value:'europe',checked:f.shipsFrom==='europe',label:'Europe',onChange:set}).row,
@@ -401,10 +394,6 @@ function favBuildPriceV079(){
     low.addEventListener('change',()=>{f.minPrice=Number(low.value)>0?low.value:'';favSaveAndApplyV079(true);});
     high.addEventListener('change',()=>{f.maxPrice=Number(high.value)<max?high.value:'';favSaveAndApplyV079(true);});sync();return wrap;
 }
-
-var FAV_COLORS_V079=[
-    ['black','Black','linear-gradient(45deg,#6a6a6a 50%,#222 50%)'],['white','White','linear-gradient(45deg,#fff 50%,#f5f5dc 50%)'],['silver','Silver','linear-gradient(45deg,#d3d3d3 50%,#8c8c8c 50%)'],['clear','Clear','linear-gradient(45deg,#fff 50%,#fff 50%)'],['blue','Blue','linear-gradient(45deg,#abe1ff 50%,#4e70f2 50%)'],['red','Red','linear-gradient(45deg,#ff9b9b 50%,#d22f2f 50%)'],['green','Green','linear-gradient(45deg,#aee6b0 50%,#3d8b40 50%)'],['yellow','Yellow','linear-gradient(45deg,#fff4a3 50%,#e0b92f 50%)'],['orange','Orange','linear-gradient(45deg,#ffc58a 50%,#e87c22 50%)'],['pink','Pink','linear-gradient(45deg,#ffd0e2 50%,#df6b9c 50%)'],['purple','Purple','linear-gradient(45deg,#d8b8f5 50%,#7f4ab0 50%)'],['brown','Brown','linear-gradient(45deg,#c7a17a 50%,#765038 50%)'],['beige','Beige','linear-gradient(45deg,#f1e3c5 50%,#d3bd94 50%)'],['gold','Gold','linear-gradient(45deg,#ffe69a 50%,#c99d2c 50%)'],['gray','Gray','linear-gradient(45deg,#d1d1d1 50%,#777 50%)']];
-function favBuildColorV079(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';const shown=favState.colorExpanded?FAV_COLORS_V079:FAV_COLORS_V079.slice(0,5);for(const [value,label,bg] of shown){const item=favCheckboxV079({checked:f.colors.includes(value),label,onChange:(checked)=>{const set=new Set(f.colors);checked?set.add(value):set.delete(value);f.colors=[...set];favSaveUiOnlyV079();}});const sw=document.createElement('span');sw.className='ebsf-color-swatch';sw.style.background=bg;item.text.prepend(sw);item.row.title='Color filtering UI is ready; Favorites color metadata wiring is pending.';wrap.append(item.row);}const more=document.createElement('button');more.type='button';more.className='ebsf-native-show-more';more.textContent=favState.colorExpanded?'Show less':'Show more';more.addEventListener('click',()=>{favState.colorExpanded=!favState.colorExpanded;favRefreshRail();});wrap.append(more);return wrap;}
 
 function favBuildItemTypeV079(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favCheckboxV079({checked:f.vintage,label:'Vintage',title:'UI ready; vintage metadata wiring is pending.',onChange:(v)=>{f.vintage=v;favSaveUiOnlyV079();}}).row);return wrap;}
 function favBuildOrderingV079(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(
@@ -452,7 +441,6 @@ favBuildFilterRail = function favBuildFilterRailV079() {
         favNativeSectionV079('Ships from',favBuildShipsFromV079(),'ships-from'),
         favNativeSectionV079('Ready to ship in',favBuildReadyV079(),'ready-to-ship-in'),
         favNativeSectionV079('Price',favBuildPriceV079(),'price'),
-        favNativeSectionV079('Color',favBuildColorV079(),'color'),
         favNativeSectionV079('Item type',favBuildItemTypeV079(),'item-type'),
         favNativeSectionV079('Ordering options',favBuildOrderingV079(),'ordering-options'),
         favNativeSectionV079('Ship to',favBuildShipToV079(),'ship-to'),
@@ -469,7 +457,7 @@ GM_addStyle(`
 .ebsf-native-reset{appearance:none;border:0;background:transparent;padding:2px 0;color:#222;font:600 12px/1.2 inherit;text-decoration:underline;cursor:pointer}
 .ebsf-rail-v079 .ebsf-section{width:100%;padding:0 8px!important;border-bottom:1px solid #dedede}
 .ebsf-rail-v079 .ebsf-native-section-trigger{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px;width:100%!important;min-height:44px!important;margin:0!important;padding:11px 0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#222!important;font:600 12px/1.3 inherit!important;text-align:left!important;box-shadow:none!important}
-.ebsf-rail-v079 .ebsf-native-section-trigger:hover{background:rgba(34,34,34,.04)!important}
+.ebsf-rail-v079 .ebsf-native-section-trigger:hover{background:transparent!important}
 .ebsf-native-section-title{min-width:0;text-align:left}
 .ebsf-rail-v079 .wt-content-toggle--btn__icon{position:relative!important;display:block!important;flex:0 0 12px!important;width:12px!important;height:12px!important;margin:0 1px 0 6px!important;background:none!important;transform:none!important}
 .ebsf-rail-v079 .wt-content-toggle--btn__icon::before{content:none!important}
@@ -500,7 +488,10 @@ GM_addStyle(`
 .ebsf-price-slider{--low:0%;--high:100%;position:relative;height:28px;margin:2px 1px 5px}.ebsf-price-track{position:absolute;left:7px;right:7px;top:13px;height:3px;border-radius:3px;background:linear-gradient(to right,#d7d7d7 0 var(--low),#222 var(--low) var(--high),#d7d7d7 var(--high) 100%)}
 .ebsf-price-range{appearance:none;position:absolute;inset:0;width:100%;height:28px;margin:0;background:transparent;pointer-events:none}.ebsf-price-range::-webkit-slider-runnable-track{height:3px;background:transparent}.ebsf-price-range::-webkit-slider-thumb{appearance:none;width:18px;height:18px;margin-top:-7.5px;border:1px solid #c9c9c9;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:auto;cursor:pointer}.ebsf-price-range::-moz-range-track{height:3px;background:transparent}.ebsf-price-range::-moz-range-thumb{width:18px;height:18px;border:1px solid #c9c9c9;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:auto;cursor:pointer}
 .ebsf-native-price-inputs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;width:100%}
-.ebsf-color-swatch{display:inline-block;flex:0 0 14px;width:14px;height:14px;border:1px solid rgba(34,34,34,.22);border-radius:50%}
 .ebsf-category-list{gap:3px}
+.ebsf-rail-v079 button,.ebsf-rail-v079 label,.ebsf-rail-v079 .ebsf-native-choice-label,.ebsf-rail-v079 .ebsf-native-caption,.ebsf-rail-v079 .ebsf-native-field{user-select:none}
+.ebsf-rail-v079 input,.ebsf-rail-v079 textarea,.ebsf-rail-v079 select,.ebsf-rail-v079 [contenteditable="true"]{user-select:text}
+[data-testid="sidebar"].ebsf-sidebar-active{position:static!important;top:auto!important;height:auto!important;max-height:none!important;overflow:visible!important;align-self:start}
 @media(max-width:899px){.ebsf-overlay .ebsf-rail-v079{padding:0}.ebsf-overlay .ebsf-rail-v079 .ebsf-native-rail-header{display:none!important}}
+@media(max-width:520px){.ebsf-native-search-anchor{flex-wrap:wrap!important}.ebsf-search-left-controls{width:100%!important}.ebsf-native-search-anchor>form{flex:1 1 100%!important}}
 `);

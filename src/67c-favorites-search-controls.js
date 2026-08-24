@@ -49,6 +49,56 @@ function favCreateFilterToolbarV077(row) {
     return toolbar;
 }
 
+function favCloseSettingsModalV080() {
+    const layer = favState.settingsModal;
+    if (!layer) return;
+    layer.remove();
+    favState.settingsModal = null;
+    document.querySelector('[data-ebsf-settings]')?.setAttribute('aria-expanded', 'false');
+    unlockPageScroll();
+    favState.settingsReturnFocus?.focus?.({ preventScroll: true });
+    favState.settingsReturnFocus = null;
+}
+
+function favOpenSettingsModalV080(event) {
+    if (favState.settingsModal) return;
+    const layer = document.createElement('div');
+    layer.className = 'ebs-modal-layer ebsf-settings-layer';
+    layer.innerHTML = `
+        <section class="ebs-modal ebsf-settings-modal" role="dialog" aria-modal="true" aria-labelledby="ebsf-settings-title">
+            <header class="ebs-modal-header"><h2 class="ebs-modal-title" id="ebsf-settings-title">FAVORITES SETTINGS</h2></header>
+            <div class="ebs-modal-editor"><div class="ebsf-settings-body">
+                <section><h3>Favorites metadata index</h3><p>BetterSearch saves reliable Favorites card and structured metadata in a versioned local index for reuse across visits.</p></section>
+                <section><h3>Deep metadata</h3><p>Listing-page scanning and automatic background updates are deliberately not enabled in this release. Metadata that Etsy has not supplied remains unknown.</p></section>
+            </div></div>
+            <footer class="ebs-modal-footer"><button type="button" class="ebs-button is-primary" data-ebsf-settings-close>Done</button></footer>
+        </section>`;
+    document.body.append(layer);
+    favState.settingsModal = layer;
+    favState.settingsReturnFocus = event?.currentTarget || document.querySelector('[data-ebsf-settings]');
+    favState.settingsReturnFocus?.setAttribute('aria-expanded', 'true');
+    lockPageScroll();
+    layer.querySelector('[data-ebsf-settings-close]').addEventListener('click', favCloseSettingsModalV080);
+    layer.addEventListener('pointerdown', (pointerEvent) => { if (pointerEvent.target === layer) favCloseSettingsModalV080(); });
+    requestAnimationFrame(() => layer.querySelector('[data-ebsf-settings-close]')?.focus({ preventScroll: true }));
+}
+
+function favEnsureSettingsButtonV080(row) {
+    let button = row.querySelector('[data-ebsf-settings]');
+    if (button) return button;
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ebsf-settings-button';
+    button.dataset.ebsfSettings = '';
+    button.setAttribute('aria-label', 'Favorites settings');
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.setAttribute('aria-expanded', 'false');
+    button.title = 'Favorites settings';
+    button.innerHTML = ebsSettingsIconMarkup();
+    button.addEventListener('click', favOpenSettingsModalV080);
+    return button;
+}
+
 function favPolishFilterButtonV077() {
     const button = favState.filterButton || document.querySelector('.ebsf-filter-button');
     if (!button) return;
@@ -86,6 +136,7 @@ function favPlaceSearchControlsV077() {
         favEnsureSortMenu(row, inputGroup);
         sortRoot = row.querySelector('[data-ebsf-sort]');
     }
+    const settingsButton = favEnsureSettingsButtonV080(row);
 
     let controls = inputGroup.querySelector(':scope > [data-ebsf-search-left-controls]');
     if (!controls) {
@@ -100,6 +151,7 @@ function favPlaceSearchControlsV077() {
      * the exact same flex/layout footprint it had before BetterSearch controls. */
     if (toolbar.parentElement !== controls) controls.append(toolbar);
     if (sortRoot && sortRoot.parentElement !== controls) controls.append(sortRoot);
+    if (settingsButton.parentElement !== controls) controls.append(settingsButton);
 
     inputGroup.classList.add('ebsf-native-search-anchor');
     favState.toolbar = toolbar;
@@ -116,6 +168,10 @@ favEnsureToolbar = function favEnsureToolbarAllFavoriteViews() {
     if (typeof favBindNativeSearchV072 === 'function') favBindNativeSearchV072();
     return result;
 };
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && favState.settingsModal) favCloseSettingsModalV080();
+});
 
 GM_addStyle(`
 .ebsf-native-search-anchor {
@@ -155,6 +211,28 @@ GM_addStyle(`
 }
 .ebsf-search-left-controls .ebsf-sort-menu {
     z-index: 90;
+}
+.ebsf-search-left-controls .ebsf-filter-button,
+.ebsf-search-left-controls .ebsf-sort > .wt-menu__trigger,
+.ebsf-settings-button {
+    min-height:36px!important;
+    border:0!important;
+    border-radius:999px!important;
+    background:#f5f5f1!important;
+    box-shadow:none!important;
+}
+.ebsf-search-left-controls .ebsf-filter-button:hover,
+.ebsf-search-left-controls .ebsf-sort > .wt-menu__trigger:hover,
+.ebsf-settings-button:hover { background:#ecebe6!important; }
+.ebsf-settings-button { appearance:none;display:inline-flex;align-items:center;justify-content:center;flex:0 0 36px;width:36px;height:36px;padding:0;color:#222;cursor:pointer }
+.ebsf-settings-button:focus-visible { outline:2px solid rgba(34,34,34,.3);outline-offset:2px }
+.ebsf-settings-button svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round }
+.ebsf-settings-modal{width:min(560px,calc(100vw - 24px))}.ebsf-settings-body{display:grid;gap:14px;padding:20px}.ebsf-settings-body section{padding:15px;border:1px solid #deded8;border-radius:12px;background:#fff}.ebsf-settings-body h3{margin:0 0 5px;font-size:15px}.ebsf-settings-body p{margin:0;color:#555;font-size:13px;line-height:1.45}
+
+@media (max-width: 1180px) {
+    .ebsf-native-search-anchor { display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important; }
+    .ebsf-native-search-anchor > form { order:2!important;flex:1 1 180px!important;width:auto!important;min-width:0!important; }
+    .ebsf-search-left-controls { position:static!important;order:1!important;transform:none!important;flex:0 0 auto!important;width:auto!important; }
 }
 
 @media (max-width: 899px) {

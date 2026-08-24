@@ -1,6 +1,6 @@
 # Favorites metadata source evidence
 
-This document records concrete Etsy signals already observed for Favorites filtering and the preferred acquisition order for each field. It is meant to guide the future durable Favorites index/deep-scanner work without forcing every filter to open every listing page.
+This document records concrete Etsy signals already observed for Favorites filtering and the preferred acquisition order for each field. The durable index foundation is implemented; the deep scanner remains future work.
 
 ## Acquisition priority
 
@@ -14,7 +14,7 @@ For each field, use the cheapest reliable source first:
 
 Do not deep-scan a listing when the current Favorites dataset already gives a reliable value. Store field provenance and freshness so a later higher-quality source can replace an older fallback.
 
-Recommended per-field metadata shape:
+The implemented index uses this per-field metadata shape:
 
 ```text
 value
@@ -192,7 +192,9 @@ The same general rule applies to several other fields:
 
 Deep scanning should concentrate on metadata that is genuinely absent from the cheaper sources.
 
-## Scanner/index implications
+## Implemented index and future scanner implications
+
+`src/61a-favorites-index.js` owns a versioned IndexedDB abstraction shared by Tampermonkey, Chrome, and Firefox builds. It stores listing, shop, and scope records separately, merges stronger/newer field observations without collapsing known `false`/`0` into unknown, and accepts partial versus completed scope observations. Current embedded/card records and completed existing Favorites loads feed it automatically. Direct heart unfavorites preserve dormant metadata.
 
 The future scan queue should be **field-aware**, not simply "scan every favorite page again".
 
@@ -212,7 +214,7 @@ This makes the automatic scanner much faster and avoids unnecessary Etsy request
 
 When a listing is unfavorited, keep cached metadata but mark it inactive as already planned. It should leave active Favorite results immediately; dormant metadata can later be cleaned by retention policy.
 
-## Filter-rail UI findings to address before the richer-filter release
+## Filter-rail UI decisions implemented in v0.8.0
 
 ### Prevent accidental text selection
 
@@ -228,16 +230,9 @@ Use scoped `user-select: none` on the filter-rail UI, but **do not** disable sel
 
 ### Checkbox/radio toggling feels unstable because the rail is rebuilt
 
-The current v0.7.9 helper `favSaveAndApplyV079()` calls `favRefreshRail()` after essentially every checkbox/radio/select change while the rail is open. That destroys and recreates the clicked controls immediately before/while result reapplication runs.
+Ordinary checkbox/radio/select changes now save and reapply results without calling `favRefreshRail()`. Structural changes replace only the affected section body where practical; full rail reconstruction is reserved for scope/DOM replacement and explicit resets.
 
-This is a likely cause of the reported delayed/weird behavior when toggling nearby options quickly.
-
-Planned fix:
-
-- ordinary value changes should save state and reapply results **without rebuilding the entire rail**
-- keep the existing DOM/input focused and responsive
-- rebuild only for structural changes such as Show more/less, opening Strict settings, changing a section whose available controls actually change, or a full route/scope refresh
-- debounce expensive result reapplication where useful, but update the control state immediately
+Accordion manual state remains in memory for the page session; a fresh page derives initially open sections from active filter values. Rail labels/chrome disable accidental selection while editable controls retain normal selection.
 
 ### Color drawer
 

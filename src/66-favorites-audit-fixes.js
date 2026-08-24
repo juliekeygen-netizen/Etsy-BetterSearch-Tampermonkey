@@ -187,6 +187,10 @@ favLoadAll = function favLoadAllHardened(force = false) {
             if (!favState.total) favState.total = favState.records.length;
             favState.loadComplete = true;
             favClearProgress();
+            favIndexObserveRecords(favState.records, {
+                scope: favIndexCurrentScope(),
+                complete: true,
+            }).catch((error) => console.warn('[Etsy BetterSearch] Favorites index update failed:', error));
             return favState.records;
         } catch (error) {
             if (error?.name === 'AbortError' || controller.signal.aborted || favState.loadKey !== key) {
@@ -198,6 +202,10 @@ favLoadAll = function favLoadAllHardened(force = false) {
             favState.recordsById = new Map(favState.records.map((item) => [item.id, item]));
             favState.total = Math.max(favState.records.length, Number(favState.total) || 0);
             favState.loadComplete = false;
+            favIndexObserveRecords(favState.records, {
+                scope: favIndexCurrentScope(),
+                complete: false,
+            }).catch((indexError) => console.warn('[Etsy BetterSearch] Partial Favorites index update failed:', indexError));
             favProgress(favState.records.length
                 ? `Favorites load incomplete · ${favState.records.length} items available · retry by changing a filter or sort`
                 : 'Could not load favorites. Etsy may have throttled the request; try again.');
@@ -257,11 +265,15 @@ favEnsureExtraInfo = function favEnsureExtraInfoHardened() {
                     if (!record) continue;
                     record.shippingFormatted = String(extra?.shipping_costs || '');
                     record.shipping = favParseMoney(extra?.shipping_costs);
+                    record.known = record.known || {};
+                    record.known.shipping = extra && Object.prototype.hasOwnProperty.call(extra, 'shipping_costs');
                     if (!Number.isFinite(record.shipping) && record.hasFreeShipping) record.shipping = 0;
                     if (record.shipping === 0) record.hasFreeShipping = true;
                     record.estimatedDelivery = String(extra?.estimated_delivery || '');
                     record.acceptsReturns = String(extra?.accepts_returns) === '1';
                     record.acceptsExchanges = String(extra?.accepts_exchanges) === '1';
+                    record.known.acceptsReturns = extra && Object.prototype.hasOwnProperty.call(extra, 'accepts_returns');
+                    record.known.acceptsExchanges = extra && Object.prototype.hasOwnProperty.call(extra, 'accepts_exchanges');
                     record.urgency = String(extra?.urgency_signal || '');
                     const carts = record.urgency.match(/in\s+(\d+)\s+carts?/i);
                     const stock = record.urgency.match(/(?:only\s+)?(\d+)\s+left/i);
@@ -271,6 +283,10 @@ favEnsureExtraInfo = function favEnsureExtraInfoHardened() {
             }
             if (favExtraDatasetKeyV073() !== key) return false;
             favState.extraReady = true;
+            favIndexObserveRecords(favState.records, {
+                scope: favIndexCurrentScope(),
+                complete: false,
+            }).catch((error) => console.warn('[Etsy BetterSearch] Favorites auxiliary index update failed:', error));
             return true;
         } catch (error) {
             if (error?.name !== 'AbortError' && !signal.aborted) {
@@ -333,6 +349,7 @@ function favRemoveLocalFavoriteV073(idValue) {
     favState.nativeOrder = favState.nativeOrder.filter((node) => favListingIdFromNode(node) !== idString);
     favState.total = Math.max(0, (Number(favState.total) || favState.records.length + 1) - 1);
     favState.loadComplete = favState.loadComplete && true;
+    favIndexMarkUnfavorite(idString).catch((error) => console.warn('[Etsy BetterSearch] Could not update unfavorite index state:', error));
     return true;
 }
 
@@ -340,15 +357,19 @@ function favRemoveLocalFavoriteV073(idValue) {
  * that native action and update the BetterSearch dataset too, so removing a
  * favorite cannot leave a ghost card that reappears on local pagination/reset. */
 document.addEventListener('click', (event) => {
-    if (!document.body.classList.contains('ebsf-results-active')) return;
-    const card = event.target?.closest?.('.favorites-landing-listing-card-container[data-ebsf-id]:not([data-ebsf-transplanted="1"])');
+    if (!isFavoritesPage()) return;
+    const card = event.target?.closest?.('.favorites-landing-listing-card-container:not([data-ebsf-transplanted="1"])');
     if (!card) return;
     const button = favoriteButtonFromEvent(event.target);
     if (!button || !isFavoritedButton(button)) return;
     const idValue = card.dataset.ebsfId || favListingIdFromNode(card);
+    if (!idValue) return;
     setTimeout(() => {
         const currentButton = card.querySelector('button[aria-label*="Favorite" i], button[data-accessible-btn-fave], [data-favorite-button]') || button;
-        if ((!card.isConnected || !isFavoritedButton(currentButton)) && favRemoveLocalFavoriteV073(idValue)) favRenderCurrent();
+        if (card.isConnected && isFavoritedButton(currentButton)) return;
+        const removed = document.body.classList.contains('ebsf-results-active') && favRemoveLocalFavoriteV073(idValue);
+        if (!removed) favIndexMarkUnfavorite(idValue).catch(() => {});
+        if (removed) favRenderCurrent();
     }, 900);
 }, false);
 
@@ -392,8 +413,8 @@ favFilteredRecords = function favFilteredRecordsHardened() {
         if (f.availableOnly && (item.isSoldOut || item.isShopOnVacation)) return false;
         if (f.onSale && !item.isOnSale) return false;
         if (f.freeShipping && !item.hasFreeShipping && item.shipping !== 0) return false;
-        if (f.itemFormat === 'digital' && !item.isDownload) return false;
-        if (f.itemFormat === 'physical' && item.isDownload) return false;
+        if (f.itemFormat === 'digital' && !(item.known?.isDownload && item.isDownload)) return false;
+        if (f.itemFormat === 'physical' && item.known?.isDownload && item.isDownload) return false;
         if (!favNumericFilter(item.rating, f.minRating, (a,b) => a >= b)) return false;
         if (!favNumericFilter(item.reviews, f.minReviews, (a,b) => a >= b)) return false;
         if (f.starSeller && !item.isStarSeller) return false;
@@ -451,6 +472,7 @@ favCloseMultiModal = function favCloseMultiModalHardened() {
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+        if (favState.settingsModal) return;
         if (favState.ruleModal) favCloseMultiModal();
         else if (favState.filterOpen) favCloseFilters();
         else favCloseSortMenu();

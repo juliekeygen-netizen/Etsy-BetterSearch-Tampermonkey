@@ -115,14 +115,14 @@ function favBuildFilterRail() {
 
     const search=document.createElement('div');
     const strict=document.createElement('input'); strict.type='checkbox'; strict.checked=favCfg.strict;
-    strict.addEventListener('change', async()=>{ favCfg.strict=strict.checked; if(strict.checked) favCfg.multi=false; favSaveConfig(); favRefreshRail(); await favReapply(); });
+    strict.addEventListener('change', async()=>{ favSetSearchMode('strict',strict.checked); favSaveConfig(); await favReapply(); });
     search.append(favFilterControlLabel('Strict title',strict));
     const mode=document.createElement('select'); mode.className='wt-select wt-input wt-input--small'; mode.innerHTML='<option value="phrase">Exact phrase</option><option value="all">All words</option>'; mode.value=favCfg.strictMode;
     mode.addEventListener('change', async()=>{ favCfg.strictMode=mode.value==='all'?'all':'phrase'; favSaveConfig(); await favReapply(); });
     search.append(mode);
     const multiRow=document.createElement('div'); multiRow.className='ebsf-multi-row';
     const multi=document.createElement('input'); multi.type='checkbox'; multi.checked=favCfg.multi;
-    multi.addEventListener('change', async()=>{ favCfg.multi=multi.checked; if(multi.checked) favCfg.strict=false; favSaveConfig(); favRefreshRail(); await favReapply(); });
+    multi.addEventListener('change', async()=>{ favSetSearchMode('multi',multi.checked); favSaveConfig(); await favReapply(); });
     const configure=document.createElement('button'); configure.type='button'; configure.className='wt-btn wt-btn--transparent wt-btn--small'; configure.textContent='Configure…'; configure.addEventListener('click',favOpenMultiModal);
     multiRow.append(favFilterControlLabel('Multi-search',multi),configure); search.append(multiRow);
     const note=document.createElement('p'); note.className='wt-text-caption wt-text-gray'; note.textContent='Strict title uses the native “Search your favorites” text. Multi-search uses its own Title rules.'; search.append(note);
@@ -173,12 +173,13 @@ function favOpenFilters() {
     favState.filterOpen=true; favState.filterButton?.setAttribute('aria-expanded','true'); const label=favState.filterButton?.querySelector('[data-ebsf-filter-label]'); if(label) label.textContent='Hide filters';
     if (innerWidth >= 900) {
         const sidebar=document.querySelector('[data-testid="sidebar"]'); if(!sidebar) return;
-        favState.sidebar=sidebar; favState.sidebarNodes=Array.from(sidebar.childNodes); const rail=favBuildFilterRail(); favState.rail=rail; sidebar.replaceChildren(rail);
+        favState.sidebar=sidebar; favState.sidebarNodes=Array.from(sidebar.childNodes); sidebar.classList.add('ebsf-sidebar-active'); const rail=favBuildFilterRail(); favState.rail=rail; sidebar.replaceChildren(rail);
     } else favOpenFilterOverlay();
 }
 function favCloseFilters() {
     favState.filterOpen=false; favState.filterButton?.setAttribute('aria-expanded','false'); const label=favState.filterButton?.querySelector('[data-ebsf-filter-label]'); if(label) label.textContent='Show filters';
     if(favState.sidebar?.isConnected && favState.sidebarNodes) favState.sidebar.replaceChildren(...favState.sidebarNodes);
+    favState.sidebar?.classList?.remove('ebsf-sidebar-active');
     favState.sidebar=null; favState.sidebarNodes=null; favState.rail=null; favState.overlay?.remove(); favState.overlay=null;
 }
 function favOpenFilterOverlay() {
@@ -210,4 +211,4 @@ function favRuleRow(rule) {
 function favOpenMultiModal(){if(favState.ruleModal)return;favState.ruleDraft=clone(favCfg.multiRules.length?favCfg.multiRules:[defaultRule('or','')]);const layer=document.createElement('div');layer.className='ebs-modal-layer';layer.innerHTML='<section class="ebs-modal" role="dialog" aria-modal="true"><header class="ebs-modal-header"><h2 class="ebs-modal-title">FAVORITES MULTI-SEARCH</h2><div class="ebs-modal-meta" data-count></div></header><div class="ebs-modal-editor"><div class="ebs-modal-body" data-body></div></div><footer class="ebs-modal-footer"><span class="ebs-draft-note">Draft changes are not applied until Apply.</span><button type="button" class="ebs-button is-quiet" data-cancel>Cancel</button><button type="button" class="ebs-button is-primary" data-apply>Apply</button></footer></section>';document.body.append(layer);favState.ruleModal=layer;layer.querySelector('[data-cancel]').addEventListener('click',favCloseMultiModal);layer.querySelector('[data-apply]').addEventListener('click',favApplyMultiModal);favRenderRuleModal();}
 function favCloseMultiModal(){favCloseRuleMenu();favState.ruleModal?.remove();favState.ruleModal=null;favState.ruleDraft=null;}
 function favRenderRuleModal(){const layer=favState.ruleModal;if(!layer)return;const body=layer.querySelector('[data-body]');body.replaceChildren();const headings=document.createElement('div');headings.className='ebs-columns';for(const [cls,text] of [['logic','LOGIC'],['field','FIELD'],['polarity','MATCH / EXCLUDE'],['condition','OPTIONS']]){const s=document.createElement('span');s.className=`is-${cls}`;s.textContent=text;headings.append(s);}body.append(headings);favState.ruleDraft.forEach(r=>body.append(favRuleRow(r)));const actions=document.createElement('div');actions.className='ebs-actions';const add=document.createElement('button');add.type='button';add.className='ebs-button';add.textContent='+ Add rule';add.addEventListener('click',()=>{favState.ruleDraft.push(defaultRule('or',''));favRenderRuleModal();});actions.append(add);body.append(actions);const details=document.createElement('details');details.className='ebs-preview';const summary=document.createElement('summary');const plan=compileMultiPlan(favState.ruleDraft);summary.textContent=`Search preview · ${plan.searches.length} ${plan.searches.length===1?'search':'searches'} · ${plan.shared.length} shared ${plan.shared.length===1?'rule':'rules'}`;const pre=document.createElement('pre');pre.textContent=plan.searches.map((s,i)=>`${i+1}. ${s.query}`).join('\n') || 'No enabled Match rules.';details.append(summary,pre);body.append(details);layer.querySelector('[data-count]').textContent=`${favState.ruleDraft.length} rules · ${favState.ruleDraft.filter(r=>r.enabled).length} enabled`;}
-async function favApplyMultiModal(){const rules=normalizeRules(favState.ruleDraft);if(!rules.some(r=>r.enabled&&r.polarity==='match'&&ruleValue(r))){alert('Multi-search needs at least one enabled Match rule.');return;}favCfg.multiRules=rules;favCfg.multi=true;favCfg.strict=false;favSaveConfig();favCloseMultiModal();favRefreshRail();await favReapply(true);}
+async function favApplyMultiModal(){const rules=normalizeRules(favState.ruleDraft);if(!rules.some(r=>r.enabled&&r.polarity==='match'&&ruleValue(r))){alert('Multi-search needs at least one enabled Match rule.');return;}favCfg.multiRules=rules;favCfg.multi=true;favCfg.strict=false;favSaveConfig();favCloseMultiModal();if(typeof favReplaceSectionBodyV079==='function')favReplaceSectionBodyV079('search',favBuildSearchV079);await favReapply(true);}
