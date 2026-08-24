@@ -38,7 +38,7 @@ For normal downloadable builds, use the GitHub Actions artifacts or tagged GitHu
 
 ## Current conversion status
 
-The extension build runs the same BetterSearch feature modules as Tampermonkey through a small compatibility adapter backed by extension storage. The shared content runtime includes the versioned Favorites IndexedDB index plus authoritative cheap-data synchronization, auto-sync freshness checks, cancellation, and native-search-footprint progress UI. This fast Favorites sync does not fetch individual listing/shop pages. Browser parity and lifecycle behavior are still being proven before deep metadata scanning and its persistent queue move into the background extension context.
+The extension build runs the same BetterSearch feature modules as Tampermonkey through a small compatibility adapter backed by extension storage. The shared content runtime includes the versioned Favorites IndexedDB index, authoritative cheap-data synchronization, and the persistent deep-listing queue with retries, automatic population, and native-search-footprint progress. Queue data survives browser restarts and resumes when an Etsy Favorites page is active; the extension service worker remains a minimal shell for now.
 
 See:
 

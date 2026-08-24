@@ -60,7 +60,7 @@ host_permissions = https://www.etsy.com/*
 content script = content.js at document_idle
 ```
 
-The service worker is intentionally minimal in the first conversion phase. Later it becomes the owner of the persistent metadata/deep-scan queue.
+The service worker remains minimal. The persistent metadata/deep-scan queue currently lives in the shared Etsy content context so Tampermonkey, Chrome, and Firefox use identical behavior; queue records themselves are durable IndexedDB data.
 
 ## Firefox build
 
@@ -81,6 +81,7 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 - extension settings through the compatibility adapter
 - versioned Favorites IndexedDB interface and cheap metadata/scope observations
 - conservative authoritative Favorites synchronization, cancellation, progress, and auto-sync freshness decisions
+- persistent deep-listing jobs, authenticated fetching, retries, parsing, and progress while a Favorites page is active
 
 **Background**
 
@@ -107,13 +108,13 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 - durable resume after browser worker suspension/restart
 - send indexed updates back to relevant Etsy tabs
 
-**Database (index and cheap synchronization implemented; queue stores future)**
+**Database (implemented)**
 
 - listing records
 - shop records
 - Favorite scope memberships
 - metadata freshness/versioning
-- persistent jobs (future)
+- persistent deep-scan jobs
 
 ## Browser storage strategy
 
@@ -125,7 +126,7 @@ Use `storage.local` for the existing relatively small settings/rules because tha
 
 The large Favorites index is not stored in one settings object. `src/61a-favorites-index.js` provides a versioned IndexedDB abstraction with separate `listings`, `shops`, and `scopes` stores, provenance-aware field merging, batched observations, partial/complete scope semantics, and dormant unfavorite records. `src/61b-favorites-sync.js` owns conservative same-site pagination, runtime job state, cancellation/stale-job rejection, and 12-hour auto-sync freshness checks.
 
-The public API hides the backing store and works in the Etsy page/content context for Tampermonkey, Chrome, and Firefox. A future background queue can adopt an extension-owned database/message adapter without changing filter feature semantics.
+The public API hides the backing store and works in the Etsy page/content context for Tampermonkey, Chrome, and Firefox. A future service-worker owner can adopt the same database/message interface without changing filter semantics.
 
 ## Tampermonkey compatibility
 
@@ -135,12 +136,11 @@ It will keep loading the raw `src/` modules directly through `@require`. Future 
 
 The biggest unavoidable difference is background lifetime:
 
-- Extension: persistent queue can resume independently of one Favorites tab.
-- Tampermonkey: queue can persist but only executes while a matching Etsy page is alive.
+- Extension and Tampermonkey: queue data persists across reloads/restarts and processing resumes while a matching Etsy Favorites page is alive.
 
 Feature semantics should otherwise remain the same where practical.
 
-The shared UI uses **Favorites sync** only for the implemented cheap Favorites endpoint/card/auxiliary refresh. **Deep metadata scan** remains reserved for future individual listing/shop-page work and its persistent background queue; neither browser build performs that crawl yet.
+The shared UI keeps **Favorites sync** separate from **Deep metadata scan**. Deep scans fetch individual listing pages through the persistent queue; cheap sync never masquerades as that work.
 
 ## Settings migration
 

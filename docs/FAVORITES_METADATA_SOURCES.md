@@ -1,8 +1,8 @@
 # Favorites metadata source evidence
 
-This document records concrete Etsy signals already observed for Favorites filtering and the preferred acquisition order for each field. The durable index and cheap Favorites synchronization are implemented; the deep scanner remains future work.
+This document records concrete Etsy signals used by Favorites filtering and their preferred acquisition order. The durable index, cheap Favorites synchronization, and persistent deep-listing scanner are implemented.
 
-In UI and documentation, **Favorites sync** specifically means the fast Favorites structured/card/auxiliary-data refresh. **Deep metadata scan** means future individual listing/shop-page requests for otherwise unavailable fields. Sync must never be presented as a deep scan.
+In UI and documentation, **Favorites sync** specifically means the fast Favorites structured/card/auxiliary-data refresh. **Deep metadata scan** means queued individual listing-page requests for otherwise unavailable fields. Sync must never be presented as a deep scan.
 
 ## Acquisition priority
 
@@ -194,15 +194,15 @@ The same general rule applies to several other fields:
 
 Deep scanning should concentrate on metadata that is genuinely absent from the cheaper sources.
 
-## Implemented index and future scanner implications
+## Implemented index and scanner behavior
 
 `src/61a-favorites-index.js` owns a versioned IndexedDB abstraction shared by Tampermonkey, Chrome, and Firefox builds. It stores listing, shop, and scope records separately, merges stronger/newer field observations without collapsing known `false`/`0` into unknown, and accepts partial versus completed scope observations. Current embedded/card records and completed existing Favorites loads feed it automatically. Direct heart unfavorites preserve dormant metadata.
 
 `src/61b-favorites-sync.js` now owns authoritative cheap-data synchronization. It fetches Etsy Favorites JSON sequentially for the unfiltered All Items scope and separately for generated groups, custom collections, and native query scopes. Per-page observations are partial. Only the final deduplicated write after every page succeeds marks the scope complete; therefore cancellation, request failure, repeated-page protection, and route-stale rejection cannot infer absence. Only completed unfiltered All Items absence is a global unfavorite signal.
 
-The runtime also observes current page structured/card data on a debounce without turning DOM churn into full-network synchronization. Auto-sync is enabled by default for the user's own Favorites pages, runs when a relevant scope has never completed or is at least 12 hours stale, and does not crawl listing pages. The search-field-footprint progress UI represents only these meaningful pagination jobs.
+The runtime also observes current page structured/card data on a debounce without turning DOM churn into full-network synchronization. Favorites auto-sync is enabled by default for the user's own Favorites pages and runs when a relevant scope has never completed or is stale. The separate automatic deep-metadata preference queues missing/new/stale listing metadata. Both operations use the same native-search footprint for their real progress, while retaining distinct state and terminology.
 
-The future scan queue should be **field-aware**, not simply "scan every favorite page again".
+The scan queue uses completed-scan/parser-version freshness to avoid repeatedly scanning current metadata. Acquisition remains field-aware: cheaper known fields are preserved and deep observations cannot overwrite them.
 
 Example:
 
@@ -244,9 +244,9 @@ Accordion manual state remains in memory for the page session; a fresh page deri
 
 Remove it from the active Favorites rail until a reliable data source exists.
 
-### Future deep-metadata controls
+### Deep-metadata controls
 
-Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card support, gift wrapping, and Ship to retain their saved schema values but are visibly disabled with a compact `Requires listing metadata` status. Cheap fields such as Star Seller, digital, Best Seller, personalization, variations, and video remain active when their source marks them known. The settings UI shows future deep-metadata coverage/status deliberately, but its future scan/update actions are visibly disabled and produce no fake progress or results.
+Category, Etsy's Picks, Vintage, and gift wrapping use listing-page metadata and are active. Ships from, Ready to ship, gift-card support, and Ship to remain disabled pending reliable evidence. Cheap fields such as Star Seller, digital, Best Seller, personalization, variations, and video remain sourced from Favorites data when known. Settings actions and progress are connected to the persistent queue.
 
 ## Parser testing requirements
 

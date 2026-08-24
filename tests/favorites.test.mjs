@@ -92,7 +92,7 @@ async function loadSync({ fetchJson, observe } = {}) {
     favFetchJson: (...args) => fetchImpl(...args),
     favApiListings: (payload) => payload.listings || [],
     favRecordsFromListings: (listings, offset) => listings.map((item, index) => ({ ...item, id: String(item.id), order: offset + index, known: {} })),
-    favIndexObserveRecords: (...args) => observeImpl(...args),
+    favIndexObserveRecords: (...args) => observeImpl(...args), favIndexHydrateRecords: async (records) => records,
     sleep: (_ms, signal) => signal?.aborted ? Promise.reject(new DOMException('Aborted', 'AbortError')) : Promise.resolve(),
     favIndexGetScope: async () => null, favCfg: { autoSync: true }, favState: {},
     isFavoritesPage: () => true, favIsOwnFavoritesPage: () => true,
@@ -114,8 +114,10 @@ test('Favorites config normalization preserves durable defaults and future index
   assert.equal('colors' in cfg.filters, false);
   assert.equal(cfg.filters.ready1Day, false);
   assert.equal(cfg.autoSync, true);
+  assert.equal(cfg.autoScanMissingMetadata, true);
   const disabled = api.favNormalizeConfig({ autoSync: false });
   assert.equal(disabled.autoSync, false);
+  assert.equal(api.favNormalizeConfig({ autoScanMissingMetadata: false }).autoScanMissingMetadata, false);
 });
 
 test('legacy Favorites sort values migrate to base sort and direction without resetting', async () => {

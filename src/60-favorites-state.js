@@ -42,6 +42,7 @@ function favDefaultConfig() {
         sort: 'etsy',
         sortReversed: false,
         autoSync: true,
+        autoScanMissingMetadata: true,
         filters: {
             minPrice: '', maxPrice: '', minDiscount: '',
             availableOnly: false, onSale: false, freeShipping: false,
@@ -71,6 +72,7 @@ function favNormalizeConfig(raw) {
         multiRules: normalizeRules(Array.isArray(source.multiRules) && source.multiRules.length ? source.multiRules : base.multiRules),
         ...normalizedSort,
         autoSync: source.autoSync !== false,
+        autoScanMissingMetadata: source.autoScanMissingMetadata !== false,
         filters: {
             minPrice: String(filters.minPrice ?? ''), maxPrice: String(filters.maxPrice ?? ''), minDiscount: String(filters.minDiscount ?? ''),
             availableOnly: filters.availableOnly === true, onSale: filters.onSale === true, freeShipping: filters.freeShipping === true,
@@ -408,6 +410,7 @@ function favHasActiveFilters() {
         f.minPrice || f.maxPrice || f.minDiscount || f.availableOnly || f.onSale || f.freeShipping || f.itemFormat !== 'all'
         || f.minRating || f.minReviews || f.starSeller || f.bestSeller || f.personalizable || f.hasVariations || f.hasVideo
         || f.shop || f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts
+        || f.category || f.etsysPick || f.vintage || f.giftWrap
     );
 }
 

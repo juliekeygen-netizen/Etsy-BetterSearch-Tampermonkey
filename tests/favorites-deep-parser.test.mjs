@@ -93,6 +93,16 @@ test('deep parser preserves unknown for missing positive-only UI signals', async
   }
 });
 
+test("deep parser recognizes Etsy's Pick oneofakind icon fallback", async () => {
+  const api = await loadDeepParser();
+  const parsed = api.favDeepParseListingHtml(
+    '<div><clg-icon name="oneofakind"></clg-icon><span>Etsy\'s Pick</span></div>',
+    'https://www.etsy.com/listing/777777777/pick',
+    { observedAt: 77 }
+  );
+  assert.equal(parsed.listingMetadata.etsysPick.value, true);
+});
+
 test('deep parser accepts explicit shipping and return values from structured/semantic evidence', async () => {
   const api = await loadDeepParser();
   const html = `

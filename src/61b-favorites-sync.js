@@ -131,6 +131,7 @@ async function favSyncScope(scope, options = {}) {
             if (!favSyncJobIsCurrent(jobId, scope.scopeKey) || controller.signal.aborted) throw new DOMException('Stale sync job', 'AbortError');
             const records = Array.from(recordMap.values());
             await favIndexObserveRecords(records, { scope, complete:true, syncState:'completed' });
+            await favIndexHydrateRecords(records);
             if (!favSyncJobIsCurrent(jobId, scope.scopeKey)) return favSyncState;
             if (favSyncCurrentScope().scopeKey === scope.scopeKey) {
                 favState.records = records.slice().sort((a,b) => a.order - b.order);

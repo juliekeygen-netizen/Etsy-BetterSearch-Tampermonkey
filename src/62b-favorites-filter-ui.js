@@ -300,17 +300,18 @@ function favBuildCategory() {
     const wrap = document.createElement('div'); wrap.className = 'ebsf-native-group ebsf-category-list';
     const all = document.createElement('button'); all.type='button'; all.className='ebsf-native-link'; all.textContent='All categories';
     all.classList.toggle('is-selected', !favCfg.filters.category);
-    all.disabled = true;
+    all.addEventListener('click', () => { favCfg.filters.category=''; favSaveAndApply(true); favReplaceSectionBody('category', favBuildCategory); });
     wrap.append(all);
     const shown = favState.categoryExpanded ? FAV_NATIVE_CATEGORIES_ : FAV_NATIVE_CATEGORIES_.slice(0,5);
     for (const [value,label] of shown) {
         const b=document.createElement('button'); b.type='button'; b.className='ebsf-native-link'; b.textContent=label;
         b.classList.toggle('is-selected', favCfg.filters.category===value);
-        b.disabled = true;
+        b.addEventListener('click', () => { favCfg.filters.category=value; favSaveAndApply(true); favReplaceSectionBody('category', favBuildCategory); });
         wrap.append(b);
     }
     const more=document.createElement('button'); more.type='button'; more.className='ebsf-native-show-more'; more.textContent=favState.categoryExpanded?'Show less':'Show more';
-    more.disabled = true; wrap.append(more, favDeepMetadataNote());
+    more.addEventListener('click', () => { favState.categoryExpanded=!favState.categoryExpanded; favReplaceSectionBody('category', favBuildCategory); });
+    wrap.append(more);
     return wrap;
 }
 
@@ -336,11 +337,11 @@ function favBuildItemFormat() {
 
 function favBuildEtsyBest() {
     const wrap=document.createElement('div');wrap.className='ebsf-native-group';
-    const picks=favCheckbox({checked:favCfg.filters.etsysPick,label:"Etsy's Picks",disabled:true});
+    const picks=favCheckbox({checked:favCfg.filters.etsysPick,label:"Etsy's Picks",onChange:(v)=>{favCfg.filters.etsysPick=v;favSaveAndApply(true);}});
     const picksRow=document.createElement('div');picksRow.className='ebsf-native-help-row';picksRow.append(picks.row,favInfoButton("About Etsy's Picks","Etsy’s Picks are hand selected by our style experts to highlight items from shops that have shown quality, reliability and style."));
     const star=favCheckbox({checked:favCfg.filters.starSeller,label:'Star Seller',onChange:(v)=>{favCfg.filters.starSeller=v;favSaveAndApply(true);}});
     const starRow=document.createElement('div');starRow.className='ebsf-native-help-row';starRow.append(star.row,favInfoButton('About Star Seller','Star Sellers have an outstanding track record for providing a great customer experience—they consistently earned 5-star reviews, shipped orders on time, and replied quickly to messages.'));
-    wrap.append(picksRow,starRow,favDeepMetadataNote());return wrap;
+    wrap.append(picksRow,starRow);return wrap;
 }
 
 var FAV_COUNTRY_CODES_ = 'AF AX AL DZ AS AD AO AI AG AR AM AW AU AT AZ BS BH BD BB BE BZ BJ BM BT BO BA BW BV BR IO VG BN BG BF BI KH CM CA CV KY CF TD CL CN CX CC CO KM CG CK CR HR CW CY CZ DK DJ DM DO EC EG SV GQ ER EE ET FK FO FJ FI FR GF PF TF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT HM VA HN HK HU IS IN ID IQ IE IM IL IT JM JP JE JO KZ KE KI KW KG LA LV LB LS LR LY LI LT LU MO MK MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NC NZ NI NE NG NU NF MP NO OM PK PW PS PA PG PY PE PH PL PT PR QA RE RO RW SH KN LC MF PM VC WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS KR SS ES LK SD SR SJ SZ SE CH TW TJ TZ TH NL TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UM UY VI UZ VU VE VN WF EH YE ZM ZW'.split(' ');
@@ -403,11 +404,11 @@ function favBuildPrice(){
     high.addEventListener('change',()=>{f.maxPrice=Number(high.value)<max?high.value:'';favSaveAndApply(true);});sync();return wrap;
 }
 
-function favBuildItemType(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favCheckbox({checked:f.vintage,label:'Vintage',disabled:true}).row,favDeepMetadataNote());return wrap;}
+function favBuildItemType(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favCheckbox({checked:f.vintage,label:'Vintage',onChange:(v)=>{f.vintage=v;favSaveAndApply(true);}}).row);return wrap;}
 function favBuildOrdering(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(
     favCheckbox({checked:f.giftCards,label:'Accepts Etsy gift cards',disabled:true}).row,
-    favCheckbox({checked:f.giftWrap,label:'Can be gift-wrapped',disabled:true}).row,
-    favCheckbox({checked:f.personalizable,label:'Customizable',onChange:(v)=>{f.personalizable=v;favSaveAndApply(true);}}).row,favDeepMetadataNote());return wrap;}
+    favCheckbox({checked:f.giftWrap,label:'Can be gift-wrapped',onChange:(v)=>{f.giftWrap=v;favSaveAndApply(true);}}).row,
+    favCheckbox({checked:f.personalizable,label:'Customizable',onChange:(v)=>{f.personalizable=v;favSaveAndApply(true);}}).row);return wrap;}
 function favBuildShipTo(){const f=favCfg.filters,country=String(favProps()?.countryIsoCode||'FI').toUpperCase();const wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favSelect(f.shipTo||country,favCountryOptions(true),()=>{},'',true),favDeepMetadataNote());return wrap;}
 
 function favBuildExtras(){

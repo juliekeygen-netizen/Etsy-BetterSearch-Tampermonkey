@@ -14,7 +14,7 @@ The userscript remains the established install path.
 
 ### Chrome / Firefox extension builds
 
-Chrome and Firefox builds are generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. Favorites now has a shared, versioned IndexedDB knowledge layer and authoritative cheap-data synchronization; deep listing/shop scanning and the persistent background update queue are still deliberately deferred.
+Chrome and Firefox builds are generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. Favorites has a shared, versioned IndexedDB knowledge layer, authoritative cheap-data synchronization, and a persistent deep-listing metadata queue used by every delivery target.
 
 - See [`extension/README.md`](extension/README.md) for local build and unpacked-install instructions.
 - See [`docs/EXTENSION_ARCHITECTURE.md`](docs/EXTENSION_ARCHITECTURE.md) for the shared-core/background design.
@@ -183,7 +183,7 @@ Named collections use the same control order with Etsy's native **Search within 
 - **Show filters** is styled after Etsy's native search filter button.
 - The native Favorites/collection search form stays in place and continues to work normally.
 - The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
-- The shared outline cog opens a scrollable Favorites Settings view with active Favorite/shop totals, current job state, last full-sync time, manual sync/cancel controls, and the saved auto-sync toggle. Opening either Favorites Settings or Search Scan Settings locks the page behind the modal. The Deep Metadata section is deliberately disabled until listing-page scanning exists.
+- The shared outline cog opens a scrollable Favorites Settings view with Favorites/shop coverage, real sync and deep-scan status, manual update actions, automatic sync settings, and persistent preferences.
 - At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort + Settings stay reachable beside the shrinking native search field, wrapping only on genuinely small screens.
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
@@ -216,7 +216,7 @@ The rail includes Etsy's normal filter structure first, then BetterSearch-specif
 - **Popularity & stock** — low-stock signal and minimum reported cart count
 - **Delivery** — maximum shipping cost / returns / exchanges
 
-Filters for which the current Favorites JSON already exposes reliable metadata are wired into local filtering. Controls whose required metadata is not currently present — Category, Etsy's Picks, Ships from, Ready to ship, Vintage, gift-card/gift-wrap, and Ship to — are visibly unavailable and marked **Requires listing metadata**; previously saved future values remain intact. Color is hidden entirely because no reliable source is known. This avoids pretending unknown metadata is false.
+Category, Etsy's Picks, Vintage, and gift wrapping are wired to the deep listing metadata index. Ships from, Ready to ship, gift-card support, and Ship to remain unavailable until their backing signals are reliable. Color is hidden entirely because no dependable source is known. Unknown metadata is never treated as false.
 
 For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
 
@@ -257,7 +257,7 @@ Reliable current-page and loaded-scope metadata is also merged into a dedicated 
 
 On the user's own Favorites pages, conservative auto-sync checks the complete unfiltered **All Items** scope when it has never completed or its snapshot is at least 12 hours old. The current custom collection, generated group, or native query scope is synchronized separately when due. Pages are fetched sequentially with retry/backoff and cancellation; partial/failed jobs keep useful observations but cannot infer unfavorites. During a meaningful sync, a single-line **Syncing** display with compact count and ETA temporarily occupies the native search field's exact footprint without removing or rebuilding Etsy's form.
 
-**Favorites sync** means this fast Favorites API/card/auxiliary-data refresh into the durable index. A future **deep metadata scan** will fetch individual listing/shop pages for fields Etsy does not expose in Favorites; it is not implemented and its Settings actions remain visibly disabled.
+**Favorites sync** means the fast Favorites API/card/auxiliary-data refresh. A **deep metadata scan** uses the same-site persistent queue to fetch individual listing pages for fields Etsy does not expose in Favorites. Missing and stale metadata can be queued automatically (enabled by default), while **Scan missing metadata** and **Update all metadata** use the same queue. Jobs merge by listing, retry with backoff, survive reload/restart, and resume when an Etsy Favorites page is active. The native search field becomes the real queue progress display while scanning.
 
 Cards already present on the current Etsy Favorites page reuse their original DOM nodes so native event handlers survive. Off-page Favorites have to be reconstructed from Etsy's structured data; their heart action uses BetterSearch's same-site favorite bridge. For reconstructed cards, Add to cart / Multiple options opens the listing page when Etsy's original frontend handler is unavailable.
 

@@ -104,7 +104,7 @@ function favScheduleSync(delay=250){clearTimeout(favState.syncTimer);favState.sy
 function favScheduleCurrentPageObservation(){clearTimeout(favState.observeTimer);favState.observeTimer=setTimeout(()=>{if(isFavoritesPage()&&!favState.rendering)favIndexObserveCurrentPage().catch(()=>{});},1000);}
 
 function favStartRuntime() {
-    if(!isFavoritesPage())return;favState.lastHref=location.href;favState.lastScopeKey=favScopeKey();favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().catch(()=>{});void favRefreshRouteData();
+    if(!isFavoritesPage())return;favState.lastHref=location.href;favState.lastScopeKey=favScopeKey();favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().then(()=>favDeepMaybeAutoScan()).catch(()=>{});void favRefreshRouteData();
     favState.observer?.disconnect();favState.observer=new MutationObserver(()=>{if(!favState.rendering){favScheduleSync();favScheduleCurrentPageObservation();}});favState.observer.observe(document.body,{childList:true,subtree:true});
     window.addEventListener('popstate',()=>favScheduleSync(80));window.addEventListener('pageshow',(event)=>{if(event.persisted)favScheduleSync(0);});
 }

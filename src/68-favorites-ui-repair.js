@@ -317,15 +317,19 @@ async function favRefreshSettingsStatus() {
         const values = {
             last: favSettingsTime(stats.lastFullSyncAt),
             favoritesCoverage: `${favoriteKnown} / ${favoriteTotal || '—'} & ${shopKnown} / ${shopTotal || '—'}`,
-            deepCoverage: `— / ${favoriteTotal || stats.activeFavorites || '—'}`,
+            deepCoverage: `${stats.deepMetadataFavorites || 0} / ${favoriteTotal || stats.activeFavorites || '—'}`,
+            deepLast: favSettingsTime(stats.lastDeepUpdateAt),
+            deepState: favDeepState.status === 'running' ? 'Syncing' : (favDeepState.failed ? 'Needs attention' : 'Idle'),
         };
 
         for (const [key, value] of Object.entries(values)) {
             const node = layer.querySelector(`[data-ebsf-status="${key}"]`);
             if (node) node.textContent = String(value);
         }
+        const deepRunning = favDeepState.status === 'running';
+        layer.querySelectorAll('[data-ebsf-deep-missing],[data-ebsf-deep-all]').forEach((button) => { button.disabled = deepRunning; });
     } catch (_) {
-        for (const key of ['last', 'favoritesCoverage', 'deepCoverage']) {
+        for (const key of ['last', 'favoritesCoverage', 'deepCoverage', 'deepLast', 'deepState']) {
             const node = layer.querySelector(`[data-ebsf-status="${key}"]`);
             if (node) node.textContent = 'Unavailable';
         }
@@ -353,7 +357,7 @@ function favOpenSettingsModal(event) {
                 <div class="ebsf-settings-panel" data-ebsf-settings-panel="data">
                     <section class="ebsf-settings-card ebsf-data-card">
                         <div class="ebsf-settings-heading">
-                            <h3>Favorites data</h3>
+                            <h3>Favorites &amp; Shops Coverage</h3>
                             <p>Fast Favorites and shop data collected without opening individual listing pages.</p>
                         </div>
                         <dl class="ebsf-deep-status">
@@ -374,14 +378,18 @@ function favOpenSettingsModal(event) {
                             <p>Listing-page scanning for metadata Etsy does not expose through Favorites data.</p>
                         </div>
                         <dl class="ebsf-deep-status">
-                            <div><dt>Status</dt><dd>Not enabled</dd></div>
+                            <div><dt>Status</dt><dd data-ebsf-status="deepState">Idle</dd></div>
                             <div><dt>Metadata coverage</dt><dd data-ebsf-status="deepCoverage">—</dd></div>
-                            <div><dt>Last deep update</dt><dd>Never</dd></div>
+                            <div><dt>Last deep update</dt><dd data-ebsf-status="deepLast">Never</dd></div>
                         </dl>
                         <div class="ebsf-deep-actions">
-                            <button type="button" class="ebs-button is-quiet" disabled title="Available in a future deep-scanner phase">Scan missing metadata</button>
-                            <button type="button" class="ebs-button is-quiet" disabled title="Available in a future deep-scanner phase">Update all metadata</button>
+                            <button type="button" class="ebs-button is-quiet" data-ebsf-deep-missing>Scan missing metadata</button>
+                            <button type="button" class="ebs-button is-quiet" data-ebsf-deep-all>Update all metadata</button>
                         </div>
+                        <label class="ebsf-settings-toggle">
+                            <span><strong>Automatically scan missing metadata</strong><small>Queue new, missing, and stale Favorites metadata when Favorites loads.</small></span>
+                            <input type="checkbox" data-ebsf-auto-deep ${favCfg.autoScanMissingMetadata ? 'checked' : ''}>
+                        </label>
                     </section>
 
                     <section class="ebsf-settings-card ebsf-auto-sync-card">
@@ -414,7 +422,7 @@ function favOpenSettingsModal(event) {
                         </div>
                         <label class="ebsf-settings-toggle">
                             <span>
-                                <strong>Auto-open active filter sections</strong>
+                                <strong>Automatically open active filter sections</strong>
                                 <small>When you show Filters, expand sections containing a changed or enabled filter.</small>
                             </span>
                             <input type="checkbox" data-ebsf-auto-open-active ${favUiPrefs.autoOpenActiveSections ? 'checked' : ''}>
@@ -478,6 +486,14 @@ function favOpenSettingsModal(event) {
         favUiPrefs.autoOpenActiveSections = changeEvent.target.checked;
         favSaveUiPrefs();
     });
+
+    layer.querySelector('[data-ebsf-auto-deep]').addEventListener('change', (changeEvent) => {
+        favCfg.autoScanMissingMetadata = changeEvent.target.checked;
+        favSaveConfig();
+        if (favCfg.autoScanMissingMetadata) void favDeepMaybeAutoScan();
+    });
+    layer.querySelector('[data-ebsf-deep-missing]').addEventListener('click', () => void favDeepScanMissing());
+    layer.querySelector('[data-ebsf-deep-all]').addEventListener('click', () => void favDeepUpdateAll());
 
     layer.querySelector('[data-ebsf-sync-now]').addEventListener('click', () => {
         void favSyncScope(favSyncAllItemsScope(), { independent:true });

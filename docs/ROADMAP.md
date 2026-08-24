@@ -2,7 +2,7 @@
 
 This roadmap is the implementation plan for evolving BetterSearch from a userscript-first project into one shared codebase that can ship as Tampermonkey, Chrome, and Firefox builds while adding a durable Favorites metadata index and deeper filtering later.
 
-The shared build, Favorites UI parity pass, durable metadata index, and authoritative cheap Favorites synchronization are now implemented. Deep listing/shop scanning and its persistent background queue remain deliberately phased future work.
+The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, and persistent deep-listing queue are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
 
 ## Guiding rules
 
@@ -230,26 +230,27 @@ Rule: a parser version bump invalidates only fields whose extraction logic chang
 
 ---
 
-## Phase 5 — Persistent background scan queue
+## Phase 5 — Persistent scan queue (implemented in shared content runtime)
 
-This is where the extension becomes meaningfully better than Tampermonkey.
+The cross-browser foundation is implemented with one persistent IndexedDB queue and a bounded content-context worker. This gives all targets identical semantics and restart-safe jobs while an Etsy Favorites page is active.
 
 ### Extension behavior
 
-Move the deep metadata queue into the background context.
+Future extension hardening may move queue ownership into the background context without changing the stored job model.
 
-Each job should include:
+Each implemented listing job includes:
 
 ```text
-jobId
-listingId or shopId
-kind
+id
+listingId
+type
 priority
-attempt
-nextAttemptAt
-reason
-requestedFields
+status
+attempts
 createdAt
+startedAt
+finishedAt
+error
 ```
 
 Priority examples:

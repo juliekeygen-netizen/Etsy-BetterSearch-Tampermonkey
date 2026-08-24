@@ -23,9 +23,9 @@ test('v0.9.6 sort menu is a stable top-level portal with whole-row selection', a
   assert.match(source, /favOpenSortMenu\(root\)/);
 });
 
-test('v0.9.6 settings order is Favorites data, Deep listing metadata, Automatic sync', async () => {
+test('Favorites settings order is coverage, Deep listing metadata, Automatic sync', async () => {
   const source = await readFile(repairPath, 'utf8');
-  const favorites = source.indexOf('<h3>Favorites data</h3>');
+  const favorites = source.indexOf('<h3>Favorites &amp; Shops Coverage</h3>');
   const deep = source.indexOf('<h3>Deep listing metadata</h3>');
   const automatic = source.indexOf('<h3>Automatic sync</h3>');
   assert.ok(favorites >= 0);
@@ -46,5 +46,5 @@ test('v0.9.6 repair loads after previous Favorites polish and before runtime', a
   assert.ok(activation > polish);
   assert.ok(repair > activation);
   assert.ok(runtime > repair);
-  assert.match(userscript, /@version\s+0\.9\.6/);
+  assert.match(userscript, /@version\s+0\.10\.0/);
 });

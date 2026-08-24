@@ -201,7 +201,8 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
 
     const etsysPickPositive =
         /aria-describedby\s*=\s*["']etsys_pick["']/i.test(sourceHtml)
-        || /<clg-signal\b[\s\S]{0,600}Etsy(?:’|')s Pick/i.test(sourceHtml);
+        || /<clg-signal\b[\s\S]{0,600}Etsy(?:’|')s Pick/i.test(sourceHtml)
+        || /<clg-icon\b[^>]*name\s*=\s*["']oneofakind["'][^>]*>[\s\S]{0,400}Etsy(?:’|')s Pick/i.test(sourceHtml);
     const starSellerPositive =
         /clg-profile-avatar__badge-star-seller/i.test(sourceHtml)
         || /<strong>\s*Star Seller\.\s*<\/strong>/i.test(sourceHtml);
@@ -309,7 +310,7 @@ async function favDeepFetchListing(recordOrUrl, options = {}) {
 
     const response = await fetch(url, {
         method: 'GET',
-        credentials: 'same-origin',
+        credentials: 'include',
         signal: options.signal,
         headers: { Accept: 'text/html,application/xhtml+xml' },
     });

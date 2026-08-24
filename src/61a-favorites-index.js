@@ -5,7 +5,7 @@
  * available to both delivery targets in Etsy's page context and is suitable for
  * the much larger listing/shop index planned for later scanner phases. */
 var FAV_INDEX_DB_NAME = 'etsy-bettersearch-favorites';
-var FAV_INDEX_DB_VERSION = 1;
+var FAV_INDEX_DB_VERSION = 2;
 var FAV_INDEX_METADATA_VERSION = 1;
 var FAV_INDEX_PARSER_VERSION = 'favorites-card-v1';
 var FAV_INDEX_SOURCE_PRIORITY = {
@@ -278,6 +278,12 @@ function favIndexOpen() {
             }
             if (!db.objectStoreNames.contains('shops')) db.createObjectStore('shops', { keyPath: 'shopId' });
             if (!db.objectStoreNames.contains('scopes')) db.createObjectStore('scopes', { keyPath: 'scopeKey' });
+            if (!db.objectStoreNames.contains('deepScanQueue')) {
+                const queue = db.createObjectStore('deepScanQueue', { keyPath: 'id' });
+                queue.createIndex('status', 'status', { unique:false });
+                queue.createIndex('priority', 'priority', { unique:false });
+                queue.createIndex('listingId', 'listingId', { unique:false });
+            }
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => { favIndexDatabasePromise = null; reject(request.error); };
@@ -422,13 +428,58 @@ async function favIndexGetStats(owner = '') {
     const indexedIds = new Set(ownedScopes.flatMap((scope) => scope.listingIds || []).map(String));
     const ownedListings = owner ? listings.filter((listing) => indexedIds.has(String(listing.listingId))) : listings;
     const ownedShopIds = new Set(ownedListings.map((listing) => String(listing.shopId || '')).filter(Boolean));
+    const activeListings = ownedListings.filter((listing) => listing.isFavorite === true);
+    const deepListings = activeListings.filter((listing) => Number(listing.lastDeepScanAt) > 0);
     return {
         indexedFavorites: ownedListings.length,
-        activeFavorites: ownedListings.filter((listing) => listing.isFavorite === true).length,
+        activeFavorites: activeListings.length,
         indexedShops: owner ? shops.filter((shop) => ownedShopIds.has(String(shop.shopId))).length : shops.length,
+        deepMetadataFavorites: deepListings.length,
+        lastDeepUpdateAt: deepListings.reduce((latest, listing) => Math.max(latest, Number(listing.lastDeepScanAt) || 0), 0),
         lastFullSyncAt: allItems?.lastCompleteSyncAt || 0,
         allItemsScope: allItems || null,
     };
+}
+
+async function favIndexGetActiveListings(owner = '') {
+    const db = await favIndexOpen();
+    const transaction = db.transaction(['listings', 'scopes'], 'readonly');
+    const [listings, scopes] = await Promise.all([
+        favIndexRequest(transaction.objectStore('listings').getAll()),
+        favIndexRequest(transaction.objectStore('scopes').getAll()),
+    ]);
+    if (!owner) return listings.filter((listing) => listing.isFavorite === true);
+    const ids = new Set(scopes
+        .filter((scope) => String(scope.owner || '') === String(owner))
+        .flatMap((scope) => scope.listingIds || [])
+        .map(String));
+    return listings.filter((listing) => listing.isFavorite === true && ids.has(String(listing.listingId)));
+}
+
+function favIndexApplyListingMetadataToRecord(record, listing) {
+    if (!record || !listing) return record;
+    const value = (group, key) => group?.[key]?.known ? group[key].value : undefined;
+    const category = value(listing.listingMetadata, 'category');
+    record.deepMetadata = {
+        scannedAt: Number(listing.lastDeepScanAt) || 0,
+        parserVersion: String(listing.deepParserVersion || ''),
+        etsysPick: value(listing.listingMetadata, 'etsysPick'),
+        vintage: value(listing.listingMetadata, 'vintage'),
+        vintageEra: value(listing.listingMetadata, 'vintageEra'),
+        giftWrap: value(listing.listingMetadata, 'giftWrap'),
+        category: Array.isArray(category) ? category.slice() : (category ? [String(category)] : []),
+    };
+    return record;
+}
+
+async function favIndexHydrateRecords(records) {
+    const list = Array.from(records || []);
+    if (!list.length) return list;
+    const db = await favIndexOpen();
+    const store = db.transaction('listings', 'readonly').objectStore('listings');
+    const indexed = await Promise.all(list.map((record) => favIndexRequest(store.get(String(record.id || record.listingId || '')))));
+    list.forEach((record, index) => favIndexApplyListingMetadataToRecord(record, indexed[index]));
+    return list;
 }
 
 function favIndexMarkUnfavorite(listingId, observedAt = Date.now()) {
