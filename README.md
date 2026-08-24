@@ -1,12 +1,28 @@
 # Etsy BetterSearch
 
-A Tampermonkey userscript that makes Etsy search more literal and useful while preserving Etsy's normal filters, sorting, and listing-card UI. It also adds advanced filtering, sorting, Strict Title, and Multi-search tools to your Etsy Favorites.
+A cross-browser Etsy enhancement for more literal marketplace search and much stronger Favorites filtering/sorting while preserving Etsy's native UI. BetterSearch remains available as a Tampermonkey userscript, and the same shared feature modules now also build into Chrome and Firefox extensions.
 
-## Install
+## Status and installs
+
+### Tampermonkey
+
+The userscript remains the established install path.
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/).
 2. Open the [Etsy BetterSearch userscript](https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js).
 3. Confirm the installation and refresh Etsy.
+
+### Chrome / Firefox extension builds
+
+Chrome and Firefox builds are now generated from the **same ordered `src/` modules** as the userscript rather than maintained as separate copies. The browser-extension conversion is currently in its parity/testing phase; the large future Favorites metadata index/deep-scanner work has deliberately not been moved into production yet.
+
+- See [`extension/README.md`](extension/README.md) for local build and unpacked-install instructions.
+- See [`docs/EXTENSION_ARCHITECTURE.md`](docs/EXTENSION_ARCHITECTURE.md) for the shared-core/background design.
+- See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phased Favorites metadata/index/scanner plan.
+
+Repository CI syntax-checks/tests the project, builds both browser targets, and uploads Chrome/Firefox artifacts. Tagged releases can package both extension ZIPs together with the userscript.
+
+> When testing an extension build, disable the Tampermonkey copy of BetterSearch on Etsy so two BetterSearch runtimes do not inject the same UI simultaneously.
 
 ## Marketplace search
 
@@ -59,7 +75,7 @@ BetterSearch searches `subahibi charm` and `saya no uta charm`, merges/deduplica
 
 `Contains` supports **Case sensitive**, **Exact word / phrase**, and **Any word**. The collapsed **Search preview** shows the generated queries before Apply.
 
-Applied rules, order, enabled states, operators, options, and values persist through Tampermonkey storage.
+Applied rules, order, enabled states, operators, options, and values persist through BetterSearch storage.
 
 ## Scan settings
 
@@ -171,7 +187,7 @@ Named collections use the same control order with Etsy's native **Search within 
 - Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
 
-The Favorites filter rail now mirrors Etsy's marketplace filter rail much more closely: native-style accordion rows, matching divider/spacing behavior, compact checkboxes/radios/selects, a dual-thumb price slider with paired price inputs, Etsy-like disclosure chevrons, category/color “Show more” patterns, and small help popovers rather than permanent explanatory copy. Sections remember their open/closed state while filters reapply. Clicking the **Filters** heading itself closes the rail.
+The Favorites filter rail mirrors Etsy's marketplace filter rail closely: native-style accordion rows, matching divider/spacing behavior, compact checkboxes/radios/selects, a dual-thumb price slider with paired price inputs, Etsy-like disclosure chevrons, category/color “Show more” patterns, and small help popovers rather than permanent explanatory copy. Sections remember their open/closed state while filters reapply. Clicking the **Filters** heading itself closes the rail.
 
 The custom **Search** drawer remains at the top. **Strict title** and **Multi-search** use split pills; Strict's caret opens **Exact phrase / All words directly between Strict title and Multi-search**, while Multi-search's caret opens the rule editor.
 
@@ -238,7 +254,7 @@ Favorites loading uses Etsy's own logged-in Favorites JSON requests and structur
 
 Cards already present on the current Etsy Favorites page reuse their original DOM nodes so native event handlers survive. Off-page Favorites have to be reconstructed from Etsy's structured data; their heart action uses BetterSearch's same-site favorite bridge. For reconstructed cards, Add to cart / Multiple options opens the listing page when Etsy's original frontend handler is unavailable.
 
-Favorites filter/sort settings and rules persist through Tampermonkey storage. **Reset** clears the active Favorites filters/sort/modes while keeping your saved Multi-search rule definitions available for later reuse.
+Favorites filter/sort settings and rules persist through BetterSearch storage. **Reset** clears the active Favorites filters/sort/modes while keeping your saved Multi-search rule definitions available for later reuse.
 
 ## Favorite hearts on marketplace results
 
@@ -256,16 +272,66 @@ Rightmost Etsy recommendation chips are hidden as needed so BetterSearch's contr
 
 The Multi-search and Scan settings windows both have responsive phone layouts. Modal and settings text is intentionally larger than the initial versions so helper text and rule controls remain readable without zooming in.
 
+## Build and test
+
+Requires Node.js 20+.
+
+```bash
+npm run check
+npm test
+npm run build
+```
+
+`npm run build` generates `dist/chrome/` and `dist/firefox/`. Build output is intentionally ignored by Git because GitHub Actions/release workflows create it from source.
+
+The repository checks that:
+
+- every userscript `@require` module exists;
+- all `?v=` cache-busters match the userscript/package version;
+- shared source/tooling parses successfully;
+- the final concatenated extension bundle parses successfully;
+- Chrome and Firefox manifests use the expected MV3 background model;
+- extension manifest descriptions remain within browser-store limits.
+
 ## Project structure
 
-`etsy-bettersearch.user.js` is the Tampermonkey install/update entry point. The implementation is split into ordered modules under `src/` and loaded with `@require`.
+`etsy-bettersearch.user.js` is the Tampermonkey install/update entry point and remains the canonical ordered list of shared feature modules.
 
-Marketplace search and Favorites use separate state/data/rendering paths so a Favorites filter cannot alter the marketplace search configuration accidentally.
+```text
+etsy-bettersearch.user.js   userscript metadata + shared module order
+src/                        shared BetterSearch feature modules
+extension/                  browser platform adapter/background shell + guide
+scripts/                    consistency checks and Chrome/Firefox builder
+tests/                      Node tests for metadata/build/manifests
+docs/                       extension architecture and phased roadmap
+.github/workflows/           CI builds/tests and tagged release packaging
+```
+
+The extension builder reads the userscript's exact `@require` order and bundles those same modules into its content script. Marketplace search and Favorites continue to use separate state/data/rendering paths so a Favorites filter cannot alter marketplace search configuration accidentally.
+
+Current extension persistence uses `browser.storage.local` / `chrome.storage.local` behind the small GM compatibility adapter. Tampermonkey storage and extension storage remain separate until an explicit versioned export/import migration is implemented.
+
+## Roadmap
+
+The next large work is intentionally phased rather than mixed into the browser conversion:
+
+1. Chrome/Firefox behavior parity and smoke testing.
+2. Durable Favorites listing/shop/scope database.
+3. Authoritative Favorites synchronization.
+4. Deep listing-page metadata parser.
+5. Persistent background scan queue with resumable retries.
+6. Wire currently-unknown Category/Color/Shipping/etc. filters only once metadata is verified.
+7. Native-style UI/mobile hardening and large-library testing.
+8. Explicit Tampermonkey ↔ extension settings export/import and release hardening.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full plan, including unfavorite/refavorite lifecycle, metadata unknown/stale states, scanner priorities, shop-level deduplication, UI edge cases, and release phases.
 
 ## Notes
 
 BetterSearch does not use the Etsy Open API. It operates on Etsy pages and the logged-in Etsy web requests those pages use.
 
 Etsy can change its page structure or internal web endpoints at any time, so selectors/request adapters may occasionally need updating.
+
+The future scanner design deliberately avoids CAPTCHA/anti-bot/throttling bypass logic and uses conservative same-site requests, caching, cancellation, and retry/backoff instead.
 
 This project is unofficial and is not affiliated with Etsy.
