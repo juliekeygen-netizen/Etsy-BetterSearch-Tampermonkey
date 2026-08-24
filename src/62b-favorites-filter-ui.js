@@ -47,13 +47,13 @@ function favNativeSection(title, body, key) {
     const sectionKey = key || normalize(title).replace(/\s+/g, '-');
     const open = favState.openSections.has(sectionKey);
     const root = document.createElement('div');
-    root.className = 'ebsf-section collapsible-filter-bb';
+    root.className = 'ebsf-section';
     root.dataset.ebsfSection = sectionKey;
 
     const id = `ebsf-filter-section-${++favSectionCounter}`;
     const trigger = document.createElement('button');
     trigger.type = 'button';
-    trigger.className = 'wt-btn wt-btn--transparent wt-width-full ebsf-native-section-trigger';
+    trigger.className = 'ebsf-native-section-trigger';
     trigger.setAttribute('aria-controls', id);
     trigger.setAttribute('aria-expanded', String(open));
     trigger.innerHTML = `<span class="wt-flex-xs-auto wt-width-full ebsf-native-section-title"></span>${favChevronMarkup()}`;
@@ -71,8 +71,13 @@ function favNativeSection(title, body, key) {
         trigger.setAttribute('aria-expanded', String(next));
         content.setAttribute('aria-hidden', String(!next));
         favAnimateSection(content, next);
-        if (next) favState.openSections.add(sectionKey);
-        else favState.openSections.delete(sectionKey);
+        if (next) {
+            favState.openSections.add(sectionKey);
+            favState.manualOpenSections.add(sectionKey);
+        } else {
+            favState.openSections.delete(sectionKey);
+            favState.manualOpenSections.delete(sectionKey);
+        }
     });
     root.append(trigger, content);
     return root;
@@ -428,11 +433,12 @@ function favBuildExtras(){
 
 function favBuildFilterRail() {
     favCloseInfo();
+    favPrepareOpenSectionsForRail();
     const rail=document.createElement('div');rail.className='ebsf-rail';rail.dataset.ebsfRail='';
     const header=document.createElement('div');header.className='ebsf-rail-header ebsf-native-rail-header';
     const heading=document.createElement('button');heading.type='button';heading.className='ebsf-filter-heading ebsf-native-filter-heading';heading.textContent='Filters';heading.setAttribute('aria-label','Hide filters');heading.addEventListener('click',favCloseFilters);
     const reset=document.createElement('button');reset.type='button';reset.className='ebsf-native-reset';reset.textContent='Reset';
-    reset.addEventListener('click',async()=>{const keepRules=favCfg.multiRules,keepAutoSync=favCfg.autoSync;favCfg=favDefaultConfig();favCfg.multiRules=keepRules;favCfg.autoSync=keepAutoSync;favState.strictSettingsOpen=false;favSaveConfig();favRefreshRail();await favReapply(true);});
+    reset.addEventListener('click',async()=>{const keepRules=favCfg.multiRules,keepAutoSync=favCfg.autoSync;favCfg=favDefaultConfig();favCfg.multiRules=keepRules;favCfg.autoSync=keepAutoSync;favState.strictSettingsOpen=false;favState.manualOpenSections.clear();favSaveConfig();favRefreshRail();await favReapply(true);});
     header.append(heading,reset);rail.append(header);
 
     rail.append(

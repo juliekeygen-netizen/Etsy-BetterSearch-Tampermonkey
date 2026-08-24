@@ -226,6 +226,8 @@ function lockPageScroll() {
     const paddingRight = Number.parseFloat(getComputedStyle(body).paddingRight) || 0;
     state.scrollLock = {
         count: 1, x, y,
+        htmlHadLockClass: html.classList.contains('ebs-page-scroll-locked'),
+        bodyHadLockClass: body.classList.contains('ebs-page-scroll-locked'),
         htmlOverflow: html.style.overflow,
         htmlOverscrollBehavior: html.style.overscrollBehavior,
         bodyOverflow: body.style.overflow,
@@ -236,6 +238,8 @@ function lockPageScroll() {
         width: body.style.width,
         paddingRight: body.style.paddingRight,
     };
+    html.classList.add('ebs-page-scroll-locked');
+    body.classList.add('ebs-page-scroll-locked');
     html.style.overflow = 'hidden';
     html.style.overscrollBehavior = 'none';
     body.style.overflow = 'hidden';
@@ -258,6 +262,8 @@ function unlockPageScroll() {
     state.scrollLock = null;
     const html = document.documentElement;
     const body = document.body;
+    if (!saved.htmlHadLockClass) html.classList.remove('ebs-page-scroll-locked');
+    if (!saved.bodyHadLockClass) body.classList.remove('ebs-page-scroll-locked');
     html.style.overflow = saved.htmlOverflow;
     html.style.overscrollBehavior = saved.htmlOverscrollBehavior;
     body.style.overflow = saved.bodyOverflow;

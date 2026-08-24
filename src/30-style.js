@@ -36,6 +36,7 @@ GM_addStyle(`
     @media (prefers-reduced-motion:reduce) { .ebs-scan-spinner { animation:none; border-top-color:#777; } }
 
     .ebs-modal-layer { position:fixed; inset:0; z-index:100000; display:grid; place-items:center; padding:clamp(10px,2vw,24px); background:rgba(34,34,34,.48); box-sizing:border-box; }
+    html.ebs-page-scroll-locked, body.ebs-page-scroll-locked { overflow:hidden!important; overscroll-behavior:none!important; }
     .ebs-modal { display:flex; flex-direction:column; width:min(1092px,calc(100vw - clamp(20px,4vw,48px))); max-width:1092px; max-height:calc(100vh - clamp(20px,4vw,48px)); overflow:hidden; border:1px solid #d8d8d2; border-radius:12px; background:#fffdf9; color:#222; box-shadow:0 18px 60px rgba(0,0,0,.22); }
     .ebs-modal-header { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:8px 24px; padding:18px 20px 12px; border-bottom:1px solid #deded8; }
     .ebs-modal-title { margin:0; padding:0; font-size:18px; font-weight:700; letter-spacing:.015em; }

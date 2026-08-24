@@ -18,7 +18,7 @@ async function loadState() {
     defaultRule: (logic, value) => ({ id: 'rule', enabled: true, logic, polarity: 'match', operator: 'contains', value, options: {} }),
     normalizeRules: (rules) => structuredClone(rules),
   });
-  vm.runInContext(`${source}\nglobalThis.testApi={FAV_SORT_DEFINITIONS,favDefaultConfig,favNormalizeSort,favNormalizeConfig,favSortLabel,favActiveSectionKeys,favInitializeOpenSections,favSetSearchMode,favSaveConfig,getConfig:()=>favCfg,getState:()=>favState};`, context);
+  vm.runInContext(`${source}\nglobalThis.testApi={FAV_SORT_DEFINITIONS,favDefaultConfig,favNormalizeSort,favNormalizeConfig,favSortLabel,favActiveSectionKeys,favInitializeOpenSections,favPrepareOpenSectionsForRail,favSetSearchMode,favSaveConfig,getConfig:()=>favCfg,getState:()=>favState};`, context);
   context.testApi.getSaved = () => holder.saved;
   return context.testApi;
 }
@@ -39,7 +39,7 @@ async function loadUiHelpers() {
     window: { addEventListener: () => {} }, GM_getValue: () => ({}), GM_setValue: () => {},
     defaultRule: (logic, value) => ({ id: 'rule', logic, value }), normalizeRules: (rules) => rules,
   });
-  vm.runInContext(`${stateSource}\n${uiSource}\nglobalThis.testApi={favChevronMarkup,favReverseSortIconMarkup,favSortTriggerWidth};`, context);
+  vm.runInContext(`${stateSource}\n${uiSource}\nglobalThis.testApi={favChevronMarkup,favReverseSortIconMarkup,favSortTriggerWidth,favSyncCompactDetail};`, context);
   return context.testApi;
 }
 
@@ -47,8 +47,12 @@ async function loadScrollLock() {
   const source = await readFile(resolve(ROOT, 'src/40-toolbar.js'), 'utf8');
   const selected = source.slice(source.indexOf('function pageScrollLockAllowsKey'), source.indexOf('function modalCounts'));
   const listeners = new Map();
-  const html = { clientWidth: 1180, style: { overflow: 'clip', overscrollBehavior: 'contain' } };
-  const body = { style: { overflow: 'auto', position: 'relative', top: '1px', left: '2px', right: '3px', width: '90%', paddingRight: '4px' } };
+  const makeClassList = () => {
+    const values = new Set();
+    return { add: (...items) => items.forEach((item) => values.add(item)), remove: (...items) => items.forEach((item) => values.delete(item)), contains: (item) => values.has(item) };
+  };
+  const html = { clientWidth: 1180, classList: makeClassList(), style: { overflow: 'clip', overscrollBehavior: 'contain' } };
+  const body = { classList: makeClassList(), style: { overflow: 'auto', position: 'relative', top: '1px', left: '2px', right: '3px', width: '90%', paddingRight: '4px' } };
   const scrolls = [];
   const context = vm.createContext({
     state: { scrollLock: null },
@@ -176,6 +180,7 @@ test('Favorites UI helpers provide stable sort width, outline icons, and one sha
   assert.equal(api.favSortTriggerWidth((label) => label.length), 'Shipping: high to low'.length + 54);
   assert.equal((api.favChevronMarkup().match(/class="ebsf-chevron"/g) || []).length, 1);
   assert.match(api.favReverseSortIconMarkup(), /fill="none"/);
+  assert.equal(api.favSyncCompactDetail({ processed: 40, expectedTotal: 61, estimatedRemainingMs: 4100 }), '40 / 61 · ~5s');
 
   const iconSource = await readFile(resolve(ROOT, 'src/45-scan-settings-ui.js'), 'utf8');
   assert.match(iconSource, /viewBox="0 0 24 24" fill="none" stroke="currentColor"/);
@@ -184,6 +189,8 @@ test('Favorites UI helpers provide stable sort width, outline icons, and one sha
   const railSource = await readFile(resolve(ROOT, 'src/62b-favorites-filter-ui.js'), 'utf8');
   assert.match(railSource, /favChevronMarkup\(\)/);
   assert.doesNotMatch(railSource, /wt-content-toggle--btn__icon/);
+  assert.doesNotMatch(railSource, /collapsible-filter-bb/);
+  assert.doesNotMatch(railSource, /trigger\.className = 'wt-btn/);
 });
 
 test('shared modal scroll lock is balanced and restores exact page state', async () => {
@@ -193,6 +200,8 @@ test('shared modal scroll lock is balanced and restores exact page state', async
   api.lockPageScroll();
   assert.equal(api.getLock().count, 2);
   assert.equal(api.body.style.position, 'fixed');
+  assert.equal(api.html.classList.contains('ebs-page-scroll-locked'), true);
+  assert.equal(api.body.classList.contains('ebs-page-scroll-locked'), true);
   assert.equal(api.body.style.top, '-231px');
   assert.equal(api.listeners.has('wheel'), true);
   api.unlockPageScroll();
@@ -201,20 +210,33 @@ test('shared modal scroll lock is balanced and restores exact page state', async
   api.unlockPageScroll();
   assert.equal(api.getLock(), null);
   assert.deepEqual(api.body.style, originalBody);
+  assert.equal(api.html.classList.contains('ebs-page-scroll-locked'), false);
+  assert.equal(api.body.classList.contains('ebs-page-scroll-locked'), false);
   assert.deepEqual(api.scrolls, [[17, 231]]);
   assert.equal(api.listeners.size, 0);
 });
 
 test('Favorites search progress preserves the native form and restores it on every terminal state', async () => {
   const source = await readFile(resolve(ROOT, 'src/62-favorites-ui.js'), 'utf8');
+  const styles = await readFile(resolve(ROOT, 'src/65-favorites-style.js'), 'utf8');
   assert.match(source, /anchor\.form\.classList\.add\('ebsf-native-search-sync-hidden'\)/);
-  assert.match(source, /form\.offsetWidth/);
-  assert.match(source, /form\.offsetHeight/);
+  assert.match(source, /searchSlot\.before\(row\);row\.append\(searchSlot\)/);
+  assert.match(styles, /\.ebsf-toolbar-row\{[^}]*width:100%!important/);
+  assert.match(styles, /\.ebsf-sync-progress\{[^}]*position:absolute;inset:0/);
+  assert.match(source, /<strong>Syncing<\/strong>/);
+  assert.match(source, /favSyncCompactDetail\(\)/);
+  assert.doesNotMatch(source, /<strong><\/strong>/);
   assert.match(source, /classList\.remove\('ebsf-native-search-sync-hidden'\)/);
   assert.match(source, /if\(favSyncState\.status==='running'\)favRenderSyncProgress\(\);else favHideSyncProgress\(\)/);
 });
 
-test('active Favorites values determine initial accordion sections without persisting manual disclosure state', async () => {
+test('Favorites Settings owns a viewport-bounded scroll container', async () => {
+  const styles = await readFile(resolve(ROOT, 'src/65-favorites-style.js'), 'utf8');
+  assert.match(styles, /\.ebsf-settings-modal>\.ebs-modal-editor\{[^}]*overflow-y:auto/);
+  assert.match(styles, /max-height:min\(760px,calc\(100dvh - 24px\)\)/);
+});
+
+test('active Favorites values reopen accordion sections whenever the rail is shown without persisting manual disclosure state', async () => {
   const api = await loadState();
   const cfg = api.favDefaultConfig();
   cfg.strict = true;
@@ -228,7 +250,15 @@ test('active Favorites values determine initial accordion sections without persi
   state.openSectionsInitialized = false;
   Object.assign(api.getConfig(), cfg);
   api.favInitializeOpenSections();
-  state.openSections.add('category');
+  state.manualOpenSections.add('category');
+  state.openSections.delete('price');
+  api.favPrepareOpenSectionsForRail();
+  assert.equal(state.openSections.has('price'), true);
+  assert.equal(state.openSections.has('category'), true);
+  api.getConfig().filters.minPrice = '';
+  api.favPrepareOpenSectionsForRail();
+  assert.equal(state.openSections.has('price'), false);
+  assert.equal(state.openSections.has('category'), true);
   api.favSaveConfig();
   assert.equal(api.getSaved().openSections, undefined);
   assert.equal(api.getSaved().filters.openSections, undefined);
@@ -434,7 +464,9 @@ test('job identity rejects stale scope results and progress model is UI-ready', 
   const api = await loadSync();
   assert.equal(api.favSyncJobIsCurrent(99, 'other'), false);
   const model = api.favSyncProgressModel({ processed: 40, expectedTotal: 61, pagesProcessed: 2, estimatedRemainingMs: 4100 });
-  assert.equal(model.title, 'Syncing favorites… 40 / 61');
-  assert.match(model.detail, /2 pages remaining/);
+  assert.equal(model.title, 'Syncing');
+  assert.match(model.detail, /^40 \/ 61/);
+  assert.match(model.detail, /2 pages left/);
+  assert.match(model.detail, /~4s/);
   assert.equal(Math.round(model.ratio * 100), 66);
 });

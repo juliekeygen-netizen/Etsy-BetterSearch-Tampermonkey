@@ -135,6 +135,7 @@ var favState = {
     ruleDragId: '',
     ruleMenu: null,
     openSections: new Set(),
+    manualOpenSections: new Set(),
     openSectionsInitialized: false,
     strictSettingsOpen: false,
     settingsModal: null,
@@ -389,6 +390,15 @@ function favInitializeOpenSections() {
     if (favState.openSectionsInitialized) return favState.openSections;
     favState.openSections = favActiveSectionKeys(favCfg);
     favState.openSectionsInitialized = true;
+    return favState.openSections;
+}
+
+function favPrepareOpenSectionsForRail() {
+    favInitializeOpenSections();
+    favState.openSections = new Set([
+        ...favState.manualOpenSections,
+        ...favActiveSectionKeys(favCfg),
+    ]);
     return favState.openSections;
 }
 
