@@ -43,6 +43,18 @@ favOpenSettingsModal = function favOpenSettingsModal0110(event) {
     layoutRow.querySelector('[data-ebsf-open-layout-editor]').addEventListener('click', () => favOpenLayoutEditor0110('filters'));
 };
 
+/* The runtime creates the first Favorites toolbar before this late patch loads,
+ * so its Settings button still owns the old function object. Capture the click
+ * and route it to the final settings implementation. Future toolbar instances
+ * work through the same path, avoiding duplicate handlers. */
+document.addEventListener('click', (event) => {
+    const button = event.target.closest?.('[data-ebsf-settings]');
+    if (!button || !isFavoritesPage()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    favOpenSettingsModal({ currentTarget:button });
+}, true);
+
 /* ---------- Initial live DOM upgrade ---------- */
 if (isFavoritesPage()) {
     favEnsureVisibleActiveSort0110();
