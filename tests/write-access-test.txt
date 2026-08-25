@@ -1,3 +1,0 @@
-Etsy BetterSearch repository write access test.
-
-Created to verify that automated repository writes are working.
