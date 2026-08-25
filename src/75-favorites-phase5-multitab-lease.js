@@ -1,22 +1,22 @@
 'use strict';
 
-/* v0.10.5 Phase 5 multi-tab queue hardening.
+/* v0.10.6 Phase 5 multi-tab queue hardening.
  *
- * IndexedDB persists across tabs, but the original recovery/claim path was only
- * serialized inside one JavaScript realm. Two Etsy tabs could therefore both
- * observe the same queued/running job: a newly opened tab could "recover" work
- * that another live tab was still processing, or two tabs could claim the same
- * queued listing before either write became visible.
+ * IndexedDB queue claims/recovery are atomic across Etsy tabs and every running
+ * job carries a renewable worker lease. v0.10.6 additionally makes completion,
+ * cancellation and failure transitions compare-and-set on that lease owner.
+ * This closes the stale-worker race where a tab that woke after its lease had
+ * expired could overwrite a job already reclaimed by another tab.
  *
- * Claims and stale-job recovery now happen in one readwrite IDB transaction.
- * Running jobs carry a renewable lease so another live tab does not treat them
- * as interrupted. Legacy running jobs without a lease are recovered only after
- * a short grace period.
+ * A listing-page response is also lease-verified before its parsed metadata is
+ * handed back to the runner, and an Etsy challenge pauses the automatic worker
+ * instead of continuing through the remaining queue.
  */
 
 var FAV_DEEP_LEASE_MS0105 = 90 * 1000;
 var FAV_DEEP_HEARTBEAT_MS0105 = 20 * 1000;
 var FAV_DEEP_LEGACY_RUNNING_GRACE_MS0105 = 90 * 1000;
+var FAV_DEEP_CHALLENGE_PAUSE_MS0106 = 5 * 60 * 1000;
 var favDeepWorkerId0105 = globalThis.crypto?.randomUUID?.()
     || `ebsf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 var favDeepCurrentOwnership0105 = null;
@@ -151,52 +151,198 @@ function favDeepQueueRenewLease0105(ownership = favDeepCurrentOwnership0105, now
     }).then(Boolean);
 }
 
-/* Clear ownership metadata whenever the generic queue updater transitions the
- * current job out of running state (complete, cancellation requeue, etc.). */
-var favDeepQueueUpdateBefore0105 = favDeepQueueUpdate;
-favDeepQueueUpdate = async function favDeepQueueUpdate0105(idValue, patch = {}) {
-    const nextPatch = { ...patch };
-    if (nextPatch.status && nextPatch.status !== 'running') {
-        nextPatch.workerId = '';
-        nextPatch.leaseUntil = 0;
+function favDeepOwnershipSnapshot0106(idValue) {
+    const ownership = favDeepCurrentOwnership0105;
+    if (!ownership?.id || String(ownership.id) !== String(idValue)) return null;
+    return { id:String(ownership.id), workerId:String(ownership.workerId || '') };
+}
+
+function favDeepLeaseLostError0106() {
+    const error = new Error('Deep metadata job lease was lost to another Etsy tab.');
+    error.code = 'deep-lease-lost';
+    error.retryable = false;
+    return error;
+}
+
+/* Any state transition performed by a worker that currently owns a running job
+ * is compare-and-set in one readwrite transaction. A stale tab may observe the
+ * newer job, but it is never allowed to mutate it. */
+async function favDeepOwnedTransition0106(idValue, updater) {
+    const ownership = favDeepOwnershipSnapshot0106(idValue);
+    if (!ownership) return { owned:false, applied:false, current:null };
+
+    const next = await favDeepQueueMutateOne0105(idValue, (job) => {
+        if (job.status !== 'running' || job.workerId !== ownership.workerId) return null;
+        const updated = updater({ ...job });
+        if (!updated) return null;
+        const result = { ...updated, updatedAt:Date.now() };
+        if (result.status !== 'running') {
+            result.workerId = '';
+            result.leaseUntil = 0;
+        }
+        return result;
+    });
+
+    if (!next) {
+        const current = await favIndexGet(FAV_DEEP_QUEUE_STORE, String(idValue)).catch(() => null);
+        if (favDeepCurrentOwnership0105?.id === String(idValue)) favDeepCurrentOwnership0105 = null;
+        return { owned:true, applied:false, current };
     }
-    const result = await favDeepQueueUpdateBefore0105(idValue, nextPatch);
-    if (result?.status !== 'running' && favDeepCurrentOwnership0105?.id === String(idValue)) {
+
+    if (next.status !== 'running' && favDeepCurrentOwnership0105?.id === String(idValue)) {
         favDeepCurrentOwnership0105 = null;
     }
-    return result;
-};
+    return { owned:true, applied:true, current:next };
+}
 
-/* The failure implementation writes its first state transition directly, so do
- * one ownership cleanup after it settles as well. */
-var favDeepQueueFailBefore0105 = favDeepQueueFail;
-favDeepQueueFail = async function favDeepQueueFail0105(idValue, error, now = Date.now()) {
-    let result = await favDeepQueueFailBefore0105(idValue, error, now);
-    if (result && result.status !== 'running' && (result.workerId || Number(result.leaseUntil))) {
-        result = await favDeepQueueMutateOne0105(idValue, (job) => ({ ...job, workerId:'', leaseUntil:0, updatedAt:Date.now() })) || result;
+/* Generic queue updates remain available for settings/recovery code, but a
+ * worker-owned transition out of running state must use the lease CAS above. */
+var favDeepQueueUpdateBefore0106 = favDeepQueueUpdate;
+favDeepQueueUpdate = async function favDeepQueueUpdate0106(idValue, patch = {}) {
+    const ownership = favDeepOwnershipSnapshot0106(idValue);
+    if (!ownership || !patch.status || patch.status === 'running') {
+        return favDeepQueueUpdateBefore0106(idValue, patch);
     }
-    if (favDeepCurrentOwnership0105?.id === String(idValue)) favDeepCurrentOwnership0105 = null;
-    return result;
+
+    const transition = await favDeepOwnedTransition0106(idValue, (job) => ({
+        ...job,
+        ...patch,
+    }));
+    return transition.current;
 };
 
-/* Renew the lease while the network request is in flight. A stalled event loop
- * can still let a lease expire, but ordinary long/slow Etsy responses remain
- * protected without introducing an always-running background timer. */
-var favDeepFetchListingBefore0105 = favDeepFetchListing;
-favDeepFetchListing = async function favDeepFetchListing0105(recordOrUrl, options = {}) {
+/* Completion must report a lost lease as an error to the runner. Otherwise the
+ * runner would increment its local completed count even though this tab did not
+ * actually complete the queue row. */
+var favDeepQueueCompleteBefore0106 = favDeepQueueComplete;
+favDeepQueueComplete = async function favDeepQueueComplete0106(idValue, now = Date.now()) {
+    const ownership = favDeepOwnershipSnapshot0106(idValue);
+    if (!ownership) return favDeepQueueCompleteBefore0106(idValue, now);
+
+    const transition = await favDeepOwnedTransition0106(idValue, (job) => ({
+        ...job,
+        status:'completed',
+        finishedAt:now,
+        error:'',
+        nextAttemptAt:0,
+    }));
+    if (!transition.applied) throw favDeepLeaseLostError0106();
+    return transition.current;
+};
+
+/* Failure/retry is also an owned CAS. In particular, a stale tab cannot clear a
+ * newer worker's lease after its own request wakes up late. */
+var favDeepQueueFailBefore0106 = favDeepQueueFail;
+favDeepQueueFail = async function favDeepQueueFail0106(idValue, error, now = Date.now()) {
+    if (error?.code === 'deep-lease-lost') {
+        if (favDeepCurrentOwnership0105?.id === String(idValue)) favDeepCurrentOwnership0105 = null;
+        return favIndexGet(FAV_DEEP_QUEUE_STORE, String(idValue)).catch(() => null);
+    }
+
+    const ownership = favDeepOwnershipSnapshot0106(idValue);
+    if (!ownership) return favDeepQueueFailBefore0106(idValue, error, now);
+
+    const retryable = error?.retryable !== false;
+    const retryAfterMs = Math.max(0, Number(error?.retryAfterMs) || 0);
+    const challenge = error?.code === 'challenge-page';
+
+    const transition = await favDeepOwnedTransition0106(idValue, (job) => {
+        const attempts = Math.max(0, Number(job.attempts) || 0);
+        const retry = retryable && attempts < FAV_DEEP_QUEUE_RETRY_LIMIT;
+        const backoff = Math.min(30000, 1000 * (2 ** Math.max(0, attempts - 1)));
+        const challengePause = challenge ? FAV_DEEP_CHALLENGE_PAUSE_MS0106 : 0;
+        return {
+            ...job,
+            status:retry ? 'queued' : 'failed',
+            finishedAt:retry ? 0 : now,
+            error:String(error?.message || error || 'Unknown metadata scan error'),
+            nextAttemptAt:retry ? now + Math.max(backoff, retryAfterMs, challengePause) : 0,
+        };
+    });
+
+    if (!transition.applied) return transition.current;
+
+    if (transition.current?.listingId && [404, 410].includes(Number(error?.httpStatus))) {
+        await favDeepMarkAvailability0103(
+            transition.current.listingId,
+            Number(error.httpStatus) === 410 ? 'deleted' : 'unavailable',
+            now
+        );
+    }
+
+    if (challenge) {
+        /* Do not keep walking the catalogue after Etsy presents a verification
+         * page. This is a safety pause, not an evasion/retry acceleration. */
+        favDeepAutoResumeSuppressed0103 = true;
+        favDeepRunnerController?.abort();
+    }
+
+    return transition.current;
+};
+
+/* Heartbeat the lease while the network request is in flight, then perform one
+ * final compare-and-renew before returning parsed metadata to the runner. This
+ * prevents a stale response from being written after another tab reclaimed the
+ * job during a long event-loop stall. */
+var favDeepFetchListingBefore0106 = favDeepFetchListing;
+favDeepFetchListing = async function favDeepFetchListing0106(recordOrUrl, options = {}) {
     const ownership = favDeepCurrentOwnership0105 ? { ...favDeepCurrentOwnership0105 } : null;
     let heartbeat = 0;
+    let heartbeatPending = false;
+    let heartbeatLost = false;
 
     if (ownership) {
-        void favDeepQueueRenewLease0105(ownership).catch(() => {});
+        const ownsLease = await favDeepQueueRenewLease0105(ownership).catch(() => false);
+        if (!ownsLease) throw favDeepLeaseLostError0106();
+
         heartbeat = setInterval(() => {
-            void favDeepQueueRenewLease0105(ownership).catch(() => {});
+            if (heartbeatPending) return;
+            heartbeatPending = true;
+            void favDeepQueueRenewLease0105(ownership)
+                .then((renewed) => { if (!renewed) heartbeatLost = true; })
+                .catch(() => { heartbeatLost = true; })
+                .finally(() => { heartbeatPending = false; });
         }, FAV_DEEP_HEARTBEAT_MS0105);
     }
 
     try {
-        return await favDeepFetchListingBefore0105(recordOrUrl, options);
+        const parsed = await favDeepFetchListingBefore0106(recordOrUrl, options);
+        if (ownership) {
+            const renewed = !heartbeatLost
+                && await favDeepQueueRenewLease0105(ownership).catch(() => false);
+            if (!renewed) throw favDeepLeaseLostError0106();
+        }
+        return parsed;
     } finally {
         if (heartbeat) clearInterval(heartbeat);
     }
+};
+
+/* Direct unfavorites retain their cached metadata, but queued deep work for the
+ * no-longer-favorite listing is retired so it is not fetched pointlessly later.
+ * A currently running job is left alone; at most that one in-flight request
+ * finishes, and it never re-favorites the index record. */
+function favDeepRetireQueuedUnfavorite0106(listingId, now = Date.now()) {
+    const idValue = String(listingId || '');
+    if (!idValue) return Promise.resolve(false);
+    return favDeepQueueMutateOne0105(`listing:${idValue}`, (job) => {
+        if (job.status !== 'queued') return null;
+        return {
+            ...job,
+            status:'completed',
+            finishedAt:now,
+            error:'Skipped: listing is no longer favorited',
+            nextAttemptAt:0,
+            workerId:'',
+            leaseUntil:0,
+            updatedAt:now,
+        };
+    }).then(Boolean);
+}
+
+var favIndexMarkUnfavoriteBefore0106 = favIndexMarkUnfavorite;
+favIndexMarkUnfavorite = async function favIndexMarkUnfavorite0106(listingId, observedAt = Date.now()) {
+    const changed = await favIndexMarkUnfavoriteBefore0106(listingId, observedAt);
+    if (changed) await favDeepRetireQueuedUnfavorite0106(listingId, observedAt).catch(() => {});
+    return changed;
 };

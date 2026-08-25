@@ -34,11 +34,42 @@ test('active deep requests renew a bounded worker lease', async () => {
   assert.match(text, /clearInterval/);
 });
 
-test('completion, cancellation and failures clear worker ownership metadata', async () => {
+test('worker-owned terminal transitions compare-and-set the current lease owner', async () => {
   const text = await source();
-  assert.match(text, /nextPatch\.workerId = ''/);
-  assert.match(text, /nextPatch\.leaseUntil = 0/);
-  assert.match(text, /favDeepQueueFail0105/);
+  assert.match(text, /favDeepOwnedTransition0106/);
+  assert.match(text, /job\.status !== 'running' \|\| job\.workerId !== ownership\.workerId/);
+  assert.match(text, /favDeepQueueComplete0106/);
+  assert.match(text, /favDeepQueueFail0106/);
+  assert.match(text, /deep-lease-lost/);
+});
+
+test('a stale listing response is lease-verified before metadata can be applied', async () => {
+  const text = await source();
+  const start = text.indexOf('favDeepFetchListing = async function favDeepFetchListing0106');
+  assert.ok(start >= 0);
+  const block = text.slice(start);
+  const fetchAt = block.indexOf('await favDeepFetchListingBefore0106');
+  const finalRenewAt = block.indexOf('await favDeepQueueRenewLease0105(ownership)', fetchAt);
+  const returnAt = block.indexOf('return parsed', fetchAt);
+  assert.ok(fetchAt >= 0);
+  assert.ok(finalRenewAt > fetchAt);
+  assert.ok(returnAt > finalRenewAt);
+});
+
+test('challenge pages pause automatic deep scanning instead of walking the rest of the queue', async () => {
+  const text = await source();
+  assert.match(text, /FAV_DEEP_CHALLENGE_PAUSE_MS0106 = 5 \* 60 \* 1000/);
+  assert.match(text, /error\?\.code === 'challenge-page'/);
+  assert.match(text, /favDeepAutoResumeSuppressed0103 = true/);
+  assert.match(text, /favDeepRunnerController\?\.abort\(\)/);
+});
+
+test('direct unfavorites keep metadata but retire queued deep work', async () => {
+  const text = await source();
+  assert.match(text, /favDeepRetireQueuedUnfavorite0106/);
+  assert.match(text, /if \(job\.status !== 'queued'\) return null/);
+  assert.match(text, /Skipped: listing is no longer favorited/);
+  assert.match(text, /favIndexMarkUnfavorite0106/);
 });
 
 test('multi-tab lease hardening loads after runtime guard and before Favorites runtime', async () => {
