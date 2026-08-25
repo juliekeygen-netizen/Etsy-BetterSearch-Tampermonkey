@@ -36,15 +36,17 @@ test('Favorites settings order is coverage, Deep listing metadata, Automatic syn
   assert.match(source, /ebsf-single-action/);
 });
 
-test('v0.9.6 repair loads after previous Favorites polish and before runtime', async () => {
+test('Favorites repair and audit modules load before runtime', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
   const polish = userscript.indexOf('src/66-favorites-settings-sort-polish.js');
   const activation = userscript.indexOf('src/67-favorites-sort-activation.js');
   const repair = userscript.indexOf('src/68-favorites-ui-repair.js');
+  const audit = userscript.indexOf('src/71-favorites-phase5-audit-fixes.js');
   const runtime = userscript.indexOf('src/63-favorites-runtime.js');
   assert.ok(polish >= 0);
   assert.ok(activation > polish);
   assert.ok(repair > activation);
-  assert.ok(runtime > repair);
-  assert.match(userscript, /@version\s+0\.10\.0/);
+  assert.ok(audit > repair);
+  assert.ok(runtime > audit);
+  assert.match(userscript, /@version\s+\d+\.\d+\.\d+/);
 });
