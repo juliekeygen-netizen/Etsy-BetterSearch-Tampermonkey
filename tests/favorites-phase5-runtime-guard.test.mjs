@@ -34,10 +34,14 @@ test('manual deep actions can explicitly retry recent failures', async () => {
 
 test('challenge detection uses structural markers rather than arbitrary listing text', async () => {
   const text = await source();
-  assert.match(text, /favDeepLooksLikeChallenge0104/);
-  assert.doesNotMatch(text, /robot check/);
-  assert.match(text, /g-recaptcha/);
-  assert.match(text, /challenge-container/);
+  const start = text.indexOf('function favDeepLooksLikeChallenge0104');
+  const end = text.indexOf('/* Replace the broad v0.10.3 text check', start);
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+  const detector = text.slice(start, end);
+  assert.doesNotMatch(detector, /robot check/);
+  assert.match(detector, /g-recaptcha/);
+  assert.match(detector, /challenge-container/);
 });
 
 test('deep scanning is named separately from Favorites sync in production UI', async () => {
