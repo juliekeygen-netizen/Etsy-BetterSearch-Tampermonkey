@@ -39,6 +39,17 @@ for (const [key, value] of Object.entries(await ebsExtStorageGetAll())) {
   ebsExtStore.set(key, value);
 }
 
+/* Keep the synchronous mirror fresh in every content-script instance. This is
+ * especially important for queue pause/resume state: Cancel in one Etsy tab
+ * must be visible to a worker that currently owns the queue in another tab. */
+ebsExtApi.storage.onChanged?.addListener((changes, areaName) => {
+  if (areaName && areaName !== 'local') return;
+  for (const [key, change] of Object.entries(changes || {})) {
+    if (Object.prototype.hasOwnProperty.call(change, 'newValue')) ebsExtStore.set(key, change.newValue);
+    else ebsExtStore.delete(key);
+  }
+});
+
 function GM_getValue(key, fallback) {
   return ebsExtStore.has(key) ? ebsExtStore.get(key) : fallback;
 }
