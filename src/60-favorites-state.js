@@ -48,13 +48,13 @@ function favDefaultConfig() {
             availableOnly: false, onSale: false, freeShipping: false,
             itemFormat: 'all', minRating: '', minReviews: '',
             starSeller: false, bestSeller: false, personalizable: false,
-            hasVariations: false, hasVideo: false, shop: '',
+            hasVariations: false, shop: '',
             maxShipping: '', returns: false, exchanges: false,
             lowStock: false, minCarts: '',
             category: '', etsysPick: false,
-            shipsFrom: 'anywhere', shipsFromCity: '', shipsFromCountry: '',
+            shipsFrom: 'anywhere', shipsFromCountry: '',
             ready1Day: false, ready3Days: false,
-            vintage: false, giftCards: false, giftWrap: false,
+            vintage: false, giftWrap: false,
             shipTo: '',
         },
     };
@@ -79,14 +79,14 @@ function favNormalizeConfig(raw) {
             itemFormat: ['all','physical','digital'].includes(filters.itemFormat) ? filters.itemFormat : 'all',
             minRating: String(filters.minRating ?? ''), minReviews: String(filters.minReviews ?? ''),
             starSeller: filters.starSeller === true, bestSeller: filters.bestSeller === true, personalizable: filters.personalizable === true,
-            hasVariations: filters.hasVariations === true, hasVideo: filters.hasVideo === true, shop: String(filters.shop ?? ''),
+            hasVariations: filters.hasVariations === true, shop: String(filters.shop ?? ''),
             maxShipping: String(filters.maxShipping ?? ''), returns: filters.returns === true, exchanges: filters.exchanges === true,
             lowStock: filters.lowStock === true, minCarts: String(filters.minCarts ?? ''),
             category: String(filters.category ?? ''), etsysPick: filters.etsysPick === true,
-            shipsFrom: ['anywhere','europe','local','near','country'].includes(filters.shipsFrom) ? filters.shipsFrom : 'anywhere',
-            shipsFromCity: String(filters.shipsFromCity ?? ''), shipsFromCountry: String(filters.shipsFromCountry ?? ''),
+            shipsFrom: ['anywhere','europe','local','country'].includes(filters.shipsFrom) ? filters.shipsFrom : 'anywhere',
+            shipsFromCountry: String(filters.shipsFromCountry ?? ''),
             ready1Day: filters.ready1Day === true, ready3Days: filters.ready3Days === true,
-            vintage: filters.vintage === true, giftCards: filters.giftCards === true, giftWrap: filters.giftWrap === true,
+            vintage: filters.vintage === true, giftWrap: filters.giftWrap === true,
             shipTo: String(filters.shipTo ?? ''),
         },
     };
@@ -294,7 +294,6 @@ function favRecordFromListing(listing, node, order) {
     const has = (object, key) => Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
     const digitalCard = Boolean(node?.querySelector?.('clg-icon[name="downloadarrow"]'))
         || /\bdigital download\b/i.test(node?.textContent || '');
-    const videoValue = listing?.videoSources;
     return {
         id: idValue,
         title: favDecodeEntities(listing?.title || node?.querySelector?.('img[alt]')?.alt || ''),
@@ -344,7 +343,6 @@ function favRecordFromListing(listing, node, order) {
             isStarSeller: has(listing?.shop, 'isStarSeller'),
             hasVariations: has(listing, 'hasVariations'),
             isPersonalizable: has(listing, 'isPersonalizable'),
-            hasVideo: has(listing, 'videoSources') || Array.isArray(videoValue),
         },
         knownSource: {
             isDownload: has(price, 'isDownload') ? 'favorites-json' : (digitalCard ? 'favorites-card-dom' : 'unknown'),
@@ -373,16 +371,16 @@ function favActiveSectionKeys(config = favCfg) {
     if (f.freeShipping || f.onSale) active.add('special-offers');
     if (f.itemFormat !== 'all') active.add('item-format');
     if (f.etsysPick || f.starSeller) active.add('etsys-best');
-    if (f.shipsFrom !== 'anywhere' || f.shipsFromCity || f.shipsFromCountry) active.add('ships-from');
+    if (f.shipsFrom !== 'anywhere' || f.shipsFromCountry) active.add('ships-from');
     if (f.ready1Day || f.ready3Days) active.add('ready-to-ship-in');
     if (f.minPrice || f.maxPrice) active.add('price');
     if (f.vintage) active.add('item-type');
-    if (f.giftCards || f.giftWrap || f.personalizable) active.add('ordering-options');
+    if (f.giftWrap || f.personalizable) active.add('ordering-options');
     if (f.shipTo) active.add('ship-to');
     if (f.availableOnly || f.minDiscount) active.add('availability');
     if (f.minRating || f.minReviews) active.add('rating-and-reviews');
     if (f.shop) active.add('seller');
-    if (f.bestSeller || f.hasVariations || f.hasVideo) active.add('listing-features');
+    if (f.bestSeller || f.hasVariations) active.add('listing-features');
     if (f.lowStock || f.minCarts) active.add('popularity-and-stock');
     if (f.maxShipping || f.returns || f.exchanges) active.add('delivery');
     return active;
@@ -408,9 +406,11 @@ function favHasActiveFilters() {
     const f = favCfg.filters;
     return Boolean(
         f.minPrice || f.maxPrice || f.minDiscount || f.availableOnly || f.onSale || f.freeShipping || f.itemFormat !== 'all'
-        || f.minRating || f.minReviews || f.starSeller || f.bestSeller || f.personalizable || f.hasVariations || f.hasVideo
+        || f.minRating || f.minReviews || f.starSeller || f.bestSeller || f.personalizable || f.hasVariations
         || f.shop || f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts
         || f.category || f.etsysPick || f.vintage || f.giftWrap
+        || f.shipsFrom !== 'anywhere' || f.shipsFromCountry || f.ready1Day || f.ready3Days
+        || (f.shipTo && String(f.shipTo).toUpperCase() !== 'ZZ')
     );
 }
 

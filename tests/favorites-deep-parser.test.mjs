@@ -93,6 +93,33 @@ test('deep parser preserves unknown for missing positive-only UI signals', async
   }
 });
 
+test('deep parser extracts semantic Ships from country with field-specific provenance', async () => {
+  const api = await loadDeepParser();
+  const parsed = api.favDeepParseListingHtml(
+    '<li class="wt-block-grid__item"><div>Ships from: <strong>China</strong></div></li>',
+    'https://www.etsy.com/listing/123456789/origin',
+    { observedAt: 88 }
+  );
+  assert.equal(parsed.shippingMetadata.shipsFromCountry.known, true);
+  assert.equal(parsed.shippingMetadata.shipsFromCountry.value, 'China');
+  assert.equal(parsed.shippingMetadata.shipsFromCountry.parserVersion, 'shipping-origin-v1');
+
+  const alternate = api.favDeepParseListingHtml(
+    '<li><span>Ships from:</span>\n<strong>Germany</strong></li>',
+    'https://www.etsy.com/listing/123456789/alternate-origin',
+    { observedAt: 89 }
+  );
+  assert.equal(alternate.shippingMetadata.shipsFromCountry.value, 'Germany');
+
+  const unknown = api.favDeepParseListingHtml(
+    '<li><strong>China</strong></li>',
+    'https://www.etsy.com/listing/123456789/no-origin',
+    { observedAt: 90 }
+  );
+  assert.equal(unknown.shippingMetadata.shipsFromCountry.known, false);
+  assert.equal(unknown.shippingMetadata.shipsFromCountry.parserVersion, 'shipping-origin-v1');
+});
+
 test("deep parser recognizes Etsy's Pick oneofakind icon fallback", async () => {
   const api = await loadDeepParser();
   const parsed = api.favDeepParseListingHtml(

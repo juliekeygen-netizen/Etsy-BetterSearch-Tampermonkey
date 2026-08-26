@@ -165,7 +165,10 @@ async function favDeepPopulateQueue(options = {}) {
     const now = Date.now();
     let added = 0;
     for (const listing of listings) {
-        const missing = !Number(listing.lastDeepScanAt) || listing.deepParserVersion !== FAV_DEEP_PARSER_VERSION;
+        const missingOrigin = listing.shippingOriginParserVersion !== FAV_DEEP_SHIPPING_ORIGIN_VERSION;
+        const missing = !Number(listing.lastDeepScanAt)
+            || listing.deepParserVersion !== FAV_DEEP_PARSER_VERSION
+            || missingOrigin;
         const stale = Number(listing.lastDeepScanAt) > 0 && now - Number(listing.lastDeepScanAt) >= FAV_DEEP_METADATA_STALE_MS;
         if (!options.force && !missing && !stale) continue;
         const type = options.force ? 'forced_update' : (missing ? 'missing_metadata' : 'refresh_metadata');

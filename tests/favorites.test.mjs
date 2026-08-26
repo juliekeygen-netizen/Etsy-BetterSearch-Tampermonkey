@@ -104,7 +104,7 @@ async function loadSync({ fetchJson, observe } = {}) {
   return context.testApi;
 }
 
-test('Favorites config normalization preserves durable defaults and future index-backed values', async () => {
+test('Favorites config normalization preserves durable defaults and migrates removed filters', async () => {
   const api = await loadState();
   const cfg = api.favNormalizeConfig({ strictMode: 'bad', filters: { itemFormat: 'digital', vintage: true, shipsFrom: 'country', colors: ['red'] } });
   assert.equal(cfg.strictMode, 'phrase');
@@ -115,6 +115,10 @@ test('Favorites config normalization preserves durable defaults and future index
   assert.equal(cfg.filters.ready1Day, false);
   assert.equal(cfg.autoSync, true);
   assert.equal(cfg.autoScanMissingMetadata, true);
+  const migrated = api.favNormalizeConfig({ filters:{ hasVideo:true, shipsFrom:'near', shipsFromCity:'Helsinki' } });
+  assert.equal('hasVideo' in migrated.filters, false);
+  assert.equal('shipsFromCity' in migrated.filters, false);
+  assert.equal(migrated.filters.shipsFrom, 'anywhere');
   const disabled = api.favNormalizeConfig({ autoSync: false });
   assert.equal(disabled.autoSync, false);
   assert.equal(api.favNormalizeConfig({ autoScanMissingMetadata: false }).autoScanMissingMetadata, false);
@@ -298,7 +302,7 @@ test('listing upsert preserves deep metadata through unfavorite and refavorite l
   const record = {
     id: '42', title: 'Item', url: '/listing/42', shopId: '7', shopName: 'Shop',
     price: 12, isStarSeller: false, isDownload: false, videoSources: [],
-    known: { isStarSeller: true, isDownload: true, hasVideo: true },
+    known: { isStarSeller: true, isDownload: true },
   };
   const patch = api.favIndexPatchFromRecord(record, scope, 100);
   let listing = api.favIndexMergeListing(null, patch, 100);

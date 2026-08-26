@@ -173,6 +173,18 @@ function favNumber(value, placeholder, onChange, prefix = '') {
     return { wrap, input };
 }
 
+function favCurrencySymbol() {
+    const currency = String(document.body?.dataset?.currency || 'EUR').toUpperCase();
+    try {
+        const part = new Intl.NumberFormat(document.documentElement.lang || 'en', {
+            style: 'currency', currency, currencyDisplay: 'narrowSymbol',
+        }).formatToParts(0).find((entry) => entry.type === 'currency');
+        return part?.value || currency;
+    } catch (_) {
+        return currency;
+    }
+}
+
 function favCloseInfo() {
     favState.infoPopover?.remove();
     if (favState.infoAnchor) favState.infoAnchor.setAttribute('aria-expanded', 'false');
@@ -365,13 +377,8 @@ function favBuildShipsFrom() {
         favRadio({name:'ebsf-ships-from-favorites',value:'anywhere',checked:f.shipsFrom==='anywhere',label:'Anywhere',disabled:true,onChange:set}).row,
         favRadio({name:'ebsf-ships-from-favorites',value:'europe',checked:f.shipsFrom==='europe',label:'Europe',disabled:true,onChange:set}).row,
         favRadio({name:'ebsf-ships-from-favorites',value:'local',checked:f.shipsFrom==='local',label:localLabel,disabled:true,onChange:set}).row,
-        favRadio({name:'ebsf-ships-from-favorites',value:'near',checked:f.shipsFrom==='near',label:'Near a city',disabled:true,onChange:set}).row,
+        favRadio({name:'ebsf-ships-from-favorites',value:'country',checked:f.shipsFrom==='country',label:'Another country',disabled:true,onChange:set}).row,
     );
-    if(f.shipsFrom==='near'){
-        const city=document.createElement('input');city.type='text';city.className='wt-input wt-input--small ebsf-native-select';city.placeholder='City, country';city.value=f.shipsFromCity;
-        city.disabled=true;wrap.append(city);
-    }
-    wrap.append(favRadio({name:'ebsf-ships-from-favorites',value:'country',checked:f.shipsFrom==='country',label:'Another country',disabled:true,onChange:set}).row);
     if(f.shipsFrom==='country'){
         const select=favSelect(f.shipsFromCountry||country,favCountryOptions(false),()=>{},'',true);wrap.append(select);
     }
@@ -384,6 +391,14 @@ function favBuildReady(){const f=favCfg.filters,wrap=document.createElement('div
     favCheckbox({checked:f.ready3Days,label:'1–3 days',disabled:true}).row,favDeepMetadataNote());return wrap;}
 
 function favPriceSliderMax(){const values=favState.records.map(x=>x.price).filter(Number.isFinite);const seen=values.length?Math.max(...values):40;const base=Math.max(40,seen);const step=base<=100?10:base<=500?25:50;return Math.ceil(base/step)*step;}
+function favSetPriceBound(key,value){
+    const f=favCfg.filters;
+    const parsed=value===''?Number.NaN:Number(value);
+    f[key]=Number.isFinite(parsed)?String(Math.max(0,parsed)):'';
+    const min=Number(f.minPrice),max=Number(f.maxPrice);
+    if(f.minPrice&&f.maxPrice&&min>max){if(key==='minPrice')f.maxPrice=f.minPrice;else f.minPrice=f.maxPrice;}
+    const result=favSaveAndApply(true);favReplaceSectionBody('price',favBuildPrice);return result;
+}
 function favBuildPrice(){
     const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group ebsf-price-group';
     const note=document.createElement('p');note.className='ebsf-native-caption';note.textContent='Before shipping and taxes and other fees';wrap.append(note);
@@ -396,19 +411,24 @@ function favBuildPrice(){
     const high=document.createElement('input');high.type='range';high.min='0';high.max=String(max);high.step=String(step);high.value=String(Math.min(max,maxValue));high.className='ebsf-price-range ebsf-price-range-high';
     const track=document.createElement('div');track.className='ebsf-price-track';sliders.append(track,low,high);wrap.append(sliders);
     const inputs=document.createElement('div');inputs.className='ebsf-native-price-inputs';
-    const minBox=favNumber(f.minPrice,'0',(value)=>{f.minPrice=value;favSaveAndApply(true);},'€');
-    const maxBox=favNumber(f.maxPrice,`${max} +`,(value)=>{f.maxPrice=value;favSaveAndApply(true);},'€');inputs.append(minBox.wrap,maxBox.wrap);wrap.append(inputs);
+    const currency=favCurrencySymbol();
+    const minBox=favNumber(f.minPrice,'0',(value)=>favSetPriceBound('minPrice',value),currency);
+    const maxBox=favNumber(f.maxPrice,`${max} +`,(value)=>favSetPriceBound('maxPrice',value),currency);inputs.append(minBox.wrap,maxBox.wrap);wrap.append(inputs);
     const sync=()=>{let a=Number(low.value),b=Number(high.value);if(a>b){if(document.activeElement===low)low.value=String(b);else high.value=String(a);a=Number(low.value);b=Number(high.value);}sliders.style.setProperty('--low',`${a/max*100}%`);sliders.style.setProperty('--high',`${b/max*100}%`);minBox.input.value=a>0?String(a):'';maxBox.input.value=b<max?String(b):'';};
     low.addEventListener('input',sync);high.addEventListener('input',sync);
     low.addEventListener('change',()=>{f.minPrice=Number(low.value)>0?low.value:'';favSaveAndApply(true);});
-    high.addEventListener('change',()=>{f.maxPrice=Number(high.value)<max?high.value:'';favSaveAndApply(true);});sync();return wrap;
+    high.addEventListener('change',()=>{f.maxPrice=Number(high.value)<max?high.value:'';favSaveAndApply(true);});sync();
+    const unknown=favState.records.filter((record)=>!Number.isFinite(record.price)).length;
+    if(unknown){const warning=document.createElement('p');warning.className='ebsf-native-caption';warning.textContent=`${unknown} favorite${unknown===1?' has':'s have'} an unknown price and cannot be evaluated by this filter.`;wrap.append(warning);}
+    return wrap;
 }
 
 function favBuildItemType(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favCheckbox({checked:f.vintage,label:'Vintage',onChange:(v)=>{f.vintage=v;favSaveAndApply(true);}}).row);return wrap;}
 function favBuildOrdering(){const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(
-    favCheckbox({checked:f.giftCards,label:'Accepts Etsy gift cards',disabled:true}).row,
+    favCheckbox({checked:false,label:'Accepts Etsy gift cards',disabled:true,title:'Etsy does not currently expose reliable gift-card metadata for favorite listings.'}).row,
     favCheckbox({checked:f.giftWrap,label:'Can be gift-wrapped',onChange:(v)=>{f.giftWrap=v;favSaveAndApply(true);}}).row,
-    favCheckbox({checked:f.personalizable,label:'Customizable',onChange:(v)=>{f.personalizable=v;favSaveAndApply(true);}}).row);return wrap;}
+    favCheckbox({checked:f.personalizable,label:'Customizable',onChange:(v)=>{f.personalizable=v;favSaveAndApply(true);}}).row);
+    const note=document.createElement('p');note.className='ebsf-metadata-pending';note.textContent='Gift-card acceptance is not available from reliable Etsy metadata.';wrap.append(note);return wrap;}
 function favBuildShipTo(){const f=favCfg.filters,country=String(favProps()?.countryIsoCode||'FI').toUpperCase();const wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favSelect(f.shipTo||country,favCountryOptions(true),()=>{},'',true),favDeepMetadataNote());return wrap;}
 
 function favBuildExtras(){
@@ -423,12 +443,11 @@ function favBuildExtras(){
 
     const features=document.createElement('div');features.className='ebsf-native-group';features.append(
         favCheckbox({checked:f.bestSeller,label:'Best Seller',onChange:(v)=>{f.bestSeller=v;favSaveAndApply(true);}}).row,
-        favCheckbox({checked:f.hasVariations,label:'Has variations',onChange:(v)=>{f.hasVariations=v;favSaveAndApply(true);}}).row,
-        favCheckbox({checked:f.hasVideo,label:'Has video',onChange:(v)=>{f.hasVideo=v;favSaveAndApply(true);}}).row);sections.push(favNativeSection('Listing features',features,'listing-features'));
+        favCheckbox({checked:f.hasVariations,label:'Has variations',onChange:(v)=>{f.hasVariations=v;favSaveAndApply(true);}}).row);sections.push(favNativeSection('Listing features',features,'listing-features'));
 
     const popularity=document.createElement('div');popularity.className='ebsf-native-group';popularity.append(favCheckbox({checked:f.lowStock,label:'Etsy reports low stock',onChange:(v)=>{f.lowStock=v;favSaveAndApply(true);}}).row);const carts=document.createElement('label');carts.className='ebsf-native-field';carts.append(document.createTextNode('At least X carts (when Etsy reports it)'),favNumber(f.minCarts,'e.g. 5',(v)=>{f.minCarts=v;favSaveAndApply(true);}).wrap);popularity.append(carts);sections.push(favNativeSection('Popularity & stock',popularity,'popularity-and-stock'));
 
-    const delivery=document.createElement('div');delivery.className='ebsf-native-group';const shipping=document.createElement('label');shipping.className='ebsf-native-field';shipping.append(document.createTextNode('Maximum shipping cost'),favNumber(f.maxShipping,'0',(v)=>{f.maxShipping=v;favSaveAndApply(true);},'€').wrap);delivery.append(shipping,favCheckbox({checked:f.returns,label:'Returns accepted',onChange:(v)=>{f.returns=v;favSaveAndApply(true);}}).row,favCheckbox({checked:f.exchanges,label:'Exchanges accepted',onChange:(v)=>{f.exchanges=v;favSaveAndApply(true);}}).row);sections.push(favNativeSection('Delivery',delivery,'delivery'));
+    const delivery=document.createElement('div');delivery.className='ebsf-native-group';const shipping=document.createElement('label');shipping.className='ebsf-native-field';shipping.append(document.createTextNode('Maximum shipping cost'),favNumber(f.maxShipping,'0',(v)=>{f.maxShipping=v;favSaveAndApply(true);},favCurrencySymbol()).wrap);delivery.append(shipping,favCheckbox({checked:f.returns,label:'Returns accepted',onChange:(v)=>{f.returns=v;favSaveAndApply(true);}}).row,favCheckbox({checked:f.exchanges,label:'Exchanges accepted',onChange:(v)=>{f.exchanges=v;favSaveAndApply(true);}}).row);sections.push(favNativeSection('Delivery',delivery,'delivery'));
     return sections;
 }
 
@@ -439,7 +458,7 @@ function favBuildFilterRail() {
     const header=document.createElement('div');header.className='ebsf-rail-header ebsf-native-rail-header';
     const heading=document.createElement('button');heading.type='button';heading.className='ebsf-filter-heading ebsf-native-filter-heading';heading.textContent='Filters';heading.setAttribute('aria-label','Hide filters');heading.addEventListener('click',favCloseFilters);
     const reset=document.createElement('button');reset.type='button';reset.className='ebsf-native-reset';reset.textContent='Reset';
-    reset.addEventListener('click',async()=>{const keepRules=favCfg.multiRules,keepAutoSync=favCfg.autoSync;favCfg=favDefaultConfig();favCfg.multiRules=keepRules;favCfg.autoSync=keepAutoSync;favState.strictSettingsOpen=false;favState.manualOpenSections.clear();favSaveConfig();favRefreshRail();await favReapply(true);});
+    reset.addEventListener('click',async()=>{const keepRules=favCfg.multiRules,keepAutoSync=favCfg.autoSync;favCfg=favDefaultConfig();favCfg.multiRules=keepRules;favCfg.autoSync=keepAutoSync;favState.strictSettingsOpen=false;favState.manualOpenSections.clear();favSaveConfig();favRefreshRail();await favReapply();});
     header.append(heading,reset);rail.append(header);
 
     rail.append(

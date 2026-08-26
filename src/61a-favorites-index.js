@@ -158,7 +158,6 @@ function favIndexPatchFromRecord(record, scope, observedAt = Date.now()) {
             bestSeller: favIndexKnown(record, 'isBestSeller', record?.isBestSeller === true, observedAt),
             personalizable: favIndexKnown(record, 'isPersonalizable', record?.isPersonalizable === true, observedAt),
             hasVariations: favIndexKnown(record, 'hasVariations', record?.hasVariations === true, observedAt),
-            hasVideo: favIndexKnown(record, 'hasVideo', Boolean(record?.videoSources?.length), observedAt),
         },
         listingMetadata: {},
         shippingMetadata: {

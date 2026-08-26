@@ -11,32 +11,10 @@
 
 /* ---------- Production config cleanup ---------- */
 
-var favDefaultConfigBefore0101 = favDefaultConfig;
-favDefaultConfig = function favDefaultConfig0101() {
-    const config = favDefaultConfigBefore0101();
-    if (config?.filters) delete config.filters.hasVideo;
-    return config;
-};
-
-var favNormalizeConfigBefore0101 = favNormalizeConfig;
-favNormalizeConfig = function favNormalizeConfig0101(raw) {
-    const config = favNormalizeConfigBefore0101(raw);
-    if (config?.filters) delete config.filters.hasVideo;
-    return config;
-};
-
+/* Re-normalizing once removes legacy video and city-origin keys because the
+ * base schema no longer copies either value forward. */
 favCfg = favNormalizeConfig(favCfg);
 favSaveConfig();
-
-var favHasActiveFiltersBefore0101 = favHasActiveFilters;
-favHasActiveFilters = function favHasActiveFilters0101() {
-    const filters = favCfg.filters || {};
-    const shipTo = String(filters.shipTo || '').toUpperCase();
-    return favHasActiveFiltersBefore0101()
-        || filters.ready1Day === true
-        || filters.ready3Days === true
-        || Boolean(shipTo && shipTo !== 'ZZ');
-};
 
 /* ---------- Preferences ---------- */
 
@@ -96,6 +74,13 @@ favIndexApplyListingMetadataToRecord = function favIndexApplyListingMetadataToRe
     favApplyKnownBoolean0101(record, 'acceptsExchanges', 'acceptsExchanges', favKnownIndexedValue0101(shipping, 'exchangesAccepted'));
     favApplyKnownNumber0101(record, 'processingDays', 'processingDays', favKnownIndexedValue0101(shipping, 'processingDays'));
 
+    const shipsFromCountry = favKnownIndexedValue0101(shipping, 'shipsFromCountry');
+    if (shipsFromCountry != null && String(shipsFromCountry).trim()) {
+        record.shipsFromCountry = String(shipsFromCountry).trim();
+        record.known = record.known || {};
+        record.known.shipsFromCountry = true;
+    }
+
     const estimatedDelivery = favKnownIndexedValue0101(shipping, 'estimatedDelivery');
     if (estimatedDelivery != null && String(estimatedDelivery)) {
         record.estimatedDelivery = String(estimatedDelivery);
@@ -147,9 +132,8 @@ favIndexHydrateRecords = async function favIndexHydrateRecords0101(records) {
     return list;
 };
 
-/* The only remaining rail placeholder is seller-origin filtering. A deep scan
- * currently cannot populate that field, so do not misleadingly promise that a
- * listing-metadata scan will unlock it. */
+/* Shared fallback text for controls whose backing metadata is not available in
+ * the current catalogue. Specific builders replace it with more precise copy. */
 favDeepMetadataNote = function favDeepMetadataNote0101() {
     const note = document.createElement('p');
     note.className = 'ebsf-metadata-pending';
@@ -170,6 +154,21 @@ function favNormalizeCountryCode0101(value) {
     return raw.toUpperCase();
 }
 
+var FAV_EUROPE_COUNTRY_CODES0101 = new Set(
+    'AL AD AM AT AZ BY BE BA BG HR CY CZ DK EE FI FR GE DE GR HU IS IE IT KZ XK LV LI LT LU MT MD MC ME NL MK NO PL PT RO RU SM RS SK SI ES SE CH TR UA GB VA'.split(' ')
+);
+
+function favRecordShipsFrom0101(record, mode, selectedCountry = '') {
+    if (!mode || mode === 'anywhere') return true;
+    if (record?.known?.shipsFromCountry !== true) return false;
+    const origin = favNormalizeCountryCode0101(record.shipsFromCountry);
+    if (!origin) return false;
+    if (mode === 'europe') return FAV_EUROPE_COUNTRY_CODES0101.has(origin);
+    if (mode === 'local') return origin === favNormalizeCountryCode0101(favProps()?.countryIsoCode || '');
+    if (mode === 'country') return origin === favNormalizeCountryCode0101(selectedCountry);
+    return true;
+}
+
 function favRecordShipsTo0101(record, selectedCountry) {
     const wanted = favNormalizeCountryCode0101(selectedCountry);
     if (!wanted || wanted === 'ZZ') return true;
@@ -187,28 +186,118 @@ favFilteredRecords = function favFilteredRecords0101() {
         records = records.filter((record) => Number.isFinite(record.processingDays) && record.processingDays <= maxDays);
     }
 
+    if (filters.shipsFrom && filters.shipsFrom !== 'anywhere') {
+        records = records.filter((record) => favRecordShipsFrom0101(record, filters.shipsFrom, filters.shipsFromCountry));
+    }
+
     const shipTo = String(filters.shipTo || '').toUpperCase();
     if (shipTo && shipTo !== 'ZZ') records = records.filter((record) => favRecordShipsTo0101(record, shipTo));
 
     return records;
 };
 
+function favMetadataFilterCoverage0101(records = favState.records) {
+    return {
+        origins: records.filter((record) => record?.known?.shipsFromCountry === true).length,
+        processing: records.filter((record) => Number.isFinite(record?.processingDays)).length,
+        destinations: records.filter((record) => Array.isArray(record?.shipsToCountries) && record.shipsToCountries.length).length,
+        prices: records.filter((record) => Number.isFinite(record?.price)).length,
+    };
+}
+
+function favSanitizeMetadataFilters0101() {
+    const filters = favCfg.filters || {};
+    const coverage = favMetadataFilterCoverage0101();
+    let changed = false;
+    if (filters.shipsFrom !== 'anywhere' && coverage.origins === 0) {
+        filters.shipsFrom = 'anywhere';
+        filters.shipsFromCountry = '';
+        changed = true;
+    }
+    if ((filters.ready1Day || filters.ready3Days) && coverage.processing === 0) {
+        filters.ready1Day = false;
+        filters.ready3Days = false;
+        changed = true;
+    }
+    const shipTo = String(filters.shipTo || '').toUpperCase();
+    if (shipTo && shipTo !== 'ZZ' && !favCatalogueShipToCodes0101().has(shipTo)) {
+        filters.shipTo = '';
+        changed = true;
+    }
+    if (changed) favSaveConfig();
+    return changed;
+}
+
+async function favRehydrateAndReapply0101() {
+    if (!favState.records?.length) return favReapply();
+    await favIndexHydrateRecords(favState.records);
+    favState.recordsById = new Map(favState.records.map((record) => [String(record.id), record]));
+    favSanitizeMetadataFilters0101();
+    if (favEnhancementActive()) favRenderCurrent();
+    else if (favState.filterOpen) favRefreshRail();
+}
+
 function favBuildReady() {
     const filters = favCfg.filters;
     const wrap = document.createElement('div');
     wrap.className = 'ebsf-native-group';
+    const available = favState.records.some((record) => Number.isFinite(record.processingDays));
     wrap.append(
         favCheckbox({
             checked: filters.ready1Day,
             label: '1 day',
+            disabled: !available,
             onChange: (value) => { filters.ready1Day = value; favSaveAndApply(true); },
         }).row,
         favCheckbox({
             checked: filters.ready3Days,
             label: '1–3 days',
+            disabled: !available,
             onChange: (value) => { filters.ready3Days = value; favSaveAndApply(true); },
         }).row,
     );
+    if (!available) wrap.append(favUnavailableMetadataNote0101('Processing time is not available from current metadata.'));
+    return wrap;
+}
+
+function favUnavailableMetadataNote0101(message) {
+    const note = document.createElement('p');
+    note.className = 'ebsf-metadata-pending';
+    note.textContent = message;
+    return note;
+}
+
+function favBuildShipsFrom() {
+    const filters = favCfg.filters;
+    const wrap = document.createElement('div');
+    wrap.className = 'ebsf-native-group';
+    const currentCountry = String(favProps()?.countryIsoCode || 'FI').toUpperCase();
+    const available = favState.records.some((record) => record?.known?.shipsFromCountry === true);
+    const set = (value) => {
+        filters.shipsFrom = value;
+        if (value !== 'country') filters.shipsFromCountry = '';
+        favSaveAndApply(true);
+        favReplaceSectionBody('ships-from', favBuildShipsFrom);
+    };
+    wrap.append(
+        favRadio({ name:'ebsf-ships-from-favorites', value:'anywhere', checked:filters.shipsFrom === 'anywhere', label:'Anywhere', onChange:set }).row,
+        favRadio({ name:'ebsf-ships-from-favorites', value:'europe', checked:filters.shipsFrom === 'europe', label:'Europe', disabled:!available, onChange:set }).row,
+        favRadio({ name:'ebsf-ships-from-favorites', value:'local', checked:filters.shipsFrom === 'local', label:favCountryName(currentCountry), disabled:!available, onChange:set }).row,
+        favRadio({ name:'ebsf-ships-from-favorites', value:'country', checked:filters.shipsFrom === 'country', label:'Another country', disabled:!available, onChange:set }).row,
+    );
+    if (filters.shipsFrom === 'country' && available) {
+        wrap.append(favSelect(filters.shipsFromCountry || currentCountry, favCountryOptions(false), (value) => {
+            filters.shipsFromCountry = value;
+            favSaveAndApply(true);
+        }));
+    }
+    if (!available) wrap.append(favUnavailableMetadataNote0101('Shipping origin is not available from current metadata.'));
+    else {
+        const coverage = favMetadataFilterCoverage0101();
+        if (coverage.origins < favState.records.length) {
+            wrap.append(favUnavailableMetadataNote0101(`Origin known for ${coverage.origins} of ${favState.records.length} favorites.`));
+        }
+    }
     return wrap;
 }
 
@@ -268,6 +357,10 @@ function favBuildShipTo() {
 function favCatalogueCapabilities0101(records = favState.records) {
     const any = (predicate) => records.some(predicate);
     const shops = new Set(records.map((record) => String(record.shopName || '')).filter(Boolean));
+    const shipsFromCodes = new Set(records
+        .filter((record) => record?.known?.shipsFromCountry === true)
+        .map((record) => favNormalizeCountryCode0101(record.shipsFromCountry))
+        .filter(Boolean));
     return {
         loaded: favState.loadComplete === true,
         deepComplete: favCatalogueDeepComplete0101(records),
@@ -293,6 +386,7 @@ function favCatalogueCapabilities0101(records = favState.records) {
         lowStock: any((record) => Number.isFinite(record.stockLeft)),
         carts: any((record) => Number.isFinite(record.carts)),
         shipping: any((record) => Number.isFinite(record.shipping)),
+        shipsFromCodes,
         returns: any((record) => record.known?.acceptsReturns === true && record.acceptsReturns === true),
         exchanges: any((record) => record.known?.acceptsExchanges === true && record.acceptsExchanges === true),
         shipToCodes: favCatalogueShipToCodes0101(records),
@@ -352,9 +446,6 @@ function favPruneCategory0101(rail, caps) {
 }
 
 function favPruneUnavailableCatalogueFilters0101(rail) {
-    /* The video filter is intentionally gone even when catalogue pruning is off. */
-    favRemoveChoice0101(rail, 'listing-features', 'Has video', false, false);
-
     if (!favUiPrefs.hideUnavailableCatalogFilters || !favState.loadComplete || !favState.records.length) return rail;
 
     const filters = favCfg.filters;
@@ -373,8 +464,8 @@ function favPruneUnavailableCatalogueFilters0101(rail) {
     favRemoveChoice0101(rail, 'etsys-best', 'Star Seller', caps.starSeller, filters.starSeller);
     favSetSectionVisible0101(rail, 'etsys-best', deepUnknown || caps.etsysPick || caps.starSeller || filters.etsysPick || filters.starSeller);
 
-    const shipsFromActive = filters.shipsFrom !== 'anywhere' || Boolean(filters.shipsFromCity || filters.shipsFromCountry);
-    favSetSectionVisible0101(rail, 'ships-from', shipsFromActive);
+    const shipsFromActive = filters.shipsFrom !== 'anywhere' || Boolean(filters.shipsFromCountry);
+    favSetSectionVisible0101(rail, 'ships-from', caps.shipsFromCodes.size > 0 || shipsFromActive);
 
     favRemoveChoice0101(rail, 'ready-to-ship-in', '1 day', deepUnknown || caps.ready1, filters.ready1Day);
     favRemoveChoice0101(rail, 'ready-to-ship-in', '1–3 days', deepUnknown || caps.ready3, filters.ready3Days);
@@ -385,13 +476,13 @@ function favPruneUnavailableCatalogueFilters0101(rail) {
     favRemoveChoice0101(rail, 'item-type', 'Vintage', deepUnknown || caps.vintage, filters.vintage);
     favSetSectionVisible0101(rail, 'item-type', deepUnknown || caps.vintage || filters.vintage);
 
-    favRemoveChoice0101(rail, 'ordering-options', 'Accepts Etsy gift cards', false, filters.giftCards);
+    favRemoveChoice0101(rail, 'ordering-options', 'Accepts Etsy gift cards', true, false);
     favRemoveChoice0101(rail, 'ordering-options', 'Can be gift-wrapped', deepUnknown || caps.giftWrap, filters.giftWrap);
     favRemoveChoice0101(rail, 'ordering-options', 'Customizable', caps.personalizable, filters.personalizable);
     favSetSectionVisible0101(
         rail,
         'ordering-options',
-        Boolean(filters.giftCards || filters.giftWrap || filters.personalizable || deepUnknown || caps.giftWrap || caps.personalizable)
+        Boolean(filters.giftWrap || filters.personalizable || deepUnknown || caps.giftWrap || caps.personalizable)
     );
 
     const shipToActive = Boolean(filters.shipTo && String(filters.shipTo).toUpperCase() !== 'ZZ');
@@ -451,7 +542,7 @@ favBuildFilterRail = function favBuildFilterRail0101() {
         favState.manualOpenSections.clear();
         favSaveConfig();
         favRefreshRail();
-        await favReapply(true);
+        await favReapply();
     }, true);
 
     return favPruneUnavailableCatalogueFilters0101(rail);

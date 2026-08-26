@@ -20,8 +20,6 @@ function favApplyOptionOrder0110(sectionKey, units) {
 function favApplyFilterLayoutAndAvailability0110(rail = favState.rail) {
     if (!rail?.isConnected && rail !== favState.rail) return rail;
     const mode = favAvailabilityMode0110();
-    const records = favAvailabilityRecords0110();
-    const caps = favAvailabilityCaps0110(records);
     const hiddenSections = new Set(favUiPrefs.filterSectionHidden || []);
     const sectionOrder = favUiPrefs.filterSectionOrder || FAV_FILTER_SECTION_ORDER_DEFAULT0110;
     const sections = new Map(Array.from(rail.querySelectorAll('[data-ebsf-section]')).map((node) => [node.dataset.ebsfSection, node]));
@@ -34,6 +32,8 @@ function favApplyFilterLayoutAndAvailability0110(rail = favState.rail) {
     }
 
     for (const [sectionKey, section] of sections) {
+        const records = favAvailabilityRecords0110(sectionKey);
+        const caps = favAvailabilityCaps0110(records);
         section.hidden = false;
         if (hiddenSections.has(sectionKey)) {
             section.hidden = true;
@@ -45,9 +45,8 @@ function favApplyFilterLayoutAndAvailability0110(rail = favState.rail) {
         const userHidden = new Set(favUiPrefs.filterOptionHidden?.[sectionKey] || []);
         let visibleUnits = 0;
         for (const unit of units) {
-            const hardHidden = unit.key === 'has-video';
             const unavailable = mode !== 'disabled' && !favOptionAvailable0110(sectionKey, unit.key, caps, records);
-            const hidden = hardHidden || userHidden.has(unit.key) || unavailable;
+            const hidden = userHidden.has(unit.key) || unavailable;
             for (const element of unit.elements) element.hidden = hidden;
             if (!hidden) visibleUnits += 1;
         }
@@ -75,7 +74,7 @@ function favVisibleCategoryDefinitions0110() {
     let definitions = order.map((key) => byKey.get(key)).filter(Boolean).filter(([key]) => !hidden.has(key));
     const mode = favAvailabilityMode0110();
     if (mode !== 'disabled' && favDeepVisibilityReady0110()) {
-        const records = favAvailabilityRecords0110();
+        const records = favAvailabilityRecords0110('category');
         const active = String(favCfg.filters.category || '');
         definitions = definitions.filter(([key]) => key === active || records.some((record) => favCategoryMatch(record.deepMetadata?.category, key)));
     }
@@ -135,15 +134,14 @@ favBuildShipTo = function favBuildShipTo0110() {
     const selected = String(filters.shipTo || 'ZZ').toUpperCase();
     const wrap = document.createElement('div');
     wrap.className = 'ebsf-native-group';
-    let options = favCountryOptions(true);
-    if (favAvailabilityMode0110() !== 'disabled' && favDeepVisibilityReady0110()) {
-        const allowed = favCatalogueShipToCodes0101(favAvailabilityRecords0110());
-        options = favFilterCountryOptions0101(options, allowed, selected);
-    }
-    wrap.append(favSelect(selected, options, (value) => {
+    const allowed = favCatalogueShipToCodes0101(favAvailabilityRecords0110('ship-to'));
+    const options = favFilterCountryOptions0101(favCountryOptions(true), allowed, selected);
+    const select = favSelect(selected, options, (value) => {
         filters.shipTo = value === 'ZZ' ? '' : value;
         favSaveAndApply(true);
-    }));
+    }, '', allowed.size === 0);
+    wrap.append(select);
+    if (!allowed.size) wrap.append(favUnavailableMetadataNote0101('Verified shipping destinations are not available from current metadata.'));
     return wrap;
 };
 
@@ -159,8 +157,34 @@ favSaveAndApply = function favSaveAndApply0110(reapply = true) {
 };
 
 var favReapplyBefore0110 = favReapply;
+function favCaptureViewportAnchor0110() {
+    const focused = document.activeElement?.closest?.('[data-ebsf-section]') || null;
+    const anchor = focused || (favState.filterOpen ? favState.rail : null);
+    return {
+        anchor,
+        top: anchor?.getBoundingClientRect?.().top,
+        x: window.scrollX || 0,
+        y: window.scrollY || 0,
+    };
+}
+
+function favRestoreViewportAnchor0110(snapshot) {
+    requestAnimationFrame(() => {
+        if (snapshot?.anchor?.isConnected && Number.isFinite(snapshot.top)) {
+            const nextTop = snapshot.anchor.getBoundingClientRect().top;
+            const delta = nextTop - snapshot.top;
+            if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+            return;
+        }
+        if (snapshot) window.scrollTo(snapshot.x, snapshot.y);
+    });
+}
+
 favReapply = async function favReapply0110(...args) {
+    const viewport = favCaptureViewportAnchor0110();
     const result = await favReapplyBefore0110(...args);
+    if (favSanitizeMetadataFilters0101()) favRenderCurrent();
+    favRestoreViewportAnchor0110(viewport);
     if (favState.filterOpen && favState.rail) requestAnimationFrame(() => favApplyFilterLayoutAndAvailability0110(favState.rail));
     return result;
 };

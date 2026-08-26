@@ -164,9 +164,9 @@ This is listing/shop capability metadata that currently appears to require listi
 
 The existing Favorites structured record already has `listing.isBestSeller`. Keep this as the preferred source. No listing-page scan is needed when known.
 
-### Variations and video
+### Variations
 
-The existing Favorites record already reads `listing.hasVariations` and `listing.videoSources`. Keep structured Favorites data as the preferred source.
+The existing Favorites record already reads `listing.hasVariations`. Keep structured Favorites data as the preferred source. Listing video is intentionally not exposed as a Favorites filter.
 
 ### Color
 
@@ -190,7 +190,7 @@ The same general rule applies to several other fields:
 - Digital -> Favorites JSON first, card DOM fallback
 - Personalizable -> Favorites JSON first, listing HTML fallback
 - Best Seller -> Favorites JSON first
-- Variations/video -> Favorites JSON first
+- Variations -> Favorites JSON first
 
 Deep scanning should concentrate on metadata that is genuinely absent from the cheaper sources.
 
@@ -246,7 +246,19 @@ Remove it from the active Favorites rail until a reliable data source exists.
 
 ### Deep-metadata controls
 
-Category, Etsy's Picks, Vintage, and gift wrapping use listing-page metadata and are active. Ships from, Ready to ship, gift-card support, and Ship to remain disabled pending reliable evidence. Cheap fields such as Star Seller, digital, Best Seller, personalization, variations, and video remain sourced from Favorites data when known. Settings actions and progress are connected to the persistent queue.
+Category, Etsy's Picks, Vintage, gift wrapping, country-based Ships from, and structured processing-time values use listing-page metadata and are active when known. Ship to exposes only positively observed structured destinations. Gift-card support remains visible but disabled pending reliable evidence. Cheap fields such as Star Seller, digital, Best Seller, personalization, and variations remain sourced from Favorites data when known. Settings actions and progress are connected to the persistent queue.
+
+### Shipping origin
+
+**Preferred source: listing-page semantic highlight.** The parser recognizes a listing detail row whose text is `Ships from:` followed by a strong country value. The country is stored as `shippingMetadata.shipsFromCountry` with independent parser provenance. Country absence remains unknown; it is never interpreted as the buyer's country.
+
+Ships-from filtering supports Anywhere, geographic Europe, the current Etsy country, and an explicitly selected country. City-level origin filtering is not offered because the confirmed signal contains no reliable city.
+
+### Ship-to destination and processing time limitations
+
+JSON-LD `OfferShippingDetails.shippingDestination` and handling-time values are used only as positive observations. They do not prove worldwide coverage. The Ship to selector therefore contains only observed destinations, and Ready to ship remains disabled until a finite handling-time value exists.
+
+Accepts Etsy gift cards remains visible but disabled because no reliable listing-level metadata source is confirmed.
 
 ## Parser testing requirements
 

@@ -13,6 +13,7 @@
 
 var FAV_DEEP_PARSER_VERSION = 'listing-html-v1';
 var FAV_DEEP_SOURCE = 'listing-page-html';
+var FAV_DEEP_SHIPPING_ORIGIN_VERSION = 'shipping-origin-v1';
 
 function favDeepField(value, known = true, observedAt = Date.now(), source = FAV_DEEP_SOURCE) {
     return {
@@ -26,6 +27,26 @@ function favDeepField(value, known = true, observedAt = Date.now(), source = FAV
 
 function favDeepUnknown(observedAt = 0) {
     return favDeepField(null, false, observedAt || 0, 'unknown');
+}
+
+function favDeepShippingOriginField(value, observedAt) {
+    return {
+        value,
+        known: true,
+        source: FAV_DEEP_SOURCE,
+        observedAt: Math.max(0, Number(observedAt) || 0),
+        parserVersion: FAV_DEEP_SHIPPING_ORIGIN_VERSION,
+    };
+}
+
+function favDeepShippingOriginUnknown(observedAt) {
+    return {
+        value: null,
+        known: false,
+        source: 'unknown',
+        observedAt: Math.max(0, Number(observedAt) || 0),
+        parserVersion: FAV_DEEP_SHIPPING_ORIGIN_VERSION,
+    };
 }
 
 function favDeepDecodeText(value) {
@@ -198,6 +219,8 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
     const product = favDeepFirstType(nodes, 'Product');
     const offer = favDeepOffer(product, nodes);
     const breadcrumbs = favDeepBreadcrumbPath(nodes);
+    const shipsFromMatch = sourceHtml.match(/\bShips\s+from:\s*(?:<\/?[^>]+>\s*){0,3}<strong\b[^>]*>([\s\S]*?)<\/strong>/i);
+    const shipsFromText = shipsFromMatch ? favDeepPlainText(shipsFromMatch[1]) : '';
 
     const etsysPickPositive =
         /aria-describedby\s*=\s*["']etsys_pick["']/i.test(sourceHtml)
@@ -253,6 +276,9 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
     );
 
     const shipping = favDeepShippingFromOffer(offer, observedAt);
+    shipping.shipsFromCountry = shipsFromText
+        ? favDeepShippingOriginField(shipsFromText, observedAt)
+        : favDeepShippingOriginUnknown(observedAt);
     if (returns !== null) shipping.returnsAccepted = favDeepField(returns, true, observedAt);
     else shipping.returnsAccepted = favDeepUnknown();
     if (exchanges !== null) shipping.exchangesAccepted = favDeepField(exchanges, true, observedAt);
@@ -333,6 +359,7 @@ async function favIndexApplyDeepListingObservationNow(listingId, parsed, options
         title: parsed?.identity?.title || existing.title || '',
         lastDeepScanAt: Math.max(Number(existing.lastDeepScanAt) || 0, observedAt),
         deepParserVersion: String(parsed?.parserVersion || FAV_DEEP_PARSER_VERSION),
+        shippingOriginParserVersion: FAV_DEEP_SHIPPING_ORIGIN_VERSION,
         listingMetadata: favIndexMergeMetadata(existing.listingMetadata, parsed?.listingMetadata || {}),
         shippingMetadata: favIndexMergeMetadata(existing.shippingMetadata, parsed?.shippingMetadata || {}),
         cardMetadata: favIndexMergeMetadata(existing.cardMetadata, parsed?.cardMetadata || {}),

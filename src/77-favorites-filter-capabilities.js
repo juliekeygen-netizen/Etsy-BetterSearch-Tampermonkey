@@ -31,10 +31,9 @@ function favOptionKeyFromElement0110(sectionKey, element) {
         if (/star seller/i.test(text)) return 'star-seller';
     }
     if (sectionKey === 'ships-from') {
-        if (['anywhere','europe','local','near','country'].includes(value)) return value;
+        if (['anywhere','europe','local','country'].includes(value)) return value;
         if (/anywhere/i.test(text)) return 'anywhere';
         if (/europe/i.test(text)) return 'europe';
-        if (/near a city/i.test(text)) return 'near';
         if (/another country/i.test(text)) return 'country';
         return 'local';
     }
@@ -62,7 +61,6 @@ function favOptionKeyFromElement0110(sectionKey, element) {
     if (sectionKey === 'listing-features') {
         if (/best seller/i.test(text)) return 'best-seller';
         if (/variations/i.test(text)) return 'has-variations';
-        if (/has video/i.test(text)) return 'has-video';
     }
     if (sectionKey === 'popularity-and-stock') {
         if (/low stock/i.test(text)) return 'low-stock';
@@ -122,7 +120,7 @@ function favOptionActive0110(sectionKey, optionKey) {
     if (sectionKey === 'ready-to-ship-in') return optionKey === '1-day' ? f.ready1Day === true : optionKey === '1-3-days' ? f.ready3Days === true : false;
     if (sectionKey === 'price') return Boolean(f.minPrice || f.maxPrice);
     if (sectionKey === 'item-type') return f.vintage === true;
-    if (sectionKey === 'ordering-options') return optionKey === 'gift-cards' ? f.giftCards === true : optionKey === 'gift-wrap' ? f.giftWrap === true : optionKey === 'customizable' ? f.personalizable === true : false;
+    if (sectionKey === 'ordering-options') return optionKey === 'gift-cards' ? false : optionKey === 'gift-wrap' ? f.giftWrap === true : optionKey === 'customizable' ? f.personalizable === true : false;
     if (sectionKey === 'ship-to') return Boolean(f.shipTo && String(f.shipTo).toUpperCase() !== 'ZZ');
     if (sectionKey === 'availability') return optionKey === 'available-only' ? f.availableOnly === true : optionKey === 'min-discount' ? Boolean(f.minDiscount) : false;
     if (sectionKey === 'rating-and-reviews') return optionKey === 'min-rating' ? Boolean(f.minRating) : optionKey === 'min-reviews' ? Boolean(f.minReviews) : false;
@@ -151,16 +149,22 @@ function favOptionAvailable0110(sectionKey, optionKey, caps, records) {
     if (sectionKey === 'special-offers') return optionKey === 'free-shipping' ? caps.freeShipping : caps.onSale;
     if (sectionKey === 'item-format') return optionKey === 'all-items' || (optionKey === 'digital' ? caps.digital : caps.physical);
     if (sectionKey === 'etsys-best') return optionKey === 'etsys-picks' ? (deepUnknown || caps.etsysPick) : caps.starSeller;
-    if (sectionKey === 'ships-from') return false;
-    if (sectionKey === 'ready-to-ship-in') return deepUnknown || (optionKey === '1-day' ? caps.ready1 : caps.ready3);
+    if (sectionKey === 'ships-from') {
+        if (optionKey === 'anywhere') return true;
+        if (!caps.shipsFromCodes?.size) return true;
+        if (optionKey === 'europe') return Array.from(caps.shipsFromCodes || []).some((code) => FAV_EUROPE_COUNTRY_CODES0101.has(code));
+        if (optionKey === 'local') return caps.shipsFromCodes?.has(favNormalizeCountryCode0101(favProps()?.countryIsoCode || ''));
+        return Boolean(caps.shipsFromCodes?.size);
+    }
+    if (sectionKey === 'ready-to-ship-in') return true;
     if (sectionKey === 'price') return caps.price;
     if (sectionKey === 'item-type') return deepUnknown || caps.vintage;
     if (sectionKey === 'ordering-options') {
-        if (optionKey === 'gift-cards') return false;
+        if (optionKey === 'gift-cards') return true;
         if (optionKey === 'gift-wrap') return deepUnknown || caps.giftWrap;
         return caps.personalizable;
     }
-    if (sectionKey === 'ship-to') return deepUnknown || caps.shipToCodes?.size > 0;
+    if (sectionKey === 'ship-to') return true;
     if (sectionKey === 'availability') return optionKey === 'available-only' ? caps.soldOut : caps.discount;
     if (sectionKey === 'rating-and-reviews') return optionKey === 'min-rating' ? caps.rating : caps.reviews;
     if (sectionKey === 'seller') return caps.shops?.size > 1;

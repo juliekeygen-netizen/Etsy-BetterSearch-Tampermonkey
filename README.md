@@ -203,7 +203,7 @@ The rail includes Etsy's normal filter structure first, then BetterSearch-specif
 - **Special offers** — Free shipping / On sale
 - **Item format** — All items / Exclude digital downloads / Digital downloads only
 - **Etsy's best** — Etsy's Picks / Star Seller, with native-style `?` info popovers
-- **Ships from** — Anywhere / Europe / current country / Near a city / Another country
+- **Ships from** — Anywhere / Europe / current country / Another country, backed by listing-page country metadata
 - **Ready to ship in** — 1 day / 1–3 days
 - **Price** — native-style range slider plus minimum/maximum price inputs
 - **Item type** — Vintage
@@ -212,11 +212,11 @@ The rail includes Etsy's normal filter structure first, then BetterSearch-specif
 - **Availability & discount** — BetterSearch's available-only and minimum-discount controls
 - **Rating & reviews** — minimum rating and minimum review count
 - **Seller** — shop selector
-- **Listing features** — Best Seller / variations / video
+- **Listing features** — Best Seller / variations
 - **Popularity & stock** — low-stock signal and minimum reported cart count
 - **Delivery** — maximum shipping cost / returns / exchanges
 
-Category, Etsy's Picks, Vintage, and gift wrapping are wired to the deep listing metadata index. Ships from, Ready to ship, gift-card support, and Ship to remain unavailable until their backing signals are reliable. Color is hidden entirely because no dependable source is known. Unknown metadata is never treated as false.
+Category, Etsy's Picks, Vintage, gift wrapping, country-based Ships from, and structured processing-time signals are wired to the deep listing metadata index. Ship to only offers destinations positively observed in listing metadata. Gift-card support stays visible but disabled because Etsy does not expose a reliable backing signal, and Color remains hidden. Unknown metadata is never treated as false.
 
 For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
 

@@ -2,7 +2,9 @@
 
 This roadmap is the implementation plan for evolving BetterSearch from a userscript-first project into one shared codebase that can ship as Tampermonkey, Chrome, and Firefox builds while adding a durable Favorites metadata index and deeper filtering later.
 
-The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, and persistent deep-listing queue are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
+The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, persistent deep-listing queue, and Favorites filter reliability pass are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
+
+The filter reliability pass adds semantic shipping-origin parsing, verified-destination Ship to behavior, metadata rehydration after deep scans, local filter application with viewport preservation, facet-aware unavailable-option detection, dynamic currency labels, and complete removal of the Favorites video filter. Gift-card support remains visibly unavailable until a dependable source exists.
 
 ## Guiding rules
 
@@ -221,7 +223,6 @@ Fields that require positive examples or network confirmation before becoming fi
 - native color attributes
 - vintage
 - personalizable/customizable
-- listing video
 - gift wrapping
 - arbitrary ship-to-country availability
 - exact processing/ready-to-ship days
@@ -309,7 +310,6 @@ Only activate a filter once its backing metadata is reliable.
 - Vintage
 - gift cards / gift wrapping
 - Customizable / personalizable
-- video
 - stock quantity / low stock
 - cart-popularity signal
 - shipping cost

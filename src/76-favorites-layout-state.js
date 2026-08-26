@@ -28,7 +28,7 @@ var FAV_FILTER_LAYOUT0110 = [
         ['etsys-picks',"Etsy's Picks"], ['star-seller','Star Seller'],
     ] },
     { key:'ships-from', label:'Ships from', options:[
-        ['anywhere','Anywhere'], ['europe','Europe'], ['local','Your country'], ['near','Near a city'], ['country','Another country'],
+        ['anywhere','Anywhere'], ['europe','Europe'], ['local','Your country'], ['country','Another country'],
     ] },
     { key:'ready-to-ship-in', label:'Ready to ship in', options:[
         ['1-day','1 day'], ['1-3-days','1–3 days'],
@@ -137,13 +137,42 @@ function favAvailabilityMode0110() {
         : 'disabled';
 }
 
-function favAvailabilityRecords0110() {
+function favConfigWithoutFilterSection0110(sectionKey) {
+    const config = favNormalizeConfig(favCfg);
+    const filters = config.filters;
+    if (sectionKey === 'search') { config.strict = false; config.multi = false; }
+    if (sectionKey === 'category') filters.category = '';
+    if (sectionKey === 'special-offers') { filters.freeShipping = false; filters.onSale = false; }
+    if (sectionKey === 'item-format') filters.itemFormat = 'all';
+    if (sectionKey === 'etsys-best') { filters.etsysPick = false; filters.starSeller = false; }
+    if (sectionKey === 'ships-from') { filters.shipsFrom = 'anywhere'; filters.shipsFromCountry = ''; }
+    if (sectionKey === 'ready-to-ship-in') { filters.ready1Day = false; filters.ready3Days = false; }
+    if (sectionKey === 'price') { filters.minPrice = ''; filters.maxPrice = ''; }
+    if (sectionKey === 'item-type') filters.vintage = false;
+    if (sectionKey === 'ordering-options') { filters.giftWrap = false; filters.personalizable = false; }
+    if (sectionKey === 'ship-to') filters.shipTo = '';
+    if (sectionKey === 'availability') { filters.availableOnly = false; filters.minDiscount = ''; }
+    if (sectionKey === 'rating-and-reviews') { filters.minRating = ''; filters.minReviews = ''; }
+    if (sectionKey === 'seller') filters.shop = '';
+    if (sectionKey === 'listing-features') { filters.bestSeller = false; filters.hasVariations = false; }
+    if (sectionKey === 'popularity-and-stock') { filters.lowStock = false; filters.minCarts = ''; }
+    if (sectionKey === 'delivery') { filters.maxShipping = ''; filters.returns = false; filters.exchanges = false; }
+    return config;
+}
+
+function favAvailabilityRecords0110(sectionKey = '') {
     const mode = favAvailabilityMode0110();
     if (mode === 'filtered') {
+        const currentConfig = favCfg;
         try {
+            favCfg = favConfigWithoutFilterSection0110(sectionKey);
             const current = favFilteredRecords();
+            favCfg = currentConfig;
             if (Array.isArray(current)) return current;
-        } catch (_) {}
+        } catch (_) {
+            /* Restore the live config even if a future filter throws. */
+            favCfg = currentConfig;
+        }
         if (Array.isArray(favState.filtered)) return favState.filtered;
     }
     return Array.isArray(favState.records) ? favState.records : [];
