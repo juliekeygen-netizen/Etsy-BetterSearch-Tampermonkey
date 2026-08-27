@@ -71,6 +71,24 @@ favShellStableRepair0123 = function favShellStableRepair0124() {
     return favShellStableRepairBefore0124();
 };
 
+/* MutationObserver/event listeners capture the callback object when they are
+   registered. Replacing the function above is not enough: replace the old
+   observer/listeners so every future rerender goes through the hardened pass. */
+favShellStableObserver0123?.disconnect?.();
+document.removeEventListener('ebsf:favorites-sync-state', favShellStableRepairBefore0124);
+window.removeEventListener('resize', favShellStableRepairBefore0124);
+window.removeEventListener('pageshow', favShellStableRepairBefore0124);
+window.removeEventListener('popstate', favShellStableRepairBefore0124);
+
+if (document.body) {
+    favShellStableObserver0123 = new MutationObserver(favShellStableRepair0123);
+    favShellStableObserver0123.observe(document.body, { childList:true, subtree:true });
+}
+document.addEventListener('ebsf:favorites-sync-state', favShellStableRepair0123);
+window.addEventListener('resize', favShellStableRepair0123, { passive:true });
+window.addEventListener('pageshow', favShellStableRepair0123);
+window.addEventListener('popstate', favShellStableRepair0123);
+
 GM_addStyle(`
 @media(min-width:900px){
   .ebsf-shell-v0123 [data-ebsf-shell-rail-host].ebsf-sidebar-active,
