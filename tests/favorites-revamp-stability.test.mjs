@@ -47,3 +47,15 @@ test('category visibility is constrained by layout-v2 enabled instances', () => 
   assert.match(stability, /favBuildCategory=function favBuildCategory0123/);
   assert.match(stability, /!favCategoryBindingEnabled0123\(bindingKey\)\|\|!favBindingAvailable0120\(bindingKey\)/);
 });
+
+test('drawers disappear when layout editing leaves them with no visible options', () => {
+  assert.match(stability, /const configured=drawer\.optionInstances\.filter/);
+  assert.match(stability, /if\(!configured\.length\)\{section\.hidden=true;continue;\}/);
+  assert.match(stability, /section\.hidden=!options\.some\(\(option\)=>!option\.hidden\)/);
+});
+
+test('legacy pagination restore cannot target the reconstructed shell', () => {
+  assert.match(stability, /favRestorePaginationBefore0123=favRestorePagination0122/);
+  assert.match(stability, /nav\.matches\?\.\('\[data-ebsf-collection-strip\],\[data-ebsf-all-header\]'\)/);
+  assert.match(stability, /favState\.nativePagination0120=null/);
+});
