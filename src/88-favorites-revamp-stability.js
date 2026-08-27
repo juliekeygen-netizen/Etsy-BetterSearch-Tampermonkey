@@ -131,9 +131,11 @@ function favRefreshDrawerVisibility0123() {
         const drawer=favFindDrawer0120(section.dataset.ebsfDrawerInstance);
         if(!drawer){section.hidden=true;continue;}
         if(drawer.hidden){section.hidden=true;continue;}
+        const configured=drawer.optionInstances.filter((option)=>!option.hidden&&favBindingSupported0120(option.bindingKey));
+        if(!configured.length){section.hidden=true;continue;}
         if(favAvailabilityMode0110()==='disabled'){section.hidden=false;continue;}
         const options=Array.from(section.querySelectorAll('[data-ebsf-option-instance]'));
-        section.hidden=options.length>0&&!options.some((option)=>!option.hidden);
+        section.hidden=!options.some((option)=>!option.hidden);
     }
 }
 
@@ -142,6 +144,19 @@ favRefreshFacetAvailability0120=function favRefreshFacetAvailability0123(){
     const result=favRefreshFacetAvailabilityBefore0123();
     favRefreshDrawerVisibility0123();
     return result;
+};
+
+/* The old pagination compatibility layer may still hold a node reference from
+ * an earlier lifecycle. It must never restore saved WtPagination children into
+ * the new collection/header shell. */
+var favRestorePaginationBefore0123=favRestorePagination0122;
+favRestorePagination0122=function favRestorePagination0123(){
+    const saved=favState.nativePagination0120;
+    const nav=saved?.nav;
+    if(nav&&(nav.matches?.('[data-ebsf-collection-strip],[data-ebsf-all-header]')||nav.closest?.('[data-ebsf-collection-strip],[data-ebsf-all-header]'))){
+        favState.nativePagination0120=null;
+    }
+    return favRestorePaginationBefore0123();
 };
 
 function favOwnedShellNode0123(node) {
