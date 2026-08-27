@@ -72,7 +72,7 @@ async function loadIndex({ currentListings = [], liveIds = [] } = {}) {
   const source = await readFile(resolve(ROOT, 'src/61a-favorites-index.js'), 'utf8');
   const liveNodes = new Map(liveIds.map((id) => [String(id), {}]));
   const context = vm.createContext({ console, Date, encodeURIComponent, indexedDB: {}, document: {}, favProps: () => ({}), favListingsFromProps: () => currentListings, favCardMap: () => liveNodes, favRecordsFromListings: (items) => items.map((item) => ({ ...item, id: String(item.listingId), known: {}, videoSources: [] })), favIndexCurrentScope: () => ({ scopeKey: 'current' }) });
-  vm.runInContext(`${source}\nglobalThis.testApi={favIndexUnknown,favIndexField,favIndexMergeField,favIndexEmptyListing,favIndexScopeKey,favIndexPatchFromRecord,favIndexMergeListing,favIndexMarkListingUnfavorite,favIndexMarkListingAvailability,favIndexApplyScopeCompletion,favIndexMergeShop,favIndexObserveRecordsNow,favIndexObserveCurrentPage,setObservationDeps:(read,write)=>{favIndexReadObservation=read;favIndexWrite=write;},setObserve:(fn)=>{favIndexObserveRecords=fn;},setCurrentScope:(fn)=>{favIndexCurrentScope=fn;}};`, context);
+  vm.runInContext(`${source}\nglobalThis.testApi={favIndexUnknown,favIndexField,favIndexMergeField,favIndexEmptyListing,favIndexScopeKey,favIndexPatchFromRecord,favIndexMergeListing,favIndexMarkListingUnfavorite,favIndexMarkListingAvailability,favIndexApplyScopeCompletion,favIndexMergeShop,favIndexApplyListingMetadataToRecord,favIndexObserveRecordsNow,favIndexObserveCurrentPage,setObservationDeps:(read,write)=>{favIndexReadObservation=read;favIndexWrite=write;},setObserve:(fn)=>{favIndexObserveRecords=fn;},setCurrentScope:(fn)=>{favIndexCurrentScope=fn;}};`, context);
   return context.testApi;
 }
 
@@ -112,7 +112,7 @@ test('Favorites config normalization preserves durable defaults and migrates rem
   assert.equal(cfg.filters.vintage, true);
   assert.equal(cfg.filters.shipsFrom, 'country');
   assert.equal('colors' in cfg.filters, false);
-  assert.equal(cfg.filters.ready1Day, false);
+  for (const removed of ['ready1Day','ready3Days','shipTo','minDiscount','bestSeller']) assert.equal(removed in cfg.filters, false);
   assert.equal(cfg.autoSync, true);
   assert.equal(cfg.autoScanMissingMetadata, true);
   const migrated = api.favNormalizeConfig({ filters:{ hasVideo:true, shipsFrom:'near', shipsFromCity:'Helsinki' } });
@@ -250,7 +250,7 @@ test('active Favorites values reopen accordion sections whenever the rail is sho
   cfg.filters.starSeller = true;
   cfg.filters.minReviews = '50';
   const active = Array.from(api.favActiveSectionKeys(cfg));
-  assert.deepEqual(active, ['search', 'etsys-best', 'price', 'rating-and-reviews']);
+  assert.deepEqual(active, ['search', 'item-qualities', 'price', 'rating-and-reviews']);
 
   const state = api.getState();
   state.openSectionsInitialized = false;
@@ -294,6 +294,18 @@ test('metadata known false remains distinct from unknown and source priority is 
   assert.equal(api.favIndexMergeField(knownFalse, newerDom).value, false);
   const newerJson = api.favIndexField(true, { source: 'favorites-json', observedAt: 30 });
   assert.equal(api.favIndexMergeField(knownFalse, newerJson).value, true);
+});
+
+test('deep seller metadata hydrates a live record when cheap Favorites data omitted the shop', async () => {
+  const api = await loadIndex();
+  const record = { id:'123', shopName:'', known:{} };
+  api.favIndexApplyListingMetadataToRecord(record, {
+    lastDeepScanAt: 20,
+    deepParserVersion: 'listing-html-v3',
+    listingMetadata: { sellerName:api.favIndexField('Example Studio', { known:true, source:'listing-page-html', observedAt:20 }) },
+  });
+  assert.equal(record.shopName, 'Example Studio');
+  assert.equal(record.known.shopName, true);
 });
 
 test('listing upsert preserves deep metadata through unfavorite and refavorite lifecycle', async () => {

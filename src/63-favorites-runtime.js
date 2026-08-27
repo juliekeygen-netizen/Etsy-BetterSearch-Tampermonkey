@@ -9,7 +9,7 @@ function favCaptureNativeGrid() {
 
 function favRestoreNative() {
     if(favState.rendered && favState.nativeGrid?.isConnected && favState.nativeOrder.length){favState.rendering=true;favState.nativeGrid.replaceChildren(...favState.nativeOrder);queueMicrotask(()=>{favState.rendering=false;});}
-    document.querySelector('[data-ebsf-pagination]')?.remove(); favState.countNode?.remove(); favState.countNode=null; favState.rendered=false; favState.filtered=[];document.body?.classList.remove('ebsf-results-active');
+    favState.countNode?.remove(); favState.countNode=null; favState.rendered=false; favState.filtered=[];document.body?.classList.remove('ebsf-results-active');
 }
 
 function favFallbackNode(record) {
@@ -54,13 +54,8 @@ function favRenderCount(totalShown) {
 }
 
 function favRenderPagination(totalPages) {
-    document.querySelector('[data-ebsf-pagination]')?.remove(); if(totalPages<=1)return;
-    const section=document.querySelector('.phase3-listing-cards-section'); if(!section)return;
-    const nav=document.createElement('div');nav.className='ebsf-pagination';nav.dataset.ebsfPagination='';
-    const make=(label,page,disabled=false,active=false)=>{const b=document.createElement('button');b.type='button';b.className=`wt-btn wt-btn--small ${active?'ebsf-page-active':'wt-btn--transparent'}`;b.textContent=label;b.disabled=disabled;b.addEventListener('click',()=>{favState.localPage=page;favRenderCurrent();section.scrollIntoView({block:'start'});});return b;};
-    nav.append(make('←',Math.max(1,favState.localPage-1),favState.localPage===1));
-    const start=Math.max(1,favState.localPage-2),end=Math.min(totalPages,start+4);for(let p=start;p<=end;p++)nav.append(make(String(p),p,false,p===favState.localPage));
-    nav.append(make('→',Math.min(totalPages,favState.localPage+1),favState.localPage===totalPages)); section.append(nav);
+    /* Installed by the final Favorites page-shell module, which reuses Etsy's
+     * WtPagination structure and preserves the native pager position. */
 }
 
 function favRenderCurrent() {
@@ -72,10 +67,13 @@ function favRenderCurrent() {
 
 async function favReapply(force=false) {
     if(!isFavoritesPage())return;
+    const requestKey=favDatasetKey();
     favEnsureToolbar();
     if(!favEnhancementActive()){favRestoreNative();return;}
-    if(favSyncState.status==='running'){const sameScope=favSyncCurrentScope().scopeKey===favSyncState.scopeKey;await favSyncState.promise;if(sameScope)force=false;}
-    await favLoadAll(force);if(favNeedsExtraInfo()&&!favState.extraReady)await favEnsureExtraInfo();favRenderCurrent();
+    if(favSyncState.status==='running'){const sameScope=favSyncCurrentScope().scopeKey===favSyncState.scopeKey;await favSyncState.promise;if(!isFavoritesPage()||requestKey!==favDatasetKey())return;if(sameScope)force=false;}
+    await favLoadAll(force);if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
+    if(favNeedsExtraInfo()&&!favState.extraReady){await favEnsureExtraInfo();if(!isFavoritesPage()||requestKey!==favDatasetKey())return;}
+    favRenderCurrent();
 }
 
 async function favRefreshRouteData(){if(favEnhancementActive())await favReapply();await favMaybeAutoSync(false);}
@@ -104,9 +102,13 @@ function favScheduleSync(delay=250){clearTimeout(favState.syncTimer);favState.sy
 function favScheduleCurrentPageObservation(){clearTimeout(favState.observeTimer);favState.observeTimer=setTimeout(()=>{if(isFavoritesPage()&&!favState.rendering)favIndexObserveCurrentPage().catch(()=>{});},1000);}
 
 function favStartRuntime() {
+    if(!favState.runtimeObserverBound0121){
+        favState.observer?.disconnect();favState.observer=new MutationObserver(()=>{if(!favState.rendering){favScheduleSync();favScheduleCurrentPageObservation();}});favState.observer.observe(document.body,{childList:true,subtree:true});
+        window.addEventListener('popstate',()=>favScheduleSync(80));window.addEventListener('pageshow',(event)=>{if(event.persisted)favScheduleSync(0);});favState.runtimeObserverBound0121=true;
+    }
     if(!isFavoritesPage())return;favState.lastHref=location.href;favState.lastScopeKey=favScopeKey();favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().then(()=>favDeepMaybeAutoScan()).catch(()=>{});void favRefreshRouteData();
-    favState.observer?.disconnect();favState.observer=new MutationObserver(()=>{if(!favState.rendering){favScheduleSync();favScheduleCurrentPageObservation();}});favState.observer.observe(document.body,{childList:true,subtree:true});
-    window.addEventListener('popstate',()=>favScheduleSync(80));window.addEventListener('pageshow',(event)=>{if(event.persisted)favScheduleSync(0);});
 }
 
-favStartRuntime();
+/* Started by the final Favorites shell module after all late filter/layout
+ * overrides are installed. Starting here exposed a short-lived legacy rail
+ * and editor during initial page hydration. */

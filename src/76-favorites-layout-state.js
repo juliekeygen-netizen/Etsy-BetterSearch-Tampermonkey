@@ -110,10 +110,11 @@ var favNormalizeUiPrefsBefore0110 = favNormalizeUiPrefs;
 favNormalizeUiPrefs = function favNormalizeUiPrefs0110(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const base = favNormalizeUiPrefsBefore0110(source);
+    const hasLegacyPreference = Object.prototype.hasOwnProperty.call(source, 'hideUnavailableCatalogFilters');
     const legacyEnabled = source.hideUnavailableCatalogFilters === true || base.hideUnavailableCatalogFilters === true;
     const availabilityMode = FAV_FILTER_AVAILABILITY_MODES0110.includes(source.filterAvailabilityMode)
         ? source.filterAvailabilityMode
-        : (legacyEnabled ? 'catalogue' : 'disabled');
+        : (hasLegacyPreference ? (legacyEnabled ? 'catalogue' : 'disabled') : 'filtered');
     const sortDefaults = FAV_SORT_DEFINITIONS.map((entry) => entry.key);
     return {
         ...base,
@@ -128,7 +129,10 @@ favNormalizeUiPrefs = function favNormalizeUiPrefs0110(raw) {
     };
 };
 
-favUiPrefs = favNormalizeUiPrefs(GM_getValue(FAV_UI_PREFS_STORAGE_KEY, favUiPrefs || {}));
+/* Read the persisted value directly here. Passing the already-normalized
+ * in-memory preferences as the fallback made a fresh install look like an
+ * explicit legacy "disabled" preference before schema v2 ever ran. */
+favUiPrefs = favNormalizeUiPrefs(GM_getValue(FAV_UI_PREFS_STORAGE_KEY, {}));
 favSaveUiPrefs();
 
 function favAvailabilityMode0110() {

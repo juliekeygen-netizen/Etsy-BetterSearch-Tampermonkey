@@ -11,7 +11,7 @@
  * when Etsy explicitly exposes a negative/zero value.
  */
 
-var FAV_DEEP_PARSER_VERSION = 'listing-html-v1';
+var FAV_DEEP_PARSER_VERSION = 'listing-html-v3';
 var FAV_DEEP_SOURCE = 'listing-page-html';
 var FAV_DEEP_SHIPPING_ORIGIN_VERSION = 'shipping-origin-v1';
 
@@ -80,6 +80,26 @@ function favDeepNumber(value) {
     const match = text.match(/-?\d+(?:\.\d+)?/);
     if (!match) return Number.NaN;
     const number = Number(match[0]);
+    return Number.isFinite(number) ? number : Number.NaN;
+}
+
+function favDeepLocalizedNumber(value) {
+    let text = String(value ?? '').replace(/[\s\u00a0]/g, '').replace(/[^0-9,.-]/g, '');
+    if (!text) return Number.NaN;
+    const comma = text.lastIndexOf(',');
+    const dot = text.lastIndexOf('.');
+    if (comma >= 0 && dot >= 0) {
+        const decimal = comma > dot ? ',' : '.';
+        const thousands = decimal === ',' ? /\./g : /,/g;
+        text = text.replace(thousands, '').replace(decimal, '.');
+    } else if (comma >= 0) {
+        const decimals = text.length - comma - 1;
+        text = decimals > 0 && decimals <= 2 ? text.replace(/\./g, '').replace(',', '.') : text.replace(/,/g, '');
+    } else if (dot >= 0) {
+        const decimals = text.length - dot - 1;
+        if (!(decimals > 0 && decimals <= 2)) text = text.replace(/\./g, '');
+    }
+    const number = Number(text);
     return Number.isFinite(number) ? number : Number.NaN;
 }
 
@@ -221,6 +241,20 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
     const breadcrumbs = favDeepBreadcrumbPath(nodes);
     const shipsFromMatch = sourceHtml.match(/\bShips\s+from:\s*(?:<\/?[^>]+>\s*){0,3}<strong\b[^>]*>([\s\S]*?)<\/strong>/i);
     const shipsFromText = shipsFromMatch ? favDeepPlainText(shipsFromMatch[1]) : '';
+    const shopLinkMatch = sourceHtml.match(/<a\b(?=[^>]*\bhref\s*=\s*["'][^"']*\/shop\/([^?\/"'#]+)[^"']*["'])[^>]*>([\s\S]*?)<\/a>/i);
+    const shopLinkName = shopLinkMatch ? (favDeepPlainText(shopLinkMatch[2]) || decodeURIComponent(shopLinkMatch[1] || '')) : '';
+    const returnsButtonMatch = sourceHtml.match(/<button\b(?=[^>]*\baria-describedby\s*=\s*["']shipping-highlights-returns-and-exchanges["'])[^>]*>([\s\S]*?)<\/button>/i);
+    const returnsButtonText = returnsButtonMatch ? favDeepPlainText(returnsButtonMatch[1]) : '';
+    const shipCostStart = sourceHtml.search(/\bCost\s+to\s+ship\b/i);
+    const shipCostSegment = shipCostStart >= 0 ? sourceHtml.slice(shipCostStart, shipCostStart + 1200) : '';
+    const shipCostMatch = shipCostSegment.match(/<strong\b[^>]*>([\s\S]*?)<\/strong>/i);
+    const shipCostValueMatch = shipCostSegment.match(/<span\b[^>]*class\s*=\s*["'][^"']*\bcurrency-value\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
+    const shipCostText = shipCostValueMatch?.[1] || shipCostMatch?.[1] || '';
+    const shipCost = favDeepLocalizedNumber(favDeepPlainText(shipCostText));
+    const ratingStart = sourceHtml.search(/<div\b[^>]*class\s*=\s*["'][^"']*\breviews-rating\b[^"']*["'][^>]*>/i);
+    const ratingSegment = ratingStart >= 0 ? sourceHtml.slice(ratingStart, ratingStart + 5000) : '';
+    const ratingUiMatch = ratingSegment.match(/<span\b[^>]*class\s*=\s*["'][^"']*\breviews-rating\b[^"']*["'][^>]*>\s*([0-9]+(?:[.,][0-9]+)?)\s*<\/span>/i);
+    const reviewsUiMatch = ratingSegment.match(/\(\s*([0-9][0-9\s.,]*)\s+reviews?\s*\)/i);
 
     const etsysPickPositive =
         /aria-describedby\s*=\s*["']etsys_pick["']/i.test(sourceHtml)
@@ -260,22 +294,29 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
         : favDeepUnknown();
 
     const price = favDeepNumber(offer?.price ?? offer?.lowPrice);
-    const rating = favDeepNumber(product?.aggregateRating?.ratingValue);
-    const reviews = favDeepNumber(product?.aggregateRating?.reviewCount ?? product?.aggregateRating?.ratingCount);
+    const jsonRating = favDeepNumber(product?.aggregateRating?.ratingValue);
+    const jsonReviews = favDeepNumber(product?.aggregateRating?.reviewCount ?? product?.aggregateRating?.ratingCount);
+    const rating = Number.isFinite(jsonRating) ? jsonRating : favDeepLocalizedNumber(ratingUiMatch?.[1]);
+    const reviews = Number.isFinite(jsonReviews) ? jsonReviews : favDeepLocalizedNumber(reviewsUiMatch?.[1]);
     const availabilityState = favDeepNormalizeAvailability(offer?.availability);
 
+    const returnsEvidence = returnsButtonText || plain;
     const returns = favDeepSemanticBoolean(
-        plain,
-        [/\bReturns accepted\b/i, /\bAccepts returns\b/i],
-        [/\bReturns not accepted\b/i, /\bDoes not accept returns\b/i]
+        returnsEvidence,
+        [/\bReturns accepted\b/i, /\bAccepts returns\b/i, /\bReturns\s*&\s*exchanges accepted\b/i],
+        [/\bReturns not accepted\b/i, /\bDoes not accept returns\b/i, /\bReturns\s*&\s*exchanges not accepted\b/i]
     );
     const exchanges = favDeepSemanticBoolean(
-        plain,
-        [/\bExchanges accepted\b/i, /\bAccepts exchanges\b/i],
-        [/\bExchanges not accepted\b/i, /\bDoes not accept exchanges\b/i]
+        returnsEvidence,
+        [/\bExchanges accepted\b/i, /\bAccepts exchanges\b/i, /\bReturns\s*&\s*exchanges accepted\b/i],
+        [/\bExchanges not accepted\b/i, /\bDoes not accept exchanges\b/i, /\bReturns\s*&\s*exchanges not accepted\b/i]
     );
 
     const shipping = favDeepShippingFromOffer(offer, observedAt);
+    if (Number.isFinite(shipCost)) {
+        shipping.cost = favDeepField(shipCost, true, observedAt);
+        shipping.freeShipping = favDeepField(shipCost === 0, true, observedAt);
+    }
     shipping.shipsFromCountry = shipsFromText
         ? favDeepShippingOriginField(shipsFromText, observedAt)
         : favDeepShippingOriginUnknown(observedAt);
@@ -288,7 +329,7 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
         listingId: favDeepListingId(sourceHtml, baseUrl),
         url: String(product?.url || baseUrl || ''),
         title: favDeepDecodeText(product?.name || '').trim(),
-        shopName: favDeepDecodeText(product?.seller?.name || product?.brand?.name || '').trim(),
+        shopName: favDeepDecodeText(shopLinkName || product?.seller?.name || product?.brand?.name || '').trim(),
     };
 
     return {
@@ -320,6 +361,7 @@ function favDeepParseListingHtml(html, baseUrl = '', options = {}) {
             giftWrap,
             digital,
             personalizable,
+            sellerName: identity.shopName ? favDeepField(identity.shopName, true, observedAt) : favDeepUnknown(),
         },
         shippingMetadata: shipping,
         shopMetadata: {

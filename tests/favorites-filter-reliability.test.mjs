@@ -56,6 +56,9 @@ test('Ships from matches known country origins without treating unknown as local
   const unknown = { shipsFromCountry:'', known:{} };
   assert.equal(api.favRecordShipsFrom0101(finland, 'local'), true);
   assert.equal(api.favRecordShipsFrom0101(germany, 'europe'), true);
+  assert.equal(api.favRecordShipsFrom0101(germany, 'eu'), true);
+  assert.equal(api.favRecordShipsFrom0101({ shipsFromCountry:'GB', known:{ shipsFromCountry:true } }, 'europe'), true);
+  assert.equal(api.favRecordShipsFrom0101({ shipsFromCountry:'GB', known:{ shipsFromCountry:true } }, 'eu'), false);
   assert.equal(api.favRecordShipsFrom0101(usa, 'europe'), false);
   assert.equal(api.favRecordShipsFrom0101(usa, 'country', 'US'), true);
   assert.equal(api.favRecordShipsFrom0101(unknown, 'local'), false);

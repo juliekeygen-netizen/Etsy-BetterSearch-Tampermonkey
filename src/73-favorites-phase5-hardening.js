@@ -15,7 +15,7 @@
 
 /* Parser behavior changed enough that records scanned by the previous parser
  * need one refresh. The rest of the index still keeps per-field provenance. */
-FAV_DEEP_PARSER_VERSION = 'listing-html-v2';
+FAV_DEEP_PARSER_VERSION = 'listing-html-v3';
 
 /* ---------- JSON-LD parsing ---------- */
 

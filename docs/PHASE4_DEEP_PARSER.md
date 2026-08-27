@@ -23,16 +23,21 @@ Phase 4 starts in BetterSearch **v0.10.0**. It adds the parser/fetch/index primi
   - personalization positive signal
   - gift-wrapping positive signal
   - Star Seller positive fallback
+  - semantic Ships from country
+  - listing shop-link seller name with JSON-LD fallback
+  - scoped Cost to ship with localized numeric parsing
+  - scoped returns/exchanges highlight wording
+  - listing-summary rating and review-count fallback
 - Digital/physical is intentionally **not** inferred from arbitrary listing-page text because recommendation cards can contain `Digital download` on the same page. Favorites JSON/card data remains the trusted source until a scoped main-listing signal is confirmed.
 - A parser result must retain field provenance and parser version before it is written to the durable index.
 
 ## Toolbar stability bug folded into this phase
 
-`src/70-favorites-phase4-polish.js` fixes the Favorites toolbar moving slightly whenever the whole Filters rail is shown/hidden.
+`src/70-favorites-phase4-polish.js` originally fixed toolbar movement while Filters opened and closed. In v0.12.0 the desktop rail is permanent; the legacy toggle is hidden/disabled there and remains the mobile drawer opener.
 
 Expected behavior:
 
-- `Show filters` and `Hide filters` use one locked button width.
+- The mobile Filters opener retains stable geometry.
 - Filter / Sort / Settings / native search keep the same widths while toggling the rail.
 - Their viewport position is frozen across the sidebar swap.
 - Geometry is recalculated only when the route/search layout or viewport width genuinely changes.

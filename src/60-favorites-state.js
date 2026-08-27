@@ -44,18 +44,16 @@ function favDefaultConfig() {
         autoSync: true,
         autoScanMissingMetadata: true,
         filters: {
-            minPrice: '', maxPrice: '', minDiscount: '',
+            minPrice: '', maxPrice: '',
             availableOnly: false, onSale: false, freeShipping: false,
             itemFormat: 'all', minRating: '', minReviews: '',
-            starSeller: false, bestSeller: false, personalizable: false,
+            starSeller: false, personalizable: false,
             hasVariations: false, shop: '',
             maxShipping: '', returns: false, exchanges: false,
             lowStock: false, minCarts: '',
             category: '', etsysPick: false,
             shipsFrom: 'anywhere', shipsFromCountry: '',
-            ready1Day: false, ready3Days: false,
             vintage: false, giftWrap: false,
-            shipTo: '',
         },
     };
 }
@@ -74,20 +72,18 @@ function favNormalizeConfig(raw) {
         autoSync: source.autoSync !== false,
         autoScanMissingMetadata: source.autoScanMissingMetadata !== false,
         filters: {
-            minPrice: String(filters.minPrice ?? ''), maxPrice: String(filters.maxPrice ?? ''), minDiscount: String(filters.minDiscount ?? ''),
+            minPrice: String(filters.minPrice ?? ''), maxPrice: String(filters.maxPrice ?? ''),
             availableOnly: filters.availableOnly === true, onSale: filters.onSale === true, freeShipping: filters.freeShipping === true,
             itemFormat: ['all','physical','digital'].includes(filters.itemFormat) ? filters.itemFormat : 'all',
             minRating: String(filters.minRating ?? ''), minReviews: String(filters.minReviews ?? ''),
-            starSeller: filters.starSeller === true, bestSeller: filters.bestSeller === true, personalizable: filters.personalizable === true,
+            starSeller: filters.starSeller === true, personalizable: filters.personalizable === true,
             hasVariations: filters.hasVariations === true, shop: String(filters.shop ?? ''),
             maxShipping: String(filters.maxShipping ?? ''), returns: filters.returns === true, exchanges: filters.exchanges === true,
             lowStock: filters.lowStock === true, minCarts: String(filters.minCarts ?? ''),
             category: String(filters.category ?? ''), etsysPick: filters.etsysPick === true,
-            shipsFrom: ['anywhere','europe','local','country'].includes(filters.shipsFrom) ? filters.shipsFrom : 'anywhere',
+            shipsFrom: ['anywhere','europe','eu','local','country'].includes(filters.shipsFrom) ? filters.shipsFrom : 'anywhere',
             shipsFromCountry: String(filters.shipsFromCountry ?? ''),
-            ready1Day: filters.ready1Day === true, ready3Days: filters.ready3Days === true,
             vintage: filters.vintage === true, giftWrap: filters.giftWrap === true,
-            shipTo: String(filters.shipTo ?? ''),
         },
     };
 }
@@ -148,7 +144,21 @@ var favState = {
 };
 
 function favSaveConfig() {
-    favCfg = favNormalizeConfig(favCfg);
+    /* Controls in the persistent rail intentionally stay mounted while local
+     * filtering runs. Keep both the config object and its filters object
+     * stable so event handlers do not retain a stale pre-normalization
+     * reference after their first change (notably the dual price slider). */
+    const liveConfig = favCfg;
+    const liveFilters = liveConfig?.filters && typeof liveConfig.filters === 'object'
+        ? liveConfig.filters
+        : {};
+    const normalized = favNormalizeConfig(liveConfig);
+    for (const key of Object.keys(liveFilters)) if (!(key in normalized.filters)) delete liveFilters[key];
+    Object.assign(liveFilters, normalized.filters);
+    normalized.filters = liveFilters;
+    for (const key of Object.keys(liveConfig)) if (!(key in normalized)) delete liveConfig[key];
+    Object.assign(liveConfig, normalized);
+    favCfg = liveConfig;
     GM_setValue(FAV_STORAGE_KEY, favCfg);
 }
 
@@ -368,19 +378,12 @@ function favActiveSectionKeys(config = favCfg) {
     const active = new Set();
     if (cfg.strict || cfg.multi) active.add('search');
     if (f.category) active.add('category');
-    if (f.freeShipping || f.onSale) active.add('special-offers');
-    if (f.itemFormat !== 'all') active.add('item-format');
-    if (f.etsysPick || f.starSeller) active.add('etsys-best');
+    if (f.freeShipping || f.onSale || f.itemFormat !== 'all' || f.etsysPick || f.starSeller || f.availableOnly || f.personalizable || f.hasVariations || f.giftWrap) active.add('item-qualities');
     if (f.shipsFrom !== 'anywhere' || f.shipsFromCountry) active.add('ships-from');
-    if (f.ready1Day || f.ready3Days) active.add('ready-to-ship-in');
     if (f.minPrice || f.maxPrice) active.add('price');
     if (f.vintage) active.add('item-type');
-    if (f.giftWrap || f.personalizable) active.add('ordering-options');
-    if (f.shipTo) active.add('ship-to');
-    if (f.availableOnly || f.minDiscount) active.add('availability');
     if (f.minRating || f.minReviews) active.add('rating-and-reviews');
     if (f.shop) active.add('seller');
-    if (f.bestSeller || f.hasVariations) active.add('listing-features');
     if (f.lowStock || f.minCarts) active.add('popularity-and-stock');
     if (f.maxShipping || f.returns || f.exchanges) active.add('delivery');
     return active;
@@ -405,12 +408,11 @@ function favPrepareOpenSectionsForRail() {
 function favHasActiveFilters() {
     const f = favCfg.filters;
     return Boolean(
-        f.minPrice || f.maxPrice || f.minDiscount || f.availableOnly || f.onSale || f.freeShipping || f.itemFormat !== 'all'
-        || f.minRating || f.minReviews || f.starSeller || f.bestSeller || f.personalizable || f.hasVariations
+        f.minPrice || f.maxPrice || f.availableOnly || f.onSale || f.freeShipping || f.itemFormat !== 'all'
+        || f.minRating || f.minReviews || f.starSeller || f.personalizable || f.hasVariations
         || f.shop || f.maxShipping || f.returns || f.exchanges || f.lowStock || f.minCarts
         || f.category || f.etsysPick || f.vintage || f.giftWrap
-        || f.shipsFrom !== 'anywhere' || f.shipsFromCountry || f.ready1Day || f.ready3Days
-        || (f.shipTo && String(f.shipTo).toUpperCase() !== 'ZZ')
+        || f.shipsFrom !== 'anywhere' || f.shipsFromCountry
     );
 }
 

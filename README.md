@@ -168,27 +168,31 @@ If Chrome throttles the hidden tab and requests start failing, BetterSearch paus
 
 ## Favorites filters and sorting
 
-BetterSearch also enhances Etsy's Favorites Items and collection pages while preserving Etsy's own **Search your favorites**, **Search within this collection**, Items/categories, Collections, and Shops navigation.
+BetterSearch also enhances Etsy's Favorites Items and collection pages while preserving Etsy's native search, listing cards, collection URLs/modals, and Shops navigation.
 
 ### Native-style Favorites UI
 
-On desktop the Favorites search row becomes approximately:
+On desktop the Favorites area becomes approximately:
 
 ```text
-[ Show filters ] [ Etsy order ▾ ] [ Settings ⚙ ] [ Search your favorites... ]
+[ All ] [ + ] [ collection ] [ collection ] [ draggable overflow… ]
+[ permanent Filters rail ]  [ Etsy order ▾ ] [ Settings ⚙ ] [ Search your favorites... ]
 ```
 
 Named collections use the same control order with Etsy's native **Search within this collection** field. BetterSearch preserves the native form as the flexible search control and only shrinks it when the viewport needs room for the three controls.
 
-- **Show filters** is styled after Etsy's native search filter button.
+- The native Items/automatic-group/Collections sidebar is retained only as a hidden inert delegation source. A permanent BetterSearch filter rail occupies that desktop column.
+- A fixed **All** and native **+** control sit beside a horizontally scrollable list of real collections; Etsy-generated groups are omitted. Collection links remain ordinary Etsy URLs, and the native create dialog is reused.
+- Old `collectionId` links for Etsy-generated groups redirect to All by default. This can be disabled in Favorites Settings → Preferences.
 - The native Favorites/collection search form stays in place and continues to work normally.
 - The sort menu uses Etsy's `wt-menu` / `wt-options` visual language.
 - The shared outline cog opens a scrollable Favorites Settings view with Favorites/shop coverage, real sync and deep-scan status, manual update actions, automatic sync settings, and persistent preferences.
 - At narrower desktop/tablet widths, the Favorites search area remains visible instead of disappearing with Etsy's large-profile header breakpoint. Filter + Sort + Settings stay reachable beside the shrinking native search field, wrapping only on genuinely small screens.
-- Opening Filters temporarily replaces the existing **Items / Collections / Shops** sidebar in the same column, so the Favorites grid does not get pushed sideways. BetterSearch preserves the actual native sidebar DOM nodes and restores them when Filters closes.
+- **Shops** is moved to the bottom of the permanent filter rail.
+- The All page uses the collection-style title/count shell and removes the separate What's new module. The metadata row shows `N favorites · M shown`.
 - On smaller screens, Filters opens as an Etsy-style full-height overlay instead.
 
-The Favorites filter rail mirrors Etsy's marketplace filter rail closely: native-style accordion rows, clean hover behavior, matching dividers/spacing, compact non-overflowing controls, a dual-thumb price slider, one centered disclosure chevron per row, Category Show more/less, and accessible help popovers. The desktop rail participates in normal document scrolling instead of creating its own viewport. On a fresh page, only sections containing active values open automatically. Any section with an active value opens again whenever the rail is shown; other manual disclosure changes live only for the current page session. Ordinary value changes keep the mounted rail and focused controls intact. Clicking the **Filters** heading itself closes the rail.
+The Favorites filter rail mirrors Etsy's marketplace filter rail closely: native-style accordion rows, clean hover behavior, matching dividers/spacing, compact non-overflowing controls, a dual-thumb price slider, and accessible help. The desktop rail participates in normal document scrolling. **Filters** is a static heading on desktop; the legacy Show/Hide control remains only as the mobile drawer opener.
 
 The custom **Search** drawer remains at the top. **Strict title** and **Multi-search** use split pills; Strict's caret opens **Exact phrase / All words directly between Strict title and Multi-search**, while Multi-search's caret opens the rule editor.
 
@@ -196,27 +200,20 @@ The real Favorites listing section is handled separately from Etsy recommendatio
 
 ### Favorites filters
 
-The rail includes Etsy's normal filter structure first, then BetterSearch-specific Favorites filters:
+The default rail order is:
 
 - **Search** — Strict Title and rule-based Multi-search
 - **Category** — All categories plus Etsy-style category links and Show more
-- **Special offers** — Free shipping / On sale
-- **Item format** — All items / Exclude digital downloads / Digital downloads only
-- **Etsy's best** — Etsy's Picks / Star Seller, with native-style `?` info popovers
-- **Ships from** — Anywhere / Europe / current country / Another country, backed by listing-page country metadata
-- **Ready to ship in** — 1 day / 1–3 days
+- **Ships from** — Anywhere / geographic Europe / European Union / current Etsy country / Another country
 - **Price** — native-style range slider plus minimum/maximum price inputs
+- **Item qualities** — Etsy's Picks, Star Seller, Available only, On sale, Free shipping, Customizable, Has variations, Can be gift wrapped, Exclude digital downloads, and Digital downloads only
 - **Item type** — Vintage
-- **Ordering options** — Accepts Etsy gift cards / Can be gift-wrapped / Customizable
-- **Ship to** — country selector
-- **Availability & discount** — BetterSearch's available-only and minimum-discount controls
-- **Rating & reviews** — minimum rating and minimum review count
 - **Seller** — shop selector
-- **Listing features** — Best Seller / variations
-- **Popularity & stock** — low-stock signal and minimum reported cart count
-- **Delivery** — maximum shipping cost / returns / exchanges
+- **Popularity & stock** — low-stock signal and minimum reported cart count (hidden by default)
+- **Rating & reviews** — minimum rating and minimum review count (hidden by default)
+- **Delivery** — maximum shipping cost / returns / exchanges (hidden by default)
 
-Category, Etsy's Picks, Vintage, gift wrapping, country-based Ships from, and structured processing-time signals are wired to the deep listing metadata index. Ship to only offers destinations positively observed in listing metadata. Gift-card support stays visible but disabled because Etsy does not expose a reliable backing signal, and Color remains hidden. Unknown metadata is never treated as false.
+Ready to ship, Ship to, Etsy gift cards, Best Seller, Minimum discount, Color, and Has Video are not exposed as Favorites filters. Unknown metadata is never treated as false. Exclude digital and Digital only are mutually exclusive and toggle back to all formats when selected again.
 
 For popularity/stock, BetterSearch only treats a value as known when Etsy actually reports a signal such as **In 6 carts** or **Only 3 left**. A missing urgency signal is not interpreted as zero carts or unlimited stock.
 
@@ -247,7 +244,7 @@ Favorites sorting is local after the current Favorites scope has been loaded, so
 
 Reversing updates the visible label (for example, **Shop: Z to A**) without creating a duplicate menu row. Unknown shipping, cart, stock, and other numeric metadata stays unknown and sorts after known values in either direction. Existing pre-v0.9.1 ascending/descending settings migrate to the equivalent base sort and direction.
 
-BetterSearch keeps local Favorites pagination at about Etsy's normal 20-listing page size and shows a small `favorites · shown` counter when local filtering/sorting is active.
+BetterSearch does not create a second Favorites pager. Etsy's native pager remains the only page selector, while an active local filter renders its complete matched set and reports the total match count in the native collection metadata row.
 
 ### Favorites data and reconstructed cards
 
