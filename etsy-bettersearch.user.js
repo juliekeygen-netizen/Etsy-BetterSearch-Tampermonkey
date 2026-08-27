@@ -3,7 +3,7 @@
 // @namespace    https://github.com/juliekeygen-netizen
 // @version      0.12.0
 // @description  Adds strict title matching, rule-based multi-search, configurable scanning, persistent Etsy filters, and advanced Favorites filtering/sorting while keeping Etsy's native UI.
-// @homepageURL  https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey
+// @homepageURL  https://github.com/juliekeygen-netizen
 // @supportURL   https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/issues
 // @author       juliekeygen-netizen
 // @match        https://www.etsy.com/*
@@ -61,7 +61,7 @@
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/85-favorites-filter-revamp.js?v=0.12.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/86-favorites-page-shell.js?v=0.12.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/87-favorites-revamp-style.js?v=0.12.0
-// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/fix/favorites-ui-stability-2026-08-27/src/88-favorites-revamp-stability.js?v=0.12.0
+// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/88-favorites-revamp-stability.js?v=0.12.0
 // @downloadURL  https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js
 // @updateURL    https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js
 // @noframes
