@@ -157,6 +157,9 @@ function favNormalizeCountryCode0101(value) {
 var FAV_EUROPE_COUNTRY_CODES0101 = new Set(
     'AL AD AM AT AZ BY BE BA BG HR CY CZ DK EE FI FR GE DE GR HU IS IE IT KZ XK LV LI LT LU MT MD MC ME NL MK NO PL PT RO RU SM RS SK SI ES SE CH TR UA GB VA'.split(' ')
 );
+var FAV_EU_COUNTRY_CODES0120 = new Set(
+    'AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' ')
+);
 
 function favRecordShipsFrom0101(record, mode, selectedCountry = '') {
     if (!mode || mode === 'anywhere') return true;
@@ -164,7 +167,11 @@ function favRecordShipsFrom0101(record, mode, selectedCountry = '') {
     const origin = favNormalizeCountryCode0101(record.shipsFromCountry);
     if (!origin) return false;
     if (mode === 'europe') return FAV_EUROPE_COUNTRY_CODES0101.has(origin);
-    if (mode === 'local') return origin === favNormalizeCountryCode0101(favProps()?.countryIsoCode || '');
+    if (mode === 'eu') return FAV_EU_COUNTRY_CODES0120.has(origin);
+    if (mode === 'local') {
+        const current = String(favProps()?.countryIsoCode || '').trim().toUpperCase();
+        return FAV_COUNTRY_CODES_.includes(current) && origin === current;
+    }
     if (mode === 'country') return origin === favNormalizeCountryCode0101(selectedCountry);
     return true;
 }
@@ -230,8 +237,10 @@ function favSanitizeMetadataFilters0101() {
 
 async function favRehydrateAndReapply0101() {
     if (!favState.records?.length) return favReapply();
-    await favIndexHydrateRecords(favState.records);
-    favState.recordsById = new Map(favState.records.map((record) => [String(record.id), record]));
+    const requestKey=favDatasetKey();const records=favState.records;
+    await favIndexHydrateRecords(records);
+    if(!isFavoritesPage()||requestKey!==favDatasetKey()||records!==favState.records)return;
+    favState.recordsById = new Map(records.map((record) => [String(record.id), record]));
     favSanitizeMetadataFilters0101();
     if (favEnhancementActive()) favRenderCurrent();
     else if (favState.filterOpen) favRefreshRail();
@@ -271,7 +280,7 @@ function favBuildShipsFrom() {
     const filters = favCfg.filters;
     const wrap = document.createElement('div');
     wrap.className = 'ebsf-native-group';
-    const currentCountry = String(favProps()?.countryIsoCode || 'FI').toUpperCase();
+    const currentCountry = String(favProps()?.countryIsoCode || '').toUpperCase();
     const available = favState.records.some((record) => record?.known?.shipsFromCountry === true);
     const set = (value) => {
         filters.shipsFrom = value;
@@ -331,7 +340,7 @@ function favFilterCountryOptions0101(options, allowed, selected) {
 
 function favBuildShipTo() {
     const filters = favCfg.filters;
-    const country = String(favProps()?.countryIsoCode || 'FI').toUpperCase();
+    const country = String(favProps()?.countryIsoCode || '').toUpperCase();
     const selected = String(filters.shipTo || 'ZZ').toUpperCase();
     const wrap = document.createElement('div');
     wrap.className = 'ebsf-native-group';
@@ -659,7 +668,9 @@ favDeepPopulateQueue = async function favDeepPopulateQueue0101(options = {}) {
  * metadata, even when the user disabled ordinary Favorites auto-sync. */
 var favLoadAllBefore0101 = favLoadAll;
 favLoadAll = async function favLoadAll0101(force = false) {
+    const requestKey=favDatasetKey();
     const records = await favLoadAllBefore0101(force);
+    if(!isFavoritesPage()||requestKey!==favDatasetKey()||records!==favState.records)return records;
     if (favState.loadComplete && records?.length) {
         await favIndexHydrateRecords(records);
         if (favCfg.autoScanMissingMetadata) queueMicrotask(() => { void favDeepMaybeAutoScan(); });
@@ -669,18 +680,6 @@ favLoadAll = async function favLoadAll0101(force = false) {
     }
     return records;
 };
-
-/* Rehydrate all current records once a deep run settles. The original Phase 5
- * completion listener already reapplies results; this guarantees every newly
- * indexed shipping/shop field is present before the next interaction and lets
- * catalogue-aware filter visibility update once, not once per listing. */
-document.addEventListener('ebsf:favorites-deep-state', (event) => {
-    if (event.detail?.status === 'running') return;
-    if (!favState.records?.length) return;
-    void favIndexHydrateRecords(favState.records).then(() => {
-        if (favState.filterOpen) favRefreshRail();
-    });
-});
 
 /* ---------- Preferences UI ---------- */
 

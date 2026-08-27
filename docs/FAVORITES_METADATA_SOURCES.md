@@ -162,11 +162,27 @@ This is listing/shop capability metadata that currently appears to require listi
 
 ### Best Seller
 
-The existing Favorites structured record already has `listing.isBestSeller`. Keep this as the preferred source. No listing-page scan is needed when known.
+The existing Favorites structured record can contain `listing.isBestSeller`. The index may retain that compatibility field, but Best Seller is no longer exposed as a filter.
 
 ### Variations
 
 The existing Favorites record already reads `listing.hasVariations`. Keep structured Favorites data as the preferred source. Listing video is intentionally not exposed as a Favorites filter.
+
+### Seller name
+
+The deep parser scopes seller extraction to a listing-page anchor whose URL contains `/shop/<name>`. JSON-LD Product seller data is the fallback. A known name is stored as `listingMetadata.sellerName`, hydrates `record.shopName` even when cheap Favorites JSON omitted it, and updates the indexed shop record when the listing already has a shop ID.
+
+### Returns and exchanges
+
+The parser reads only the listing shipping-highlight button identified by `aria-describedby="shipping-highlights-returns-and-exchanges"`. Explicit accepted/negative wording sets the corresponding known boolean. Missing or ambiguous text remains unknown.
+
+### Shipping cost
+
+The parser scopes cost extraction to the `Cost to ship` row and its currency-value content. Localized decimal/thousands separators and numeric zero are preserved. Recommendation cards and unrelated prices are excluded.
+
+### Rating and review count
+
+JSON-LD Product aggregate rating remains the first source. The listing summary `.reviews-rating` block is a scoped fallback for the numeric rating and parenthesized review count. Review cards and recommendation ratings are not evidence for the listing summary.
 
 ### Color
 
@@ -220,7 +236,7 @@ This makes the automatic scanner much faster and avoids unnecessary Etsy request
 
 When a listing is unfavorited, keep cached metadata but mark it inactive as already planned. It should leave active Favorite results immediately; dormant metadata can later be cleaned by retention policy.
 
-## Filter-rail UI decisions implemented in v0.8.0 and v0.9.0
+## Filter-rail UI decisions through v0.12.0
 
 ### Prevent accidental text selection
 
@@ -246,19 +262,17 @@ Remove it from the active Favorites rail until a reliable data source exists.
 
 ### Deep-metadata controls
 
-Category, Etsy's Picks, Vintage, gift wrapping, country-based Ships from, and structured processing-time values use listing-page metadata and are active when known. Ship to exposes only positively observed structured destinations. Gift-card support remains visible but disabled pending reliable evidence. Cheap fields such as Star Seller, digital, Best Seller, personalization, and variations remain sourced from Favorites data when known. Settings actions and progress are connected to the persistent queue.
+Category, Etsy's Picks, Vintage, gift wrapping, country-based Ships from, seller, returns/exchanges, shipping cost, and rating/review fallbacks use listing-page metadata and become active when known. Cheap fields such as Star Seller, digital, sale state, personalization, and variations remain sourced from Favorites data when known. Settings actions and progress are connected to the persistent queue.
 
 ### Shipping origin
 
 **Preferred source: listing-page semantic highlight.** The parser recognizes a listing detail row whose text is `Ships from:` followed by a strong country value. The country is stored as `shippingMetadata.shipsFromCountry` with independent parser provenance. Country absence remains unknown; it is never interpreted as the buyer's country.
 
-Ships-from filtering supports Anywhere, geographic Europe, the current Etsy country, and an explicitly selected country. City-level origin filtering is not offered because the confirmed signal contains no reliable city.
+Ships-from filtering supports Anywhere, geographic Europe, the EU-27, the current Etsy country when Etsy supplies a valid `countryIsoCode`, and an explicitly selected country. There is no Finland fallback. City-level origin filtering is not offered because the confirmed signal contains no reliable city.
 
-### Ship-to destination and processing time limitations
+### Removed unsupported controls
 
-JSON-LD `OfferShippingDetails.shippingDestination` and handling-time values are used only as positive observations. They do not prove worldwide coverage. The Ship to selector therefore contains only observed destinations, and Ready to ship remains disabled until a finite handling-time value exists.
-
-Accepts Etsy gift cards remains visible but disabled because no reliable listing-level metadata source is confirmed.
+JSON-LD `OfferShippingDetails.shippingDestination` and handling-time values are positive observations only and do not prove universal delivery coverage. Ship to and Ready to ship are therefore not exposed as filters. Accepts Etsy gift cards is also absent because no reliable listing-level signal is confirmed. The obsolete IndexedDB fields may remain stored for compatibility but do not participate in configuration, capabilities, filtering, or layout editing.
 
 ## Parser testing requirements
 
@@ -270,5 +284,10 @@ Create positive, negative, and unknown fixtures for every deep field. For the si
 - personalization component present / absent
 - gift wrapping highlight present / absent
 - digital card signal present / absent
+- seller link present / absent
+- returns/exchanges button positive / negative / absent
+- localized Cost to ship row / malformed row / absent row
+- listing summary rating/review count / recommendation-only rating / absent summary
+- Ships from semantic row with alternate whitespace/markup / absent origin
 
 Tests must verify that a missing selector in an incomplete or changed page can remain `unknown` rather than silently becoming `false`.

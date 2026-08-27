@@ -16,7 +16,7 @@ test('Phase 5 hardening parses raw JSON-LD before entity-decoding fallback', asy
   const decoded = text.indexOf('const decoded = favDeepDecodeText(raw)');
   assert.ok(rawParse >= 0);
   assert.ok(decoded > rawParse);
-  assert.match(text, /FAV_DEEP_PARSER_VERSION\s*=\s*'listing-html-v2'/);
+  assert.match(text, /FAV_DEEP_PARSER_VERSION\s*=\s*'listing-html-v3'/);
 });
 
 test('Phase 5 hardening refuses challenge, empty, and mismatched listing responses', async () => {

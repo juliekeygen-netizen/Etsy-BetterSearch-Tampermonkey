@@ -90,6 +90,7 @@ function favIndexEmptyListing(listingId, observedAt = Date.now()) {
             vintageEra: favIndexUnknown(),
             giftWrap: favIndexUnknown(),
             category: favIndexUnknown(),
+            sellerName: favIndexUnknown(),
         },
         shippingMetadata: {
             shipsFromCountry: favIndexUnknown(),
@@ -459,6 +460,7 @@ function favIndexApplyListingMetadataToRecord(record, listing) {
     if (!record || !listing) return record;
     const value = (group, key) => group?.[key]?.known ? group[key].value : undefined;
     const category = value(listing.listingMetadata, 'category');
+    const sellerName = value(listing.listingMetadata, 'sellerName');
     record.deepMetadata = {
         scannedAt: Number(listing.lastDeepScanAt) || 0,
         parserVersion: String(listing.deepParserVersion || ''),
@@ -468,6 +470,11 @@ function favIndexApplyListingMetadataToRecord(record, listing) {
         giftWrap: value(listing.listingMetadata, 'giftWrap'),
         category: Array.isArray(category) ? category.slice() : (category ? [String(category)] : []),
     };
+    if (sellerName != null && String(sellerName).trim()) {
+        record.shopName = String(sellerName).trim();
+        record.known = record.known || {};
+        record.known.shopName = true;
+    }
     return record;
 }
 

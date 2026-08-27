@@ -75,13 +75,16 @@ The feature source and generated `content.js` are otherwise the same as Chrome.
 **Content script**
 
 - all existing marketplace behavior
-- current Favorites filtering/sorting UI
+- reconstructed Favorites shell with a permanent desktop filter rail, horizontal real-collection selector, mobile filter overlay, and no BetterSearch-created duplicate pager
+- filter-layout schema v2 with instance IDs and shared binding keys for moved/duplicated controls
 - existing Etsy DOM integration
 - same-site fetches already used by BetterSearch
 - extension settings through the compatibility adapter
 - versioned Favorites IndexedDB interface and cheap metadata/scope observations
 - conservative authoritative Favorites synchronization, cancellation, progress, and auto-sync freshness decisions
 - persistent deep-listing jobs, authenticated fetching, retries, parsing, and progress while a Favorites page is active
+
+The v0.12.0 shell/filter modules are appended to the same userscript order as every other shared module. They override the older compatibility layer at runtime without changing IndexedDB stores, queue job formats, or platform adapters, so Tampermonkey and both MV3 bundles execute the same final behavior.
 
 **Background**
 

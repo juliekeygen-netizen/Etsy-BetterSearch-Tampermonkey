@@ -39,7 +39,8 @@ const checkFiles = [
   'tests/project.test.mjs',
   'tests/favorites.test.mjs',
   'tests/favorites-deep-parser.test.mjs',
-  'tests/favorites-deep-queue.test.mjs'
+  'tests/favorites-deep-queue.test.mjs',
+  'tests/favorites-revamp.test.mjs'
 ];
 
 for (const file of checkFiles) {

@@ -49,7 +49,7 @@ test('deep parser extracts confirmed listing-page signals without treating absen
     { observedAt: 1234 }
   );
 
-  assert.equal(parsed.parserVersion, 'listing-html-v1');
+  assert.equal(parsed.parserVersion, 'listing-html-v3');
   assert.equal(parsed.identity.listingId, '123456789');
   assert.equal(parsed.identity.title, 'Example vintage charm');
   assert.equal(parsed.cardMetadata.price.value, 14.63);
@@ -167,6 +167,30 @@ test('deep parser accepts explicit shipping and return values from structured/se
   assert.equal(parsed.shippingMetadata.processingDays.value, 3);
   assert.equal(parsed.shippingMetadata.returnsAccepted.value, false);
   assert.equal(parsed.shippingMetadata.exchangesAccepted.value, true);
+});
+
+test('deep parser scopes seller, returns, localized shipping cost, and review summary signals', async () => {
+  const api = await loadDeepParser();
+  const html = `
+    <a class="wt-text-link" href="https://www.etsy.com/shop/ExampleStudio?ref=shop_profile">Example Studio</a>
+    <button aria-describedby="shipping-highlights-returns-and-exchanges"><span>Returns &amp; exchanges accepted</span></button>
+    <div>Cost to ship: <strong><span class="currency-symbol">€</span><span class="currency-value">1.234,56</span></strong></div>
+    <div class="reviews-rating"><span class="reviews-rating">4,8</span><span>(12 345 reviews)</span></div>
+  `;
+  const parsed = api.favDeepParseListingHtml(html, 'https://www.etsy.com/listing/112233445/example', { observedAt: 600 });
+  assert.equal(parsed.identity.shopName, 'Example Studio');
+  assert.equal(parsed.listingMetadata.sellerName.value, 'Example Studio');
+  assert.equal(parsed.shippingMetadata.returnsAccepted.value, true);
+  assert.equal(parsed.shippingMetadata.exchangesAccepted.value, true);
+  assert.equal(parsed.shippingMetadata.cost.value, 1234.56);
+  assert.equal(parsed.cardMetadata.rating.value, 4.8);
+  assert.equal(parsed.cardMetadata.reviewCount.value, 12345);
+
+  const absent = api.favDeepParseListingHtml('<div>Recommended shop rating 5.0</div>', 'https://www.etsy.com/listing/112233446/absent', { observedAt: 601 });
+  assert.equal(absent.listingMetadata.sellerName.known, false);
+  assert.equal(absent.shippingMetadata.cost.known, false);
+  assert.equal(absent.cardMetadata.rating.known, false);
+  assert.equal(absent.cardMetadata.reviewCount.known, false);
 });
 
 test('Phase 4 toolbar patch freezes geometry across filter rail toggles', async () => {

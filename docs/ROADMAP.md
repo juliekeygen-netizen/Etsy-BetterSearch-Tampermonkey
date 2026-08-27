@@ -2,9 +2,11 @@
 
 This roadmap is the implementation plan for evolving BetterSearch from a userscript-first project into one shared codebase that can ship as Tampermonkey, Chrome, and Firefox builds while adding a durable Favorites metadata index and deeper filtering later.
 
-The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, persistent deep-listing queue, and Favorites filter reliability pass are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
+The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, persistent deep-listing queue, filter reliability pass, and v0.12.0 Favorites shell reconstruction are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
 
-The filter reliability pass adds semantic shipping-origin parsing, verified-destination Ship to behavior, metadata rehydration after deep scans, local filter application with viewport preservation, facet-aware unavailable-option detection, dynamic currency labels, and complete removal of the Favorites video filter. Gift-card support remains visibly unavailable until a dependable source exists.
+The v0.12.0 pass replaces the native desktop sidebar with a permanent filter rail, adds the real-collection strip and collection-style All header, moves counts into Etsy's metadata row, leaves Etsy's pager as the only page selector, and migrates layouts to binding-based schema v2. It also adds EU-27 origin filtering, optional generated-group URL redirection, and scoped seller, returns/exchanges, shipping-cost, and rating/review parsing. Ship to, Ready to ship, gift cards, Best Seller, Minimum discount, Color, and Has Video are intentionally absent from the filter catalogue.
+
+Remaining roadmap work includes browser smoke testing, service-worker queue ownership, settings export/import, future schema migrations, sanitized fixture expansion, and selector fallback maintenance as Etsy changes its page markup.
 
 ## Guiding rules
 
@@ -281,20 +283,19 @@ This keeps feature compatibility without pretending a userscript has a true alwa
 
 ---
 
-## Phase 6 — Wire richer Favorites filters and sorts
+## Phase 6 — Wire richer Favorites filters and sorts **(implemented and narrowed in v0.12.0)**
 
 Only activate a filter once its backing metadata is reliable.
 
 ### Strong/local fields first
 
 - price min/max
-- sale / minimum discount
+- sale
 - free shipping
 - available only / sold out
 - rating minimum
 - review count minimum
 - shop
-- Best Seller if present in Favorites JSON
 - variations
 - personalizable if present
 
@@ -305,17 +306,15 @@ Only activate a filter once its backing metadata is reliable.
 - Etsy's Pick
 - Star Seller
 - Ships from
-- Ready to ship
-- Color
 - Vintage
-- gift cards / gift wrapping
+- gift wrapping
 - Customizable / personalizable
 - stock quantity / low stock
 - cart-popularity signal
 - shipping cost
 - returns / exchanges
-- estimated delivery
-- Ship to country
+
+Ready to ship, Color, gift cards, Best Seller, Minimum discount, and Ship to were evaluated and intentionally removed from the production filter catalogue. Their evidence is absent, incomplete, or not useful enough to support truthful filtering. Compatible indexed fields can remain dormant.
 
 ### Unknown semantics
 

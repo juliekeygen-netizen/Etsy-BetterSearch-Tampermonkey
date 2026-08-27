@@ -370,7 +370,7 @@ function favCountryOptions(includeAny=true) {
 
 function favBuildShipsFrom() {
     const f=favCfg.filters, wrap=document.createElement('div');wrap.className='ebsf-native-group';
-    const country=String(favProps()?.countryIsoCode||'FI').toUpperCase();
+    const country=String(favProps()?.countryIsoCode||'').toUpperCase();
     const localLabel=favCountryName(country);
     const set=()=>{};
     wrap.append(
@@ -397,7 +397,7 @@ function favSetPriceBound(key,value){
     f[key]=Number.isFinite(parsed)?String(Math.max(0,parsed)):'';
     const min=Number(f.minPrice),max=Number(f.maxPrice);
     if(f.minPrice&&f.maxPrice&&min>max){if(key==='minPrice')f.maxPrice=f.minPrice;else f.minPrice=f.maxPrice;}
-    const result=favSaveAndApply(true);favReplaceSectionBody('price',favBuildPrice);return result;
+    return favSaveAndApply(true);
 }
 function favBuildPrice(){
     const f=favCfg.filters,wrap=document.createElement('div');wrap.className='ebsf-native-group ebsf-price-group';
@@ -412,12 +412,13 @@ function favBuildPrice(){
     const track=document.createElement('div');track.className='ebsf-price-track';sliders.append(track,low,high);wrap.append(sliders);
     const inputs=document.createElement('div');inputs.className='ebsf-native-price-inputs';
     const currency=favCurrencySymbol();
-    const minBox=favNumber(f.minPrice,'0',(value)=>favSetPriceBound('minPrice',value),currency);
-    const maxBox=favNumber(f.maxPrice,`${max} +`,(value)=>favSetPriceBound('maxPrice',value),currency);inputs.append(minBox.wrap,maxBox.wrap);wrap.append(inputs);
+    let applyNumberBounds=()=>{};
+    const minBox=favNumber(f.minPrice,'0',(value)=>{favSetPriceBound('minPrice',value);applyNumberBounds();},currency);
+    const maxBox=favNumber(f.maxPrice,`${max} +`,(value)=>{favSetPriceBound('maxPrice',value);applyNumberBounds();},currency);inputs.append(minBox.wrap,maxBox.wrap);wrap.append(inputs);
     const sync=()=>{let a=Number(low.value),b=Number(high.value);if(a>b){if(document.activeElement===low)low.value=String(b);else high.value=String(a);a=Number(low.value);b=Number(high.value);}sliders.style.setProperty('--low',`${a/max*100}%`);sliders.style.setProperty('--high',`${b/max*100}%`);minBox.input.value=a>0?String(a):'';maxBox.input.value=b<max?String(b):'';};
-    low.addEventListener('input',sync);high.addEventListener('input',sync);
-    low.addEventListener('change',()=>{f.minPrice=Number(low.value)>0?low.value:'';favSaveAndApply(true);});
-    high.addEventListener('change',()=>{f.maxPrice=Number(high.value)<max?high.value:'';favSaveAndApply(true);});sync();
+    let frame=0;const applySliders=()=>{sync();f.minPrice=Number(low.value)>0?low.value:'';f.maxPrice=Number(high.value)<max?high.value:'';cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>favSaveAndApply(true));};
+    low.addEventListener('input',applySliders);high.addEventListener('input',applySliders);
+    applyNumberBounds=()=>{let nextMin=Number(f.minPrice);if(!Number.isFinite(nextMin)||nextMin<0)nextMin=0;let nextMax=Number(f.maxPrice);if(!Number.isFinite(nextMax)||nextMax<=0)nextMax=max;low.value=String(Math.min(max,nextMin));high.value=String(Math.min(max,nextMax));sync();};sync();
     const unknown=favState.records.filter((record)=>!Number.isFinite(record.price)).length;
     if(unknown){const warning=document.createElement('p');warning.className='ebsf-native-caption';warning.textContent=`${unknown} favorite${unknown===1?' has':'s have'} an unknown price and cannot be evaluated by this filter.`;wrap.append(warning);}
     return wrap;
@@ -429,7 +430,7 @@ function favBuildOrdering(){const f=favCfg.filters,wrap=document.createElement('
     favCheckbox({checked:f.giftWrap,label:'Can be gift-wrapped',onChange:(v)=>{f.giftWrap=v;favSaveAndApply(true);}}).row,
     favCheckbox({checked:f.personalizable,label:'Customizable',onChange:(v)=>{f.personalizable=v;favSaveAndApply(true);}}).row);
     const note=document.createElement('p');note.className='ebsf-metadata-pending';note.textContent='Gift-card acceptance is not available from reliable Etsy metadata.';wrap.append(note);return wrap;}
-function favBuildShipTo(){const f=favCfg.filters,country=String(favProps()?.countryIsoCode||'FI').toUpperCase();const wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favSelect(f.shipTo||country,favCountryOptions(true),()=>{},'',true),favDeepMetadataNote());return wrap;}
+function favBuildShipTo(){const wrap=document.createElement('div');wrap.className='ebsf-native-group';wrap.append(favUnavailableMetadataNote0101?.('Destination filtering was removed because Etsy does not expose universal delivery coverage.')||favDeepMetadataNote());return wrap;}
 
 function favBuildExtras(){
     const f=favCfg.filters, sections=[];
