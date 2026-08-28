@@ -13,7 +13,7 @@ test('cache bootstrap loads after index/sync and before later Favorites runtime 
   const deep = userscript.indexOf('/src/61c-favorites-deep-parser.js');
   const runtimeIndex = userscript.indexOf('/src/63-favorites-runtime.js');
   assert.ok(index >= 0 && sync > index && cacheIndex > sync && deep > cacheIndex && runtimeIndex > deep);
-  assert.match(userscript, /@version\s+0\.13\.0/);
+  assert.match(userscript, /@version\s+0\.13\.1/);
 });
 
 test('route classification uses dataset and view keys rather than raw href', () => {
