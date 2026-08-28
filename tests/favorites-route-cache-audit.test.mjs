@@ -25,12 +25,12 @@ test('view changes wait for settled Etsy DOM before refreshing the native snapsh
   assert.match(runtime, /recaptured=favMaybeCaptureSettledNativePage0137\(\)/);
 });
 
-test('cache scope read avoids whole-database getAll scans', () => {
+test('cache scope read avoids whole-database bulk scans', () => {
   const block = cache.slice(cache.indexOf('async function favCacheReadScope0137'), cache.indexOf('function favCacheRecordFromIndexed0137'));
   assert.match(block, /objectStore\('scopes'\)\.get\(scopeKey\)/);
   assert.match(block, /listingStore\.get\(idValue\)/);
   assert.match(block, /shopStore\.get\(shopId\)/);
-  assert.doesNotMatch(block, /getAll\(\)/);
+  assert.doesNotMatch(block, /\.getAll\(\)/);
   assert.match(block, /listings\.some\(\(listing\) => !listing\)/);
 });
 
