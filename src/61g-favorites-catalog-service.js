@@ -74,9 +74,13 @@ function favCatalogLeaseStorageKey0141(scope) {
     return `etsy-bettersearch.catalog-lease.${encodeURIComponent(favCatalogKey0141(scope))}`;
 }
 
+function favCatalogStorage0141() {
+    try { return globalThis.localStorage || null; } catch (_) { return null; }
+}
+
 function favCatalogReadLease0141(scope) {
     try {
-        const raw = localStorage.getItem(favCatalogLeaseStorageKey0141(scope));
+        const raw = favCatalogStorage0141()?.getItem(favCatalogLeaseStorageKey0141(scope));
         const value = raw ? JSON.parse(raw) : null;
         return value && typeof value === 'object' ? value : null;
     } catch (_) {
@@ -86,7 +90,9 @@ function favCatalogReadLease0141(scope) {
 
 function favCatalogWriteLease0141(scope, lease) {
     try {
-        localStorage.setItem(favCatalogLeaseStorageKey0141(scope), JSON.stringify(lease));
+        const storage = favCatalogStorage0141();
+        if (!storage) return false;
+        storage.setItem(favCatalogLeaseStorageKey0141(scope), JSON.stringify(lease));
         return true;
     } catch (_) {
         return false;
@@ -96,7 +102,7 @@ function favCatalogWriteLease0141(scope, lease) {
 function favCatalogReleaseLease0141(scope, token) {
     try {
         const current = favCatalogReadLease0141(scope);
-        if (current?.token === token) localStorage.removeItem(favCatalogLeaseStorageKey0141(scope));
+        if (current?.token === token) favCatalogStorage0141()?.removeItem(favCatalogLeaseStorageKey0141(scope));
     } catch (_) {}
 }
 
@@ -129,12 +135,15 @@ async function favCatalogAcquireStorageLease0141(scope, requestedAt, signal) {
 }
 
 async function favCatalogWithCrossTabLease0141(scope, requestedAt, signal, work) {
-    if (navigator?.locks?.request) {
-        return navigator.locks.request(favCatalogLeaseName0141(scope), { mode:'exclusive', signal }, async () => {
+    const locks = globalThis.navigator?.locks;
+    if (locks?.request) {
+        return locks.request(favCatalogLeaseName0141(scope), { mode:'exclusive', signal }, async () => {
             if (await favCatalogPeerCompleted0141(scope, requestedAt)) return { peerCompleted:true };
             return work(() => {});
         });
     }
+    const storage = favCatalogStorage0141();
+    if (!storage) return work(() => {});
     const lease = await favCatalogAcquireStorageLease0141(scope, requestedAt, signal);
     if (lease.peerCompleted) return { peerCompleted:true };
     try {
@@ -211,7 +220,7 @@ function favCatalogCommitLive0141(scope, records) {
     favState.loadComplete = true;
     favState.loading = false;
     favState.loadSource0137 = 'network';
-    favState.groupQueryResolved = scope.type !== 'group' || !scope.query || true;
+    favState.groupQueryResolved = true;
     favState.extraReady = false;
     favState.extraKey = '';
     return true;
@@ -274,7 +283,10 @@ function favCatalogRefresh(scopeInput, options = {}) {
             }
 
             const records = leased.records || partialRecords;
-            if (applyLive) favCatalogCommitLive0141(scope, records);
+            /* A background refresh may become the current dataset while it is
+             * in flight. Same-dataset coalescing must then populate live state
+             * rather than forcing a second crawl. */
+            if (applyLive || favCatalogIsCurrent0141(scope)) favCatalogCommitLive0141(scope, records);
             if (favCatalogIsCurrent0141(scope)) {
                 favClearProgress();
                 const snapshot = await favCacheReadScope0137?.(favIndexCurrentScope()).catch(() => null);
