@@ -4,9 +4,10 @@
  *
  * Collection pages are already the visual source of truth. Do not approximate
  * them with another custom All-only layout: build the All header with the same
- * Etsy container ids, utility classes, title anatomy, metadata row and toolbar
- * host used by the real collection page. The only intentional differences are
- * the title text (All), private metadata, and the absence of edit/add buttons.
+ * Etsy container ids, utility classes, title anatomy, metadata row, parent host
+ * and toolbar host used by the real collection page. The only intentional
+ * differences are the title text (All), private metadata, and the absence of
+ * edit/add buttons.
  */
 
 /* The collection-page Sort control is already correct; it only needs a very
@@ -94,10 +95,11 @@ function favAllHeaderIsNativeCollectionMirror0132(header) {
     );
 }
 
-/* Replace the old custom .ebsf-scope-header implementation completely. Using
- * the exact native collection structure means Etsy's own collection typography
- * and spacing — plus the already-good collection-page responsive behavior — now
- * applies to All instead of trying to emulate it with parallel CSS. */
+/* Replace the old custom .ebsf-scope-header implementation completely. The
+ * native collection header lives INSIDE .phase3-listing-cards-section, not as a
+ * sibling between the collection strip and listing section. That parent
+ * difference was one of the remaining reasons All still had different spacing
+ * even when its inner classes looked similar. */
 favEnsureAllHeader0120 = function favEnsureAllHeader0132(content) {
     if (favScope().type !== 'items') {
         favReleaseAllHeader0121(content);
@@ -107,6 +109,7 @@ favEnsureAllHeader0120 = function favEnsureAllHeader0132(content) {
     content = content || favFavoritesContentColumn0120?.();
     if (!content) return null;
 
+    const listingHost = content.querySelector('.phase3-listing-cards-section') || content;
     let header = document.querySelector('[data-ebsf-all-header]');
     let toolbar = header?.querySelector?.('[data-ebsf-toolbar-row]') || document.querySelector('[data-ebsf-toolbar-row]');
 
@@ -121,12 +124,11 @@ favEnsureAllHeader0120 = function favEnsureAllHeader0132(content) {
         header = replacement;
     }
 
-    const strip = content.querySelector(':scope > [data-ebsf-collection-strip]');
-    if (header.parentElement !== content) {
-        if (strip) strip.after(header);
-        else content.prepend(header);
-    } else if (strip && strip.nextElementSibling !== header) {
-        strip.after(header);
+    /* Match real collection DOM placement exactly: the header is the first
+     * structural child of the listing section. The custom collection strip
+     * remains immediately above that section in the outer content branch. */
+    if (header.parentElement !== listingHost || listingHost.firstElementChild !== header) {
+        listingHost.prepend(header);
     }
 
     const controls = header.querySelector('[data-ebsf-all-controls]');
