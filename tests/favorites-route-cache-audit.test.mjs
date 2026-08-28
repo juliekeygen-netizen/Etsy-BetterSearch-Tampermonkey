@@ -42,10 +42,12 @@ test('final cache migration requires renderable presentation and forces the real
   assert.match(correction, /presentation\.secondaryImageUrl/);
   assert.match(correction, /favLoadAllNetwork0137\(true\)/);
   assert.match(correction, /presentationMigrationPromise0140/);
-  assert.doesNotMatch(
-    correction.slice(correction.indexOf('async function favRunPresentationMigration0140'), correction.indexOf('var favCommittedNativeQueryBefore0140')),
-    /favLoadAllNetwork0137\(false\)/
+  const migration = correction.slice(
+    correction.indexOf('async function favRunPresentationMigration0140'),
+    correction.indexOf('/* Final cache-first loader.')
   );
+  assert.match(migration, /favLoadAllNetwork0137\(true\)/);
+  assert.doesNotMatch(migration, /favLoadAllNetwork0137\(false\)/);
 });
 
 test('complete index reconciliation reads only prior scope ids plus incoming patches', () => {
