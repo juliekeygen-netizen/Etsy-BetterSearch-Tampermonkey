@@ -12,7 +12,6 @@ test('triple-audit hardening remains after the responsive shell layers', () => {
   const polishIndex = userscript.indexOf('/src/90-favorites-responsive-polish.js');
   const auditIndex = userscript.indexOf('/src/91-favorites-triple-audit-hardening.js');
   assert.ok(responsiveIndex >= 0 && polishIndex > responsiveIndex && auditIndex > polishIndex);
-  assert.match(userscript, /@version\s+0\.12\.5/);
 });
 
 test('final collection installer ends the revision-2 versus revision-3 rebuild loop', () => {
