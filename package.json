@@ -2,17 +2,15 @@
   "name": "etsy-bettersearch",
   "version": "0.12.9",
   "private": true,
-  "description": "Advanced Etsy search userscript and MV3 browser extension",
+  "type": "module",
+  "description": "Build and test tooling for Etsy BetterSearch userscript, Chrome extension, and Firefox extension.",
   "scripts": {
     "check": "node scripts/check.mjs",
     "test": "node --test tests/*.test.mjs",
-    "build:chrome": "node scripts/build-extension.mjs chrome",
-    "build:firefox": "node scripts/build-extension.mjs firefox",
-    "build": "npm run build:chrome && npm run build:firefox",
+    "build": "node scripts/build.mjs",
     "ci": "npm run check && npm test && npm run build"
   },
   "engines": {
     "node": ">=20"
-  },
-  "devDependencies": {}
+  }
 }
