@@ -18,14 +18,18 @@ favState.shellDesktop0120 = favDesktopShell0120();
 function favRouteIdentity0126() {
     try {
         const url = new URL(location.href);
-        return `${url.pathname}|${url.searchParams.get('tab') || ''}|${url.searchParams.get('page') || ''}|${url.searchParams.get('collectionId') || ''}|${favScope().type}|${favScope().id}`;
+        const scope = favScope();
+        return `${url.pathname}|${url.searchParams.get('tab') || ''}|${url.searchParams.get('page') || ''}|${url.searchParams.get('collectionId') || ''}|${scope.type}|${scope.id}`;
     } catch (_) {
         return location.href;
     }
 }
 
 function favHasPaginationPayload0126(node) {
-    return Boolean(node?.querySelector?.('.wt-action-group__item-container,[data-clg-id="WtPagination"]'));
+    return Boolean(
+        node?.matches?.('[data-clg-id="WtPagination"],.wt-action-group__item-container')
+        || node?.querySelector?.('.wt-action-group__item-container,[data-clg-id="WtPagination"]')
+    );
 }
 
 function favNativePaginationNodes0126() {
@@ -62,8 +66,14 @@ function favRecoverPaginationFromCorruptStrip0126(strip) {
      * buttons away when rebuilding the collection selector. */
     strip.__ebsfScrollerCleanup0126?.();
     const fixed = strip.querySelector(':scope > .ebsf-collection-fixed');
-    if (fixed && favHasPaginationPayload0126(fixed)) strip.replaceChildren(...Array.from(fixed.childNodes));
-    else strip.querySelector(':scope > .ebsf-collection-scroll')?.remove();
+    if (fixed && favHasPaginationPayload0126(fixed)) {
+        const paginationChildren = Array.from(fixed.childNodes).filter((node) =>
+            node.nodeType !== 1 || favHasPaginationPayload0126(node)
+        );
+        strip.replaceChildren(...(paginationChildren.length ? paginationChildren : Array.from(fixed.childNodes)));
+    } else {
+        strip.querySelector(':scope > .ebsf-collection-scroll')?.remove();
+    }
 
     strip.classList.remove('ebsf-collection-strip', 'is-dragging');
     strip.removeAttribute('data-ebsf-collection-strip');
@@ -84,16 +94,23 @@ function favRecoverPaginationFromCorruptStrip0126(strip) {
 function favProtectNativePagination0126() {
     const route = favRouteIdentity0126();
     const remembered = favState.recoveredPagination0126;
-    if (remembered?.isConnected && remembered.dataset.ebsfRecoveredPaginationRoute !== route) {
-        remembered.remove();
+    if (remembered && remembered.dataset?.ebsfRecoveredPaginationRoute !== route) {
+        if (remembered.isConnected) remembered.remove();
         favState.recoveredPagination0126 = null;
     }
 
     const corrupt = document.querySelector('nav[data-ebsf-collection-strip]');
     if (corrupt && favHasPaginationPayload0126(corrupt)) favRecoverPaginationFromCorruptStrip0126(corrupt);
 
-    for (const nav of favNativePaginationNodes0126()) {
-        if (!nav?.isConnected) continue;
+    let nodes = favNativePaginationNodes0126().filter((nav) => nav?.isConnected);
+    const genuine = nodes.filter((nav) => !nav.matches('[data-ebsf-recovered-pagination]'));
+    if (genuine.length) {
+        for (const recovered of nodes.filter((nav) => nav.matches('[data-ebsf-recovered-pagination]'))) recovered.remove();
+        favState.recoveredPagination0126 = null;
+        nodes = genuine;
+    }
+
+    for (const nav of nodes) {
         nav.removeAttribute('data-ebsf-native-pagination');
         nav.hidden = false;
         nav.inert = false;
@@ -335,15 +352,77 @@ favRefreshFacetAvailability0120 = function favRefreshFacetAvailability0126() {
     return favRefreshFacetAvailabilityBefore0126();
 };
 
-function favObserveScopeWidth0126() {
+function favApplyScopeMetaDensity0126() {
     const header = document.querySelector('[data-ebsf-all-header]');
+    if (!header?.isConnected) return;
+    const meta = header.querySelector('[data-ebsf-scope-meta]');
+    const privacy = meta?.querySelector('b');
+    const count = meta?.querySelector('[data-ebsf-scope-count]');
+    if (!meta || !privacy || !count) return;
+
+    const width = header.getBoundingClientRect().width;
+    const controls = header.querySelector('.ebsf-scope-controls');
+    const crowded = Boolean(controls && controls.scrollWidth > controls.clientWidth + 1);
+    const compact = width > 0 && (width < 1180 || crowded);
+    header.classList.toggle('ebsf-scope-meta-compact', compact);
+
+    const { total, shown } = favScopeCounts0120();
+    privacy.textContent = compact ? 'Private' : 'Private collection';
+    count.textContent = compact ? `${total} · ${shown}` : `${total} favorites · ${shown} shown`;
+}
+
+/* Existing v0.12.3 resize/update callbacks call this name, so point them at the
+ * audited density calculation instead of leaving two competing thresholds. */
+favApplyScopeMetaDensity0125 = favApplyScopeMetaDensity0126;
+
+function favSetStrongLabel0126(strong, label) {
+    if (!strong) return;
+    const textNodes = Array.from(strong.childNodes).filter((node) => node.nodeType === 3);
+    for (const node of textNodes) node.remove();
+    strong.append(document.createTextNode(strong.childElementCount ? ` ${label}` : label));
+}
+
+function favApplyCollectionMetaDensity0126() {
+    if (favScope().type === 'items') return;
+    const meta = document.querySelector('[data-test-id="collections-landing-right-side-header"],[data-testid="collections-landing-right-side-header"]');
+    const strong = meta?.querySelector('b');
+    if (!meta || !strong) return;
+
+    const width = meta.closest('.favorites-landing-phase3-header,section,header')?.getBoundingClientRect?.().width || innerWidth;
+    const compact = width > 0 && width < 1180;
+    const privacy = /private/i.test(strong.textContent || '') ? 'Private' : 'Public';
+    favSetStrongLabel0126(strong, compact ? privacy : `${privacy} collection`);
+
+    const { total, shown } = favScopeCounts0120();
+    const countText = compact ? `${total} · ${shown}` : `${total} favorites · ${shown} shown`;
+    let countNode = Array.from(meta.childNodes).find((node) => node.nodeType === 3 && /\d/.test(node.nodeValue || ''));
+    if (!countNode) {
+        countNode = document.createTextNode('');
+        meta.append(countNode);
+    }
+    countNode.nodeValue = countText;
+}
+
+var favUpdateScopeHeaderBefore0126 = favUpdateScopeHeader0120;
+favUpdateScopeHeader0120 = function favUpdateScopeHeader0126() {
+    const result = favUpdateScopeHeaderBefore0126();
+    favApplyScopeMetaDensity0126();
+    favApplyCollectionMetaDensity0126();
+    return result;
+};
+
+function favObserveScopeWidth0126() {
+    const header = document.querySelector('[data-ebsf-all-header]')
+        || document.querySelector('[data-test-id="collections-landing-right-side-header"],[data-testid="collections-landing-right-side-header"]')?.closest?.('.favorites-landing-phase3-header,section,header');
     if (favState.scopeResizeTarget0126 === header) return;
     favState.scopeResizeObserver0126?.disconnect?.();
     favState.scopeResizeTarget0126 = header || null;
     if (!header || typeof ResizeObserver !== 'function') return;
     favState.scopeResizeObserver0126 = new ResizeObserver(() => {
         requestAnimationFrame(() => {
-            if (header.isConnected) favApplyScopeMetaDensity0125();
+            if (!header.isConnected) return;
+            favApplyScopeMetaDensity0126();
+            favApplyCollectionMetaDensity0126();
         });
     });
     favState.scopeResizeObserver0126.observe(header);
@@ -355,7 +434,8 @@ favInstallPageShell0120 = function favInstallPageShell0126() {
     const result = favInstallPageShellBefore0126();
     favProtectNativePagination0126();
     favClearLegacyToolbarGeometry0126();
-    favApplyScopeMetaDensity0125();
+    favApplyScopeMetaDensity0126();
+    favApplyCollectionMetaDensity0126();
     favObserveScopeWidth0126();
     return result;
 };
@@ -424,6 +504,7 @@ GM_addStyle(`
     max-width:100%!important;
   }
   .ebsf-native-search-slot input{
+    flex:1 1 0%!important;
     width:100%!important;
   }
   .ebsf-sort>button [data-ebsf-sort-label]{
