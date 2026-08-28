@@ -1,28 +1,26 @@
 'use strict';
 
-/* v0.12.14 exact Favorites Search-width parity.
+/* v0.12.15 exact Favorites Search-width and X-position parity.
  *
- * v0.12.12 derived Search from the complete header, but then clamped it to the
- * CURRENT toolbar row width. On desktop that row is narrower/wider depending on
- * the collection-title block, so All could still end up a few CSS pixels
- * different from a collection (562px vs 568px in the reported 1440p/100% case).
+ * v0.12.13 made Sort / Settings / Search widths deterministic from the complete
+ * Favorites header, so All and collection scopes share the same track sizes.
+ * v0.12.14 fixed the Search stroke, but its collection-only translateX(-2px)
+ * was still a guessed offset. That could remain slightly wrong at some viewport
+ * sizes and Etsy could move the real collection toolbar again when Search input
+ * state changed.
  *
- * This layer makes the toolbar itself deterministic. Above Etsy's 900px stacked
- * breakpoint, its right-side header region gets a width calculated only from
- * the complete header width, never from the current title width. Sort, Settings
- * and Search therefore have exactly the same track sizes on All and collection
- * routes. At 899px and below Etsy already stacks the right side to 100%, so the
- * existing responsive layout remains untouched.
- *
- * v0.12.14 deliberately does NOT change any width math. It only normalizes the
- * Search stroke to one native-sized border and moves the real collection
- * toolbar 2 CSS px left on desktop so its right edge matches the content margin.
+ * v0.12.15 keeps ALL width math unchanged. Instead, the real collection toolbar
+ * is aligned by geometry to the same Favorites listing-column right edge used
+ * by the generated All header. With equal toolbar widths, an identical right
+ * edge means identical X positions for Sort, Settings and Search. The alignment
+ * is reapplied after native Search input updates so typing cannot shift it.
  */
 
 var FAV_EXACT_SEARCH_RATIO0135 = 0.5;
 var FAV_EXACT_TOOLBAR_MAX_RATIO0135 = 0.74;
 var FAV_TOOLBAR_GAP_TOTAL0135 = 12; // two 6px gaps
 var FAV_SETTINGS_WIDTH0135 = 40;
+var favExactToolbarFrame0136 = 0;
 
 function favClearExactDesktopToolbarWidth0135(right) {
     if (!right) return;
@@ -30,6 +28,61 @@ function favClearExactDesktopToolbarWidth0135(right) {
         if (right.dataset.ebsfExactToolbarOwns === '1') right.style.removeProperty(property);
     }
     delete right.dataset.ebsfExactToolbarOwns;
+}
+
+function favClearCollectionToolbarX0136(right) {
+    if (!right || right.dataset.ebsfExactXOwns !== '1') return;
+    right.style.removeProperty('transform');
+    delete right.dataset.ebsfExactXOwns;
+}
+
+function favCollectionToolbarTarget0136(header) {
+    if (!header) return null;
+    const directListing = header.closest?.('.phase3-listing-cards-section');
+    if (directListing) return directListing;
+    const content = favFavoritesContentColumn0120?.();
+    return content?.querySelector?.('.phase3-listing-cards-section') || content || header;
+}
+
+function favAlignCollectionToolbarX0136(header, right) {
+    if (!header || !right) return;
+
+    /* All is already the visual source of truth, and narrow layouts use the
+     * stacked responsive rules. Never offset either of those states. */
+    if (header.matches?.('[data-ebsf-all-header]') || innerWidth < 900) {
+        favClearCollectionToolbarX0136(right);
+        return;
+    }
+
+    const target = favCollectionToolbarTarget0136(header);
+    if (!target) return;
+
+    /* Measure from the unshifted layout every time. This prevents a previous
+     * correction from being counted again and makes repeated calls idempotent. */
+    favClearCollectionToolbarX0136(right);
+    const targetRect = target.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    if (!targetRect.width || !rightRect.width) return;
+
+    const delta = targetRect.right - rightRect.right;
+    if (!Number.isFinite(delta)) return;
+    const rounded = Math.round(delta * 100) / 100;
+    if (Math.abs(rounded) < 0.01) return;
+
+    right.style.setProperty('transform', `translateX(${rounded}px)`, 'important');
+    right.dataset.ebsfExactXOwns = '1';
+}
+
+function favScheduleExactToolbar0136() {
+    if (favExactToolbarFrame0136) cancelAnimationFrame(favExactToolbarFrame0136);
+    favExactToolbarFrame0136 = requestAnimationFrame(() => {
+        favExactToolbarFrame0136 = 0;
+        /* A second frame lets Etsy finish any React/native Search wrapper update
+         * caused by typing before we read final geometry. */
+        requestAnimationFrame(() => {
+            if (isFavoritesPage()) favApplyExactSearchWidth0135();
+        });
+    });
 }
 
 function favApplyExactSearchWidth0135() {
@@ -59,6 +112,7 @@ function favApplyExactSearchWidth0135() {
      * their existing responsive tracks. */
     if (innerWidth < 900) {
         favClearExactDesktopToolbarWidth0135(right);
+        favClearCollectionToolbarX0136(right);
         if (innerWidth > 760) {
             const reserved = sortWidth + FAV_SETTINGS_WIDTH0135 + FAV_TOOLBAR_GAP_TOTAL0135;
             const searchWidth = Math.min(
@@ -94,6 +148,10 @@ function favApplyExactSearchWidth0135() {
     right.style.setProperty('max-width', toolbarCss, 'important');
     right.style.setProperty('min-width', toolbarCss, 'important');
     right.dataset.ebsfExactToolbarOwns = '1';
+
+    /* Width is final now, so anchor collection X from the same right boundary
+     * that the All header uses. This intentionally changes position only. */
+    favAlignCollectionToolbarX0136(header, right);
 }
 
 /* Module 94 and module 97 call this historical hook after resize/route repair.
@@ -106,17 +164,13 @@ favSyncNarrowSortWidth0128 = function favSyncNarrowSortWidth0135() {
 var favInstallPageShellBefore0135 = favInstallPageShell0120;
 favInstallPageShell0120 = function favInstallPageShell0135() {
     const result = favInstallPageShellBefore0135?.();
-    requestAnimationFrame(() => {
-        if (isFavoritesPage()) favApplyExactSearchWidth0135();
-    });
+    favScheduleExactToolbar0136();
     return result;
 };
 
 GM_addStyle(`
   /* Only color the actual Search control borders. Do not recolor Etsy's native
-   * outline ring: v0.12.13 did that on several nested elements at once, which
-   * made their focus/outline layers stack into the thick black stroke reported
-   * in testing. Keep exactly one 1px visible perimeter and remove child rings. */
+   * outline ring. Keep exactly one 1px visible perimeter and remove child rings. */
   .ebsf-native-search-slot .wt-input,
   .ebsf-native-search-slot .wt-input-btn-group__btn{
     border-color:#222!important;
@@ -131,25 +185,19 @@ GM_addStyle(`
     outline:0!important;
     box-shadow:none!important;
   }
-
-  /* Widths stay completely untouched. The real collection header alone was
-   * landing about 2 CSS px past the right content margin at the reported desktop
-   * size, so move the entire right-side toolbar visually left by exactly 2px.
-   * transform changes X position only; it does not participate in layout or
-   * alter Sort / Settings / Search track widths. All has data-ebsf-all-header
-   * and is intentionally excluded. */
-  @media(min-width:900px){
-    #collections-landing-phase-3-header-container:not([data-ebsf-all-header])
-      >#collections-landing-right-side-header-container{
-      transform:translateX(-2px)!important;
-    }
-  }
 `);
 
-window.addEventListener('resize', () => requestAnimationFrame(favApplyExactSearchWidth0135), { passive:true });
-document.fonts?.ready?.then?.(() => requestAnimationFrame(favApplyExactSearchWidth0135)).catch?.(() => {});
+window.addEventListener('resize', favScheduleExactToolbar0136, { passive:true });
+document.fonts?.ready?.then?.(favScheduleExactToolbar0136).catch?.(() => {});
 
-requestAnimationFrame(() => {
-    if (!isFavoritesPage()) return;
-    favApplyExactSearchWidth0135();
-});
+/* Etsy can update or replace pieces of the native Search control while typing.
+ * Re-read collection geometry after those input/search/change events so the
+ * toolbar cannot wander horizontally as the query changes. */
+for (const eventName of ['input','search','change']) {
+    document.addEventListener(eventName, (event) => {
+        if (!event.target?.closest?.('.ebsf-native-search-slot')) return;
+        favScheduleExactToolbar0136();
+    }, true);
+}
+
+favScheduleExactToolbar0136();
