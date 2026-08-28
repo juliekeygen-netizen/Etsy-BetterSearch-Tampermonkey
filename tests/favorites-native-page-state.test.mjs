@@ -1,11 +1,61 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 
 const adapter = await readFile(new URL('../src/95a-favorites-native-page-state.js', import.meta.url), 'utf8');
 const runtime = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
+
+function executeAdapterFixture({ selectedPage = 1, url = 'https://www.etsy.com/people/test?tab=items' } = {}) {
+  let selectedText = String(selectedPage);
+  let pagerMounted = true;
+  let clickHandler = null;
+  let popstateHandler = null;
+  const selectedButton = { textContent: selectedText };
+  const pager = {
+    isConnected: true,
+    getClientRects: () => [{}],
+    querySelector: () => selectedButton,
+  };
+  const context = {
+    favState: { localPage: 1, localPageRouteKey0129: '' },
+    favRequestedRoutePage0137: () => 1,
+    favViewKey0137: () => '',
+    favPageRouteKey0129: () => '',
+    favRequestedPage0129: () => 1,
+    favScopeKey: () => 'owner|items||',
+    isFavoritesPage: () => true,
+    favScheduleSync: () => {},
+    favScheduleCurrentPageObservation: () => {},
+    document: {
+      querySelectorAll: () => pagerMounted ? [pager] : [],
+      addEventListener: (name, handler) => { if (name === 'click') clickHandler = handler; },
+    },
+    window: {
+      addEventListener: (name, handler) => { if (name === 'popstate') popstateHandler = handler; },
+    },
+    location: { href: url },
+    URL,
+    Date,
+    Number,
+    String,
+    Math,
+    Array,
+    setTimeout: () => 0,
+    console,
+  };
+  vm.createContext(context);
+  vm.runInContext(adapter, context);
+  return {
+    context,
+    setSelectedPage(page) { selectedText = String(page); selectedButton.textContent = selectedText; },
+    setPagerMounted(value) { pagerMounted = Boolean(value); },
+    click(button) { clickHandler?.({ target: { closest: () => button } }); },
+    popstate() { popstateHandler?.(); },
+  };
+}
 
 test('native page-state adapter loads after local paging and before final UI/runtime release', () => {
   const runtimeIndex = userscript.indexOf('/src/63-favorites-runtime.js');
@@ -30,6 +80,21 @@ test('Favorites page identity reads Etsy WtPagination button state before URL fa
   assert.ok(current.indexOf('favNativeSelectedPage0139()') < current.indexOf('favUrlPage0139()'));
 });
 
+test('captured Etsy button state wins over a stale page query and changes from page 1 to 2 to 3', () => {
+  const fixture = executeAdapterFixture({ selectedPage: 1, url: 'https://www.etsy.com/people/test?tab=items&page=1' });
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 1);
+  fixture.setSelectedPage(2);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
+  fixture.setSelectedPage(3);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 3);
+});
+
+test('URL page remains a direct/history fallback when native WtPagination is not mounted yet', () => {
+  const fixture = executeAdapterFixture({ selectedPage: 1, url: 'https://www.etsy.com/people/test?tab=items&page=4' });
+  fixture.setPagerMounted(false);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 4);
+});
+
 test('runtime and 20-item renderer are rebound to the same native page identity', () => {
   assert.match(runtime, /function favViewKey0137\(\)/);
   assert.match(pagination, /function favSyncLocalPageFromRoute0129\(\)/);
@@ -50,6 +115,19 @@ test('native pager clicks seed page intent but never hijack Etsy pagination', ()
   assert.match(adapter, /favScheduleCurrentPageObservation\(300\)/);
   assert.doesNotMatch(adapter, /preventDefault\(|stopPropagation\(|stopImmediatePropagation\(/);
   assert.doesNotMatch(adapter, /replaceChildren\(|createElement\(['"]nav['"]\)|\.remove\(\)/);
+});
+
+test('a numeric native page click immediately becomes the local view intent while Etsy owns the click', () => {
+  const fixture = executeAdapterFixture({ selectedPage: 1 });
+  const button = {
+    textContent: '2',
+    disabled: false,
+    getAttribute: () => null,
+    querySelector: () => null,
+  };
+  fixture.click(button);
+  assert.equal(fixture.context.favState.localPage, 2);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
 });
 
 test('Previous and Next button intents derive from Etsy current page', () => {
