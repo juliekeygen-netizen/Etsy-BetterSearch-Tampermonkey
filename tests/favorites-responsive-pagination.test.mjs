@@ -4,14 +4,16 @@ import { readFile } from 'node:fs/promises';
 
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 const parity = await readFile(new URL('../src/96-favorites-exact-header-parity.js', import.meta.url), 'utf8');
+const allNative = await readFile(new URL('../src/97-favorites-all-native-header.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.9 pagination then exact-parity layers load after the native boundary', () => {
+test('v0.12.10 pagination, parity, then literal All native-header layer load after the native boundary', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
-  assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex);
-  assert.match(userscript, /@version\s+0\.12\.9/);
+  const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
+  assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex);
+  assert.match(userscript, /@version\s+0\.12\.10/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
@@ -39,38 +41,58 @@ test('every historical All metadata callback is rebound to one invariant full wr
   assert.doesNotMatch(parity, /\$\{total\} · \$\{shown\}/);
 });
 
-test('All header is normalized to native collection anatomy and typography', () => {
-  assert.match(parity, /wt-justify-content-space-between/);
-  assert.match(parity, /wt-flex-direction-row-lg/);
-  assert.match(parity, /wt-flex-direction-column-xs/);
-  assert.match(parity, /wt-flex-direction-column-xs', 'wt-flex-gap-xs-1/);
-  assert.match(parity, /wt-align-items-center wt-flex-gap-xs-2/);
-  assert.match(parity, /title\.classList\.add\('wt-text-title-large'\)/);
-  assert.match(parity, /dataset\.ebsfAllTitleRow/);
-  assert.match(parity, /dataset\.ebsfAllMetaRow/);
-  assert.doesNotMatch(parity, /font-size:16px!important/);
-  assert.doesNotMatch(parity, /grid-template-areas:[\s\S]*title controls/);
+test('module 97 builds All from the literal native collection header structure', () => {
+  assert.match(allNative, /header\.id = 'collections-landing-phase-3-header-container'/);
+  assert.match(allNative, /left\.id = 'collections-landing-left-side-header-container'/);
+  assert.match(allNative, /leftContent\.id = 'collections-landing-left-side-header-content'/);
+  assert.match(allNative, /titleContainer\.id = 'collections-landing-left-side-header-title-container'/);
+  assert.match(allNative, /title\.id = 'collections-landing-left-side-header-title'/);
+  assert.match(allNative, /title\.className = 'wt-text-title-large'/);
+  assert.match(allNative, /right\.id = 'collections-landing-right-side-header-container'/);
+  assert.match(allNative, /controls\.className = 'wt-display-flex-md wt-flex-grow-xs-1 wt-align-items-center wt-width-full wt-align-self-flex-end'/);
+  assert.doesNotMatch(allNative, /header\.className = [^\n]*ebsf-scope-header/);
+  assert.doesNotMatch(allNative, /leftContent\.className = [^\n]*ebsf-scope-copy/);
+  assert.doesNotMatch(allNative, /controls\.className = [^\n]*ebsf-scope-controls/);
 });
 
-test('All private metadata has exactly one native-style icon location', () => {
+test('All native mirror intentionally omits collection edit and add controls', () => {
+  const build = allNative.slice(
+    allNative.indexOf('function favBuildAllNativeCollectionHeader0132'),
+    allNative.indexOf('function favAllHeaderIsNativeCollectionMirror0132')
+  );
+  assert.match(build, /titleText\.textContent = 'All'/);
+  assert.match(build, /Private collection/);
+  assert.doesNotMatch(build, /createElement\('button'\)/);
+});
+
+test('All toolbar uses the same native listing host and right-side toolbar host as collections', () => {
+  assert.match(allNative, /controls\.dataset\.ebsfAllControls = ''/);
+  assert.match(allNative, /header\.querySelector\('\[data-ebsf-all-controls\]'\)/);
+  assert.match(allNative, /controls\.append\(toolbar\)/);
+  assert.match(allNative, /const listingHost = content\.querySelector\('\.phase3-listing-cards-section'\) \|\| content/);
+  assert.match(allNative, /listingHost\.prepend\(header\)/);
+  assert.doesNotMatch(allNative, /strip\.after\(header\)/);
+});
+
+test('All private metadata has one native-style icon and full wording', () => {
   assert.match(parity, /wt-icon--smallest wt-nudge-b-1 etsy-icon ebsf-scope-privacy-icon/);
-  assert.match(parity, /meta\.querySelectorAll\(':scope > \[data-ebsf-scope-privacy-icon\]'\)\.forEach\(\(node\) => node\.remove\(\)\)/);
-  assert.match(parity, /strong\.prepend\(icon\)/);
-  assert.match(parity, /document\.createTextNode\(' Private collection'\)/);
+  assert.match(allNative, /favPrivateIconMarkup0131\(\)/);
+  assert.match(allNative, /document\.createTextNode\(' Private collection'\)/);
+  assert.match(allNative, /count\.dataset\.ebsfScopeCount = ''/);
 });
 
-test('Sort measures only the label plus compact trigger allowance', () => {
-  assert.match(parity, /favSortTriggerWidth = function favSortTriggerWidth0131/);
-  assert.match(parity, /\+ 40\)/);
-  assert.match(parity, /--ebsf-narrow-sort-width,196px/);
-  assert.doesNotMatch(parity, /\+ 54\)/);
+test('final Sort width is slightly narrower while still measuring the longest label', () => {
+  assert.match(allNative, /favSortTriggerWidth = function favSortTriggerWidth0132/);
+  assert.match(allNative, /Math\.max\(\.\.\.labels\.map\(\(label\) => measure\(label\)\), 0\) \+ 32/);
+  assert.match(allNative, /--ebsf-narrow-sort-width,188px/);
+  assert.doesNotMatch(allNative, /\+ 40\)/);
 });
 
-test('Search is the sole flexible toolbar column and no fixed Search cap survives', () => {
-  assert.match(parity, /grid-template-columns:var\(--ebsf-narrow-sort-width,196px\) 40px minmax\(0,1fr\)!important/);
+test('Search remains the sole flexible toolbar column and no fixed Search cap survives', () => {
   assert.match(parity, /\.ebsf-native-search-slot\{[\s\S]*grid-column:3!important;[\s\S]*width:100%!important;[\s\S]*max-width:none!important;/);
   assert.match(parity, /\.ebsf-native-search-slot input\{[\s\S]*width:100%!important;[\s\S]*max-width:none!important;[\s\S]*min-width:0!important;/);
-  assert.doesNotMatch(parity, /(?:width|max-width):[^;\n]*380px/);
+  assert.match(allNative, /grid-template-columns:var\(--ebsf-narrow-sort-width,188px\) 40px minmax\(0,1fr\)!important/);
+  assert.doesNotMatch(`${parity}\n${allNative}`, /(?:width|max-width):[^;\n]*380px/);
 });
 
 test('real collection toolbar gets remaining width without escaping the content column', () => {
@@ -84,20 +106,13 @@ test('legacy measured toolbar geometry is cleared on every final repair', () => 
   assert.match(parity, /'margin-left'/);
   assert.match(parity, /'flex-basis'/);
   assert.match(parity, /row\?\.classList\.remove\('ebsf-toolbar-preserve-search', 'ebsf-toolbar-compact'\)/);
-  assert.match(parity, /favClearFinalToolbarGeometry0131\(\);/);
+  assert.match(allNative, /favClearFinalToolbarGeometry0131\?\.\(\)/);
 });
 
-test('responsive states distinguish the 761px permanent rail from header stacking', () => {
+test('responsive states retain the permanent-rail and phone toolbar behavior', () => {
   assert.match(parity, /@media\(max-width:899px\)/);
-  assert.match(parity, /@media\(max-width:760px\)/);
-  assert.match(parity, /grid-template-columns:max-content var\(--ebsf-narrow-sort-width,196px\) 40px minmax\(0,1fr\)!important/);
-  assert.match(parity, /permanent filter rail begins at 761px/);
-  const medium = parity.slice(parity.indexOf('@media(max-width:899px)'), parity.indexOf('@media(max-width:760px)'));
-  assert.doesNotMatch(medium, /grid-template-columns:max-content var\(--ebsf-narrow-sort-width/);
-});
-
-test('phone widths keep Filters and Sort before allowing Search to shrink', () => {
-  assert.match(parity, /@media\(max-width:520px\)/);
-  assert.match(parity, /grid-template-columns:40px clamp\(156px,31vw,190px\) 40px minmax\(0,1fr\)!important/);
-  assert.match(parity, /\[data-ebsf-filter-label\][\s\S]*display:none!important/);
+  assert.match(allNative, /@media\(max-width:760px\)/);
+  assert.match(allNative, /grid-template-columns:max-content var\(--ebsf-narrow-sort-width,188px\) 40px minmax\(0,1fr\)!important/);
+  assert.match(allNative, /@media\(max-width:520px\)/);
+  assert.match(allNative, /grid-template-columns:40px clamp\(156px,31vw,190px\) 40px minmax\(0,1fr\)!important/);
 });
