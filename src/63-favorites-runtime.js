@@ -1,5 +1,28 @@
 'use strict';
 
+/* v0.13.0 route/data identity notes:
+ * - dataset identity = owner + Favorite scope + effective dataset query;
+ * - view identity = dataset scope/native query + requested page;
+ * - href-only noise such as ref= never invalidates the catalogue.
+ *
+ * The v0.12.15 visual shell is intentionally untouched by this module.
+ */
+favState.lastDatasetKey0137 = favState.lastDatasetKey0137 || '';
+favState.lastViewKey0137 = favState.lastViewKey0137 || '';
+
+function favRequestedRoutePage0137() {
+    try {
+        const page = Number.parseInt(new URL(location.href).searchParams.get('page') || '1', 10);
+        return Number.isFinite(page) && page > 0 ? page : 1;
+    } catch (_) {
+        return 1;
+    }
+}
+
+function favViewKey0137() {
+    return `${favScopeKey()}|page:${favRequestedRoutePage0137()}`;
+}
+
 function favCaptureNativeGrid() {
     const grid=favMainGrid(); if(!grid) return;
     if(favState.nativeGrid===grid && favState.nativeCaptured) return;
@@ -21,12 +44,15 @@ function favFallbackNode(record) {
     const urgency = record.urgency ? `<span class="wt-badge wt-badge--statusInformational wt-badge--small ebsf-urgency">${safe(record.urgency)}</span>` : '';
     const shipping = record.hasFreeShipping ? 'FREE shipping' : (record.shippingFormatted ? `Shipping: ${safe(record.shippingFormatted)}` : '');
     const action = record.hasVariations ? 'Multiple options' : 'Add to cart';
+    const image = record.imageUrl
+        ? `<img loading="lazy" class="wt-image wt-rounded-02 wt-image--cover" src="${safe(record.imageUrl)}" alt="${safe(record.title)}">`
+        : '<div class="wt-image wt-rounded-02 ebsf-fallback-image" aria-hidden="true"></div>';
     li.innerHTML = `
         <div data-clg-id="WtCard" class="wt-card wt-width-full wt-height-full wt-display-flex-xs wt-card--transparent">
             <a data-clg-id="WtCardLink" href="${safe(record.url)}" target="_blank" rel="noreferrer" class="wt-card__action-link wt-width-full"><span class="wt-screen-reader-only">${safe(record.title)}</span></a>
             <div class="wt-card__inner wt-flex-grow-xs-1 wt-display-flex-xs wt-flex-direction-column-xs">
                 <div class="wt-position-relative wt-display-block">
-                    <img loading="lazy" class="wt-image wt-rounded-02 wt-image--cover" src="${safe(record.imageUrl)}" alt="${safe(record.title)}">
+                    ${image}
                     ${urgency}
                     <button type="button" aria-label="Remove from favorites" aria-pressed="true" class="wt-btn wt-btn--icon wt-btn--small ebsf-heart"><span class="etsy-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.54 4Q19.195 4 20.437 4.76A5.05 5.05 0 0 1 22.338 6.82Q23 8.122 23 9.73C23 10.945 22.735 12 22.214 12.9A8.1 8.1 0 0 1 20.288 15.164C19.528 15.772 18.326 16.5 17 17.35 15.443 18.339 13.576 19.607 12.456 20.905A.614.614 0 0 1 11.545 20.905C10.435 19.615 8.605 18.37 7 17.35 5.674 16.499 4.472 15.772 3.712 15.164A8.1 8.1 0 0 1 1.786 12.901C1.265 12.001 1 10.945 1 9.73Q1.001 8.122 1.661 6.82A5.05 5.05 0 0 1 3.563 4.76Q4.802 4 6.46 4C9.16 4 10.75 5.5 12 7 13.25 5.5 14.745 4 17.54 4"></path></svg></span></button>
                 </div>
@@ -70,13 +96,34 @@ async function favReapply(force=false) {
     const requestKey=favDatasetKey();
     favEnsureToolbar();
     if(!favEnhancementActive()){favRestoreNative();return;}
-    if(favSyncState.status==='running'){const sameScope=favSyncCurrentScope().scopeKey===favSyncState.scopeKey;await favSyncState.promise;if(!isFavoritesPage()||requestKey!==favDatasetKey())return;if(sameScope)force=false;}
+    if(favSyncState.status==='running'){
+        const sameScope=favSyncCurrentScope().scopeKey===favSyncState.scopeKey;
+        const alreadyUsable=favState.loadKey===requestKey&&favState.loadComplete;
+        if(!alreadyUsable){await favSyncState.promise;if(!isFavoritesPage()||requestKey!==favDatasetKey())return;if(sameScope)force=false;}
+    }
     await favLoadAll(force);if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
     if(favNeedsExtraInfo()&&!favState.extraReady){await favEnsureExtraInfo();if(!isFavoritesPage()||requestKey!==favDatasetKey())return;}
     favRenderCurrent();
 }
 
-async function favRefreshRouteData(){if(favEnhancementActive())await favReapply();await favMaybeAutoSync(false);}
+function favRefreshAfterBackgroundSync0137(requestKey) {
+    if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
+    if(favEnhancementActive()&&favState.loadKey===requestKey&&favState.loadComplete)favRenderCurrent();
+    if(favState.filterOpen&&favState.rail?.isConnected)favRefreshRail();
+    favUpdateScopeHeader0120?.();
+}
+
+async function favRefreshRouteData(){
+    if(!isFavoritesPage())return;
+    const requestKey=favDatasetKey();
+    await favPrimeDatasetFromCache0137?.();
+    if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
+    if(favEnhancementActive())await favReapply();
+    if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
+    void Promise.resolve(favMaybeAutoSync(false))
+        .then(()=>favRefreshAfterBackgroundSync0137(requestKey))
+        .catch((error)=>console.warn('[Etsy BetterSearch] Background Favorites refresh failed:',error));
+}
 
 function favRemoveLocalFavorite(idValue) {
     const idString=String(idValue||'');if(!idString||!favState.recordsById.has(idString))return false;
@@ -93,11 +140,70 @@ document.addEventListener('click',(event)=>{if(!isFavoritesPage())return;const c
 
 function favBindNativeSearch(){const form=favSearchInput()?.closest('form');if(!form||form.dataset.ebsfBound)return;form.dataset.ebsfBound='1';form.addEventListener('submit',()=>{favRestoreNative();setTimeout(()=>favScheduleSync(0),450);setTimeout(()=>favScheduleSync(0),1100);});}
 
-function favResetForNativeChange() {
-    const reopen=favState.filterOpen;if(reopen)favCloseFilters();favState.controller?.abort();favRestoreNative();favState.loadKey='';favState.loadPromise=null;favState.loadComplete=false;favState.records=[];favState.recordsById=new Map();favState.total=0;favState.extraPromise=null;favState.extraKey='';favState.extraReady=false;favState.groupQueryResolved=false;favState.localPage=1;favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.openSectionsInitialized=false;favState.openSections=new Set();favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().catch(()=>{});favSyncHandleRouteChange();void favRefreshRouteData();if(reopen)requestAnimationFrame(()=>{if(isFavoritesPage()&&!favState.filterOpen)favOpenFilters();});
+function favResetForDatasetChange0137() {
+    const reopen=favState.filterOpen;
+    if(reopen)favCloseFilters();
+    favState.controller?.abort();
+    favRestoreNative();
+    favState.loadKey='';favState.loadPromise=null;favState.loadComplete=false;favState.records=[];favState.recordsById=new Map();favState.total=0;favState.extraPromise=null;favState.extraKey='';favState.extraReady=false;favState.groupQueryResolved=false;favState.localPage=favRequestedRoutePage0137();favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.openSectionsInitialized=false;favState.openSections=new Set();
+    favState.cacheKey0137='';favState.cachePromise0137=null;favState.cacheScope0137=null;favState.loadSource0137='';
+    favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().catch(()=>{});favSyncHandleRouteChange();void favRefreshRouteData();if(reopen)requestAnimationFrame(()=>{if(isFavoritesPage()&&!favState.filterOpen)favOpenFilters();});
 }
 
-function favScheduleSync(delay=250){clearTimeout(favState.syncTimer);favState.syncTimer=setTimeout(()=>{if(!isFavoritesPage()){favCloseFilters();favHideSyncProgress();return;}const key=favScopeKey();if(favState.lastHref!==location.href||favState.lastScopeKey!==key){favState.lastHref=location.href;favState.lastScopeKey=key;favResetForNativeChange();}else{favEnsureToolbar();favBindNativeSearch();}},delay);}
+/* Keep the historical name callable for older modules, but its meaning is now
+ * deliberately dataset-only. View-only navigation uses the lighter path below. */
+function favResetForNativeChange() {
+    return favResetForDatasetChange0137();
+}
+
+function favRefreshForViewChange0137() {
+    const requestKey=favDatasetKey();
+    favSyncHandleRouteChange();
+    favEnsureToolbar();
+    favBindNativeSearch();
+    favIndexObserveCurrentPage().catch(()=>{});
+
+    if(!favEnhancementActive()){
+        favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.rendered=false;
+        favCaptureNativeGrid();
+        if(favState.filterOpen&&favState.rail?.isConnected)favRefreshRail();
+        return;
+    }
+
+    if(favState.loadKey===requestKey&&favState.loadComplete){
+        requestAnimationFrame(()=>{
+            if(!isFavoritesPage()||favDatasetKey()!==requestKey)return;
+            favRenderCurrent();
+            favUpdateScopeHeader0120?.();
+        });
+        return;
+    }
+    void favRefreshRouteData();
+}
+
+function favScheduleSync(delay=250){
+    clearTimeout(favState.syncTimer);
+    favState.syncTimer=setTimeout(()=>{
+        if(!isFavoritesPage()){favCloseFilters();favHideSyncProgress();return;}
+        const href=location.href;
+        const scopeKey=favScopeKey();
+        const datasetKey=favDatasetKey();
+        const viewKey=favViewKey0137();
+        const datasetChanged=Boolean(favState.lastDatasetKey0137)&&favState.lastDatasetKey0137!==datasetKey;
+        const viewChanged=Boolean(favState.lastViewKey0137)&&favState.lastViewKey0137!==viewKey;
+
+        favState.lastHref=href;
+        favState.lastScopeKey=scopeKey;
+        favState.lastDatasetKey0137=datasetKey;
+        favState.lastViewKey0137=viewKey;
+
+        if(datasetChanged){favResetForDatasetChange0137();return;}
+        if(viewChanged){favRefreshForViewChange0137();return;}
+        /* href-only changes (for example ref= or tracking parameters) are not
+         * catalogue or view changes. Keep the current records and network work. */
+        favEnsureToolbar();favBindNativeSearch();
+    },delay);
+}
 
 function favScheduleCurrentPageObservation(){clearTimeout(favState.observeTimer);favState.observeTimer=setTimeout(()=>{if(isFavoritesPage()&&!favState.rendering)favIndexObserveCurrentPage().catch(()=>{});},1000);}
 
@@ -106,7 +212,9 @@ function favStartRuntime() {
         favState.observer?.disconnect();favState.observer=new MutationObserver(()=>{if(!favState.rendering){favScheduleSync();favScheduleCurrentPageObservation();}});favState.observer.observe(document.body,{childList:true,subtree:true});
         window.addEventListener('popstate',()=>favScheduleSync(80));window.addEventListener('pageshow',(event)=>{if(event.persisted)favScheduleSync(0);});favState.runtimeObserverBound0121=true;
     }
-    if(!isFavoritesPage())return;favState.lastHref=location.href;favState.lastScopeKey=favScopeKey();favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().then(()=>favDeepMaybeAutoScan()).catch(()=>{});void favRefreshRouteData();
+    if(!isFavoritesPage())return;
+    favState.lastHref=location.href;favState.lastScopeKey=favScopeKey();favState.lastDatasetKey0137=favDatasetKey();favState.lastViewKey0137=favViewKey0137();
+    favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().then(()=>favDeepMaybeAutoScan()).catch(()=>{});void favRefreshRouteData();
 }
 
 /* Started by the final Favorites shell module after all late filter/layout
