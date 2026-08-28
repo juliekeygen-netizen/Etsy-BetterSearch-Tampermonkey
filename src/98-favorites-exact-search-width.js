@@ -4,10 +4,10 @@
  *
  * v0.12.13 made Sort / Settings / Search widths deterministic from the complete
  * Favorites header, so All and collection scopes share the same track sizes.
- * v0.12.14 fixed the Search stroke, but its collection-only translateX(-2px)
- * was still a guessed offset. That could remain slightly wrong at some viewport
- * sizes and Etsy could move the real collection toolbar again when Search input
- * state changed.
+ * v0.12.14 fixed the Search stroke, but its collection-only hard-coded two-pixel
+ * translation was still a guessed offset. That could remain slightly wrong at
+ * some viewport sizes and Etsy could move the real collection toolbar again when
+ * Search input state changed.
  *
  * v0.12.15 keeps ALL width math unchanged. Instead, the real collection toolbar
  * is aligned by geometry to the same Favorites listing-column right edge used
