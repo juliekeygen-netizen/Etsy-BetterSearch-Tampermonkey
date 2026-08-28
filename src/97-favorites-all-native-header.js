@@ -1,17 +1,25 @@
 'use strict';
 
-/* v0.12.11 literal native-header parity for the All Favorites scope.
+/* v0.12.12 literal native-header parity for the All Favorites scope.
  *
  * Collection pages are the visual source of truth. The All header uses the same
  * Etsy container ids, utility classes, title anatomy, metadata row, parent host
  * and toolbar host. Because the real collection title row also contains edit +
  * add icon buttons, All keeps invisible, non-interactive geometry twins for
  * those controls so its title/metadata/toolbar dimensions remain identical.
+ *
+ * This final parity pass also decouples Search width from collection-title width:
+ * Sort has one shared measured width and Search gets one shared responsive width
+ * derived from the complete header. Loading progress is removed from document
+ * flow and rendered on the metadata baseline at the far right of the header.
  */
 
-/* Keep the complete longest Sort label, but remove the last bit of dead space
- * that remained after v0.12.10. Search still owns all remaining width. */
-favSortTriggerWidth = function favSortTriggerWidth0133(measure) {
+var FAV_SHARED_SEARCH_RATIO0134 = 0.5;
+
+/* Keep the complete longest Sort label, but remove the last bit of dead space.
+ * Every Favorites scope uses this same measurement through the shared toolbar
+ * geometry helper below, so route changes cannot restore a wider stale value. */
+favSortTriggerWidth = function favSortTriggerWidth0134(measure) {
     const labels = FAV_SORT_DEFINITIONS.flatMap((entry) => entry.reversible ? [entry.normal, entry.reversed] : [entry.normal]);
     return Math.ceil(Math.max(...labels.map((label) => measure(label)), 0) + 24);
 };
@@ -163,7 +171,90 @@ favEnsureAllHeader0120 = function favEnsureAllHeader0133(content) {
     return header;
 };
 
-function favRefreshAllNativeCollectionParity0133() {
+function favSharedToolbarGeometry0134() {
+    const root = favState.sortRoot || document.querySelector('[data-ebsf-sort]');
+    const row = root?.closest?.('[data-ebsf-toolbar-row]') || document.querySelector('[data-ebsf-toolbar-row]');
+    const header = row?.closest?.('#collections-landing-phase-3-header-container')
+        || document.querySelector('#collections-landing-phase-3-header-container');
+    if (!root || !row || !header) return;
+
+    favMeasureSortTrigger?.(root);
+    const measured = root.style.getPropertyValue('--ebsf-sort-trigger-width').trim();
+    if (measured) {
+        document.documentElement.style.setProperty('--ebsf-shared-sort-width0134', measured);
+        row.style.setProperty('--ebsf-narrow-sort-width', measured);
+    }
+
+    if (innerWidth <= 760) {
+        row.style.removeProperty('--ebsf-shared-search-width0134');
+        return;
+    }
+
+    const headerWidth = header.getBoundingClientRect().width;
+    const rowWidth = row.getBoundingClientRect().width;
+    const sortWidth = Number.parseFloat(measured) || 180;
+    const availableForSearch = Math.max(0, rowWidth - sortWidth - 40 - 12);
+    const sharedSearchWidth = Math.min(headerWidth * FAV_SHARED_SEARCH_RATIO0134, availableForSearch);
+    if (sharedSearchWidth > 0) {
+        row.style.setProperty('--ebsf-shared-search-width0134', `${Math.round(sharedSearchWidth * 100) / 100}px`);
+    }
+}
+
+/* Module 94 owns the route/resize hooks for Sort sizing. Rebind its public
+ * helper so every later call applies the same measurement and Search target to
+ * All and collection pages instead of preserving a scope-specific stale width. */
+favSyncNarrowSortWidth0128 = function favSyncNarrowSortWidth0134() {
+    favSharedToolbarGeometry0134();
+};
+
+function favProgressMeta0134(header) {
+    if (!header) return null;
+    if (favScope().type === 'items') return header.querySelector('[data-ebsf-scope-meta]');
+    return document.querySelector('[data-test-id="collections-landing-right-side-header"],[data-testid="collections-landing-right-side-header"]');
+}
+
+function favPositionProgress0134(node = favState.progressNode) {
+    if (!node) return false;
+    const header = document.querySelector('#collections-landing-phase-3-header-container');
+    const meta = favProgressMeta0134(header);
+    if (!header || !meta) return false;
+
+    node.classList.add('ebsf-progress-inline0134');
+    node.dataset.ebsfProgressInline = '';
+    if (node.parentElement !== header) header.append(node);
+
+    const headerRect = header.getBoundingClientRect();
+    const metaRect = meta.getBoundingClientRect();
+    if (!headerRect.width || !metaRect.height) return true;
+    node.style.setProperty('--ebsf-progress-top0134', `${Math.max(0, metaRect.top - headerRect.top)}px`);
+    node.style.setProperty('--ebsf-progress-height0134', `${Math.max(16, metaRect.height)}px`);
+    return true;
+}
+
+/* The original data loader prepended .ebsf-progress to the listing section,
+ * which inserted a whole row above the collection title/header. Keep the same
+ * status text and aria-live behavior, but mount it absolutely inside the native
+ * header on the metadata baseline so it never changes layout height. */
+favProgress = function favProgress0134(text) {
+    let node = favState.progressNode;
+    if (!node) {
+        node = document.createElement('div');
+        node.className = 'ebsf-progress wt-text-body-small ebsf-progress-inline0134';
+        node.dataset.ebsfProgressInline = '';
+        node.setAttribute('role', 'status');
+        node.setAttribute('aria-live', 'polite');
+        favState.progressNode = node;
+    }
+    node.textContent = text;
+    if (!favPositionProgress0134(node)) requestAnimationFrame(() => favPositionProgress0134(node));
+};
+
+favClearProgress = function favClearProgress0134() {
+    favState.progressNode?.remove();
+    favState.progressNode = null;
+};
+
+function favRefreshAllNativeCollectionParity0134() {
     if (!isFavoritesPage()) return;
 
     const sidebar = document.querySelector('[data-testid="sidebar"]');
@@ -171,10 +262,24 @@ function favRefreshAllNativeCollectionParity0133() {
     if (favScope().type === 'items' && content) favEnsureAllHeader0120(content);
 
     favClearFinalToolbarGeometry0131?.();
-    favSyncNarrowSortWidth0128?.();
+    favSharedToolbarGeometry0134();
     favApplyScopeMetaDensity0131?.();
     favApplyCollectionMetaDensity0126?.();
+    favPositionProgress0134();
 }
+
+/* Shell repair runs on soft route changes and Etsy rerenders. Make final toolbar
+ * and progress geometry part of that same idempotent repair boundary. */
+var favInstallPageShellBefore0134 = favInstallPageShell0120;
+favInstallPageShell0120 = function favInstallPageShell0134() {
+    const result = favInstallPageShellBefore0134?.();
+    requestAnimationFrame(() => {
+        if (!isFavoritesPage()) return;
+        favSharedToolbarGeometry0134();
+        favPositionProgress0134();
+    });
+    return result;
+};
 
 GM_addStyle(`
   /* Geometry-only twins of the native collection edit/+ buttons. They occupy
@@ -186,12 +291,45 @@ GM_addStyle(`
     user-select:none!important;
   }
 
-  .ebsf-toolbar-row{
-    grid-template-columns:var(--ebsf-narrow-sort-width,180px) 40px minmax(0,1fr)!important;
+  #collections-landing-phase-3-header-container{
+    position:relative!important;
+  }
+  .ebsf-progress-inline0134{
+    position:absolute!important;
+    top:var(--ebsf-progress-top0134,auto)!important;
+    right:0!important;
+    height:var(--ebsf-progress-height0134,18px)!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-end!important;
+    max-width:46%!important;
+    margin:0!important;
+    padding:0!important;
+    border:0!important;
+    background:transparent!important;
+    color:#595959!important;
+    font-size:12px!important;
+    line-height:1.2!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    pointer-events:none!important;
+    z-index:2!important;
+  }
+
+  @media(min-width:761px){
+    .ebsf-toolbar-row{
+      grid-template-columns:var(--ebsf-shared-sort-width0134,180px) 40px minmax(0,var(--ebsf-shared-search-width0134,50%))!important;
+      justify-content:end!important;
+    }
   }
   @media(max-width:760px){
     .ebsf-toolbar-row{
-      grid-template-columns:max-content var(--ebsf-narrow-sort-width,180px) 40px minmax(0,1fr)!important;
+      grid-template-columns:max-content var(--ebsf-shared-sort-width0134,180px) 40px minmax(0,1fr)!important;
+    }
+    .ebsf-progress-inline0134{
+      max-width:42%!important;
+      font-size:11px!important;
     }
   }
   @media(max-width:520px){
@@ -201,11 +339,14 @@ GM_addStyle(`
   }
 `);
 
-window.addEventListener('resize', () => requestAnimationFrame(favRefreshAllNativeCollectionParity0133), { passive:true });
-document.fonts?.ready?.then?.(() => requestAnimationFrame(favRefreshAllNativeCollectionParity0133)).catch?.(() => {});
+window.addEventListener('resize', () => requestAnimationFrame(favRefreshAllNativeCollectionParity0134), { passive:true });
+document.fonts?.ready?.then?.(() => requestAnimationFrame(favRefreshAllNativeCollectionParity0134)).catch?.(() => {});
 
 requestAnimationFrame(() => {
     if (!isFavoritesPage()) return;
     favInstallPageShell0120?.();
-    favRefreshAllNativeCollectionParity0133();
+    /* Runtime may already have emitted the first Loading favorites… update before
+     * this final module evaluated. Adopt that existing node into the header. */
+    favPositionProgress0134();
+    favRefreshAllNativeCollectionParity0134();
 });
