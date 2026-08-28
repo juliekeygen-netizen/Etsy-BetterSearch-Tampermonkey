@@ -7,13 +7,13 @@ const parity = await readFile(new URL('../src/96-favorites-exact-header-parity.j
 const allNative = await readFile(new URL('../src/97-favorites-all-native-header.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.11 pagination, parity, then literal All native-header layer load after the native boundary', () => {
+test('v0.12.12 pagination, parity, then final All/header geometry layer load after the native boundary', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
   const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
   assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex);
-  assert.match(userscript, /@version\s+0\.12\.11/);
+  assert.match(userscript, /@version\s+0\.12\.12/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
@@ -99,38 +99,61 @@ test('All private metadata has one native-style icon and full wording', () => {
   assert.match(allNative, /count\.dataset\.ebsfScopeCount = ''/);
 });
 
-test('final Sort width is tighter while still measuring the longest label', () => {
-  assert.match(allNative, /favSortTriggerWidth = function favSortTriggerWidth0133/);
+test('Sort width is one shared final measurement across All and collection routes', () => {
+  assert.match(allNative, /favSortTriggerWidth = function favSortTriggerWidth0134/);
   assert.match(allNative, /Math\.max\(\.\.\.labels\.map\(\(label\) => measure\(label\)\), 0\) \+ 24/);
-  assert.match(allNative, /--ebsf-narrow-sort-width,180px/);
-  assert.doesNotMatch(allNative, /\+ 32\)/);
+  assert.match(allNative, /--ebsf-shared-sort-width0134/);
+  assert.match(allNative, /favSyncNarrowSortWidth0128 = function favSyncNarrowSortWidth0134/);
+  assert.match(allNative, /favMeasureSortTrigger\?\.\(root\)/);
 });
 
-test('Search remains the sole flexible toolbar column and no fixed Search cap survives', () => {
-  assert.match(parity, /\.ebsf-native-search-slot\{[\s\S]*grid-column:3!important;[\s\S]*width:100%!important;[\s\S]*max-width:none!important;/);
-  assert.match(parity, /\.ebsf-native-search-slot input\{[\s\S]*width:100%!important;[\s\S]*max-width:none!important;[\s\S]*min-width:0!important;/);
-  assert.match(allNative, /grid-template-columns:var\(--ebsf-narrow-sort-width,180px\) 40px minmax\(0,1fr\)!important/);
+test('Search width is derived from the full header and shared across page types', () => {
+  assert.match(allNative, /FAV_SHARED_SEARCH_RATIO0134 = 0\.5/);
+  assert.match(allNative, /const headerWidth = header\.getBoundingClientRect\(\)\.width/);
+  assert.match(allNative, /headerWidth \* FAV_SHARED_SEARCH_RATIO0134/);
+  assert.match(allNative, /--ebsf-shared-search-width0134/);
+  assert.match(allNative, /grid-template-columns:var\(--ebsf-shared-sort-width0134,180px\) 40px minmax\(0,var\(--ebsf-shared-search-width0134,50%\)\)!important/);
+  assert.match(allNative, /justify-content:end!important/);
   assert.doesNotMatch(`${parity}\n${allNative}`, /(?:width|max-width):[^;\n]*380px/);
 });
 
-test('real collection toolbar gets remaining width without escaping the content column', () => {
+test('loading progress is moved onto the metadata baseline instead of creating a header row', () => {
+  assert.match(allNative, /favProgress = function favProgress0134/);
+  assert.match(allNative, /favClearProgress = function favClearProgress0134/);
+  assert.match(allNative, /node\.dataset\.ebsfProgressInline = ''/);
+  assert.match(allNative, /if \(node\.parentElement !== header\) header\.append\(node\)/);
+  assert.match(allNative, /metaRect\.top - headerRect\.top/);
+  assert.match(allNative, /\.ebsf-progress-inline0134\{[\s\S]*position:absolute!important;[\s\S]*right:0!important;/);
+  const finalProgress = allNative.slice(allNative.indexOf('favProgress = function favProgress0134'));
+  assert.doesNotMatch(finalProgress, /section\.prepend\(node\)/);
+});
+
+test('real collection toolbar stays inside the content column', () => {
   assert.match(parity, /#collections-landing-phase-3-header-container\{[\s\S]*width:100%!important;[\s\S]*max-width:100%!important;[\s\S]*min-width:0!important;/);
   assert.match(parity, /#collections-landing-right-side-header-container\{[\s\S]*flex:1 1 0%!important;[\s\S]*width:auto!important;[\s\S]*min-width:0!important;/);
   assert.match(parity, /\.ebsf-content-column0131[\s\S]*flex:1 1 0%!important;[\s\S]*max-width:100%!important;[\s\S]*min-width:0!important;/);
 });
 
-test('legacy measured toolbar geometry is cleared on every final repair', () => {
+test('legacy measured toolbar geometry is cleared before final shared geometry is applied', () => {
   assert.match(parity, /favClearLegacyToolbarGeometry0126\?\.\(\)/);
   assert.match(parity, /'margin-left'/);
   assert.match(parity, /'flex-basis'/);
   assert.match(parity, /row\?\.classList\.remove\('ebsf-toolbar-preserve-search', 'ebsf-toolbar-compact'\)/);
   assert.match(allNative, /favClearFinalToolbarGeometry0131\?\.\(\)/);
+  assert.match(allNative, /favSharedToolbarGeometry0134\(\)/);
+});
+
+test('soft-route shell repair reapplies toolbar and progress geometry', () => {
+  assert.match(allNative, /favInstallPageShell0120 = function favInstallPageShell0134/);
+  assert.match(allNative, /favSharedToolbarGeometry0134\(\)/);
+  assert.match(allNative, /favPositionProgress0134\(\)/);
 });
 
 test('responsive states retain the permanent-rail and phone toolbar behavior', () => {
   assert.match(parity, /@media\(max-width:899px\)/);
+  assert.match(allNative, /@media\(min-width:761px\)/);
   assert.match(allNative, /@media\(max-width:760px\)/);
-  assert.match(allNative, /grid-template-columns:max-content var\(--ebsf-narrow-sort-width,180px\) 40px minmax\(0,1fr\)!important/);
+  assert.match(allNative, /grid-template-columns:max-content var\(--ebsf-shared-sort-width0134,180px\) 40px minmax\(0,1fr\)!important/);
   assert.match(allNative, /@media\(max-width:520px\)/);
   assert.match(allNative, /grid-template-columns:40px clamp\(152px,30vw,182px\) 40px minmax\(0,1fr\)!important/);
 });
