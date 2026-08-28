@@ -80,11 +80,11 @@ function fixture({ cacheReady = false } = {}) {
   return { context, networkForces, get syncCalls() { return syncCalls; } };
 }
 
-test('v0.13.1 correctness layer loads after final geometry modules and before deferred runtime RAF can fire', () => {
+test('v0.13.1 correctness layer stays after final geometry modules under the current release', () => {
   const p98 = userscript.indexOf('/src/98-favorites-exact-search-width.js');
   const p99 = userscript.indexOf('/src/99-favorites-v0131-correctness.js');
   assert.ok(p98 >= 0 && p99 > p98);
-  assert.match(userscript, /@version\s+0\.13\.1/);
+  assert.match(userscript, /@version\s+0\.13\.2/);
 });
 
 test('incomplete presentation cache forces one real network migration and marks source only after completion', async () => {
