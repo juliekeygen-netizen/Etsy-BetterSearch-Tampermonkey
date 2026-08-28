@@ -8,14 +8,14 @@ const allNative = await readFile(new URL('../src/97-favorites-all-native-header.
 const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.15 loads the exact Search parity layer after the native header stack', () => {
+test('exact Search parity layer stays after the native header stack across later releases', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
   const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
   const exactSearchIndex = userscript.indexOf('/src/98-favorites-exact-search-width.js');
   assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex && exactSearchIndex > allNativeIndex);
-  assert.match(userscript, /@version\s+0\.12\.15/);
+  assert.match(userscript, /@version\s+\d+\.\d+\.\d+/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
