@@ -15,16 +15,19 @@ test('the entire collection strip is a drag surface without native text or link 
   assert.match(polish, /const strip = scroller\.closest\?\.\('\[data-ebsf-collection-strip\]'\)/);
   assert.match(polish, /strip\.addEventListener\('pointerdown'/);
   assert.match(polish, /strip\.addEventListener\('pointermove'/);
+  assert.match(polish, /strip\.addEventListener\('pointerleave'/);
   assert.match(polish, /strip\.addEventListener\('dragstart', \(event\) => event\.preventDefault\(\)\)/);
   assert.match(polish, /strip\.addEventListener\('selectstart', \(event\) => event\.preventDefault\(\)\)/);
+  assert.match(polish, /touch-action:pan-y!important/);
   assert.match(polish, /dataset\.ebsfScrollerRevision = '3'/);
   assert.match(polish, /if \(!suppressClick\) return;/);
 });
 
 test('scope metadata compacts before medium desktop controls run out of room', () => {
-  assert.match(polish, /const compact = width > 0 && width < 930/);
+  assert.match(polish, /const compact = width > 0 && width < 1100/);
   assert.match(polish, /compact \? 'Private' : 'Private collection'/);
   assert.match(polish, /compact \? `\$\{total\} · \$\{shown\}` : `\$\{total\} favorites · \$\{shown\} shown`/);
+  assert.match(polish, /@media\(min-width:760px\) and \(max-width:1440px\)/);
   assert.match(polish, /grid-template-columns:minmax\(150px,27%\) minmax\(0,1fr\)/);
 });
 
@@ -34,6 +37,7 @@ test('narrow shell keeps copy and Filters Sort Settings Search in two rows', () 
   assert.match(polish, /\.ebsf-scope-controls \.ebsf-toolbar-row\{[\s\S]*flex-wrap:nowrap!important;/);
   assert.match(polish, /\.ebsf-scope-header \.ebsf-search-left-controls\{[\s\S]*flex:0 1 min\(276px,64%\)!important;/);
   assert.match(polish, /\.ebsf-scope-header \.ebsf-native-search-slot\{[\s\S]*flex:1 1 120px!important;/);
+  assert.match(polish, /\.ebsf-scope-copy \[data-ebsf-scope-count\]\{[\s\S]*flex:0 1 auto!important;/);
 });
 
 test('very narrow shell can collapse Filters to its icon instead of wrapping', () => {
