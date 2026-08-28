@@ -35,8 +35,10 @@ favInstallCollectionStrip0120 = function favInstallCollectionStrip0127(content) 
     /* favBuildCollectionStrip0120 closes over the native create button. A
      * healthy revision-4 strip therefore still needs one rebuild if Etsy late
      * mounts or replaces that native button; otherwise + can stay disabled or
-     * point at a detached React node forever. */
-    if (current && previousCreate !== nativeCreate) {
+     * point at a detached React node forever. Never remove a strip that already
+     * contains Etsy pagination: the pass-1 installer must get first chance to
+     * salvage those live React-backed pager controls. */
+    if (current && previousCreate !== nativeCreate && !favHasPaginationPayload0126(current)) {
         current.__ebsfScrollerCleanup0126?.();
         current.remove();
     }
