@@ -26,7 +26,7 @@ test('final collection installer ends the revision-2 versus revision-3 rebuild l
 });
 
 test('dragging is robust on pills and does not trap wheel or touch scrolling', () => {
-  assert.match(audit, /strip\.addEventListener|on\(strip, 'pointerdown'/);
+  assert.match(audit, /on\(strip, 'pointerdown'/);
   assert.match(audit, /on\(strip, 'lostpointercapture'/);
   assert.match(audit, /strip\.hasPointerCapture\?\./);
   assert.match(audit, /clearSuppressSoon/);
@@ -45,14 +45,30 @@ test('pagination corruption is salvaged before the collection strip is rebuilt',
   assert.match(audit, /favRenderPagination = function favRenderPagination0126/);
 });
 
+test('native pagination wins if Etsy later recreates a real pager', () => {
+  assert.match(audit, /const genuine = nodes\.filter\(\(nav\) => !nav\.matches\('\[data-ebsf-recovered-pagination\]'\)\)/);
+  assert.match(audit, /for \(const recovered of nodes\.filter/);
+  assert.match(audit, /favState\.recoveredPagination0126 = null/);
+});
+
 test('toolbar hardening clears legacy inline locks and constrains the real search input', () => {
   assert.match(audit, /favClearLegacyToolbarGeometry0126/);
   assert.match(audit, /\['width','min-width','max-width','flex'\]/);
   assert.match(audit, /favFilterWidthCache010\.delete\(filter\)/);
   assert.match(audit, /\.ebsf-native-search-slot input\{/);
+  assert.match(audit, /flex:1 1 0%!important/);
   assert.match(audit, /width:100%!important/);
   assert.match(audit, /@media\(max-width:760px\)/);
   assert.match(audit, /@media\(min-width:761px\)/);
+});
+
+test('scope metadata compacts by actual width and collection pages get the same density treatment', () => {
+  assert.match(audit, /width < 1180 \|\| crowded/);
+  assert.match(audit, /favApplyScopeMetaDensity0125 = favApplyScopeMetaDensity0126/);
+  assert.match(audit, /function favApplyCollectionMetaDensity0126/);
+  assert.match(audit, /compact \? `\$\{total\} · \$\{shown\}`/);
+  assert.match(audit, /favUpdateScopeHeader0120 = function favUpdateScopeHeader0126/);
+  assert.match(audit, /ResizeObserver/);
 });
 
 test('category visibility obeys both v2 editor visibility and current-filtered-items evidence', () => {
