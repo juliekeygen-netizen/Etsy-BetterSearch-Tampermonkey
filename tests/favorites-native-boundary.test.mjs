@@ -23,7 +23,10 @@ test('final collection strip does not use a nav element', () => {
 });
 
 test('final collection installer contains no pagination recovery or movement', () => {
-  const install = boundary.slice(boundary.indexOf('favInstallCollectionStrip0120 = function favInstallCollectionStrip0128'), boundary.indexOf('favProtectNativePagination0126 ='));
+  const install = boundary.slice(
+    boundary.indexOf('favInstallCollectionStrip0120 = function favInstallCollectionStrip0128'),
+    boundary.indexOf('/* Remove the pagination compatibility stack')
+  );
   assert.doesNotMatch(install, /WtPagination|Favorite Items Page Results|favHasPaginationPayload0126|favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
 
@@ -34,7 +37,10 @@ test('live pagination compatibility hooks are final no-ops', () => {
 });
 
 test('final shell observer does not watch or repair pagination', () => {
-  const observer = boundary.slice(boundary.indexOf('function favShellMutationRelevant0128'), boundary.indexOf('function favSyncNarrowSortWidth0128'));
+  const observer = boundary.slice(
+    boundary.indexOf('function favShellMutationRelevant0128'),
+    boundary.indexOf('/* The previous final observer')
+  );
   assert.doesNotMatch(observer, /WtPagination|Favorite Items Page Results|pagination|favProtectNativePagination0126/);
 });
 
