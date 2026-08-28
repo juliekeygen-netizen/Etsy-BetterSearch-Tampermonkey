@@ -1,16 +1,18 @@
 'use strict';
 
-/* v0.13.0 route/data identity notes:
- * - dataset identity = owner + Favorite scope + effective dataset query;
- * - view identity = dataset scope/native query + requested page;
- * - href-only noise such as ref= never invalidates the catalogue.
- *
- * The v0.12.15 visual shell is intentionally untouched by this module.
+/* v0.14.0 native/local ownership notes:
+ * - dataset identity remains owner + Favorite scope + effective dataset query;
+ * - Etsy keeps ownership of its live product UL and card nodes;
+ * - BetterSearch local filtering/sorting renders into a separate sibling UL;
+ * - native mode is restored by revealing Etsy's untouched grid, never by
+ *   reparenting/replacing Preact-owned children.
  */
 favState.lastDatasetKey0137 = favState.lastDatasetKey0137 || '';
 favState.lastViewKey0137 = favState.lastViewKey0137 || '';
 favState.wasFavoritesPage0137 = favState.wasFavoritesPage0137 === true;
 favState.nativeCaptureViewKey0137 = favState.nativeCaptureViewKey0137 || '';
+favState.localGrid0141 = favState.localGrid0141 || null;
+favState.renderMode0141 = favState.renderMode0141 || 'native';
 
 function favRequestedRoutePage0137() {
     try {
@@ -25,16 +27,50 @@ function favViewKey0137() {
     return `${favScopeKey()}|page:${favRequestedRoutePage0137()}`;
 }
 
+function favNativeMainGrid0141(root = document) {
+    const grids = Array.from(root.querySelectorAll?.('.phase3-listing-cards-section ul.implicit-comparison-listing-card-row, .phase3-listing-cards-section ul[role="list"]') || []);
+    return grids.find((grid) => !grid.hasAttribute('data-ebsf-local-grid')) || null;
+}
+
+function favNativeCardMap0141(root = document) {
+    const map = new Map();
+    const grid = favNativeMainGrid0141(root);
+    if (!grid) return map;
+    for (const node of Array.from(grid.children)) {
+        const idValue = favListingIdFromNode(node);
+        if (idValue) map.set(idValue, node);
+    }
+    return map;
+}
+
 function favCaptureNativeGrid() {
-    const grid=favMainGrid(); if(!grid) return;
+    const grid=favNativeMainGrid0141(); if(!grid) return;
     if(favState.nativeGrid===grid && favState.nativeCaptured && favState.nativeCaptureViewKey0137===favViewKey0137()) return;
-    if(favState.rendered && favState.nativeGrid===grid) return;
-    favState.nativeGrid=grid; favState.nativeOrder=Array.from(grid.children); favState.nativeNodes=favCardMap(document); favState.nativeCaptured=true; favState.rendered=false;favState.nativeCaptureViewKey0137=favViewKey0137();
+    favState.nativeGrid=grid;
+    favState.nativeOrder=Array.from(grid.children);
+    favState.nativeNodes=favNativeCardMap0141(document);
+    favState.nativeCaptured=true;
+    favState.nativeCaptureViewKey0137=favViewKey0137();
+}
+
+function favRemoveLocalGrid0141() {
+    if (favState.localGrid0141?.isConnected) favState.localGrid0141.remove();
+    favState.localGrid0141 = null;
 }
 
 function favRestoreNative() {
-    if(favState.rendered && favState.nativeGrid?.isConnected && favState.nativeOrder.length){favState.rendering=true;favState.nativeGrid.replaceChildren(...favState.nativeOrder);queueMicrotask(()=>{favState.rendering=false;});}
-    favState.countNode?.remove(); favState.countNode=null; favState.rendered=false; favState.filtered=[];document.body?.classList.remove('ebsf-results-active');
+    favRemoveLocalGrid0141();
+    if (favState.nativeGrid?.isConnected) {
+        favState.nativeGrid.hidden = false;
+        favState.nativeGrid.removeAttribute('aria-hidden');
+        favState.nativeGrid.removeAttribute('data-ebsf-native-hidden');
+    }
+    favState.countNode?.remove();
+    favState.countNode=null;
+    favState.rendered=false;
+    favState.renderMode0141='native';
+    favState.filtered=[];
+    document.body?.classList.remove('ebsf-results-active');
 }
 
 function favFallbackNode(record) {
@@ -69,28 +105,80 @@ function favFallbackNode(record) {
     return li;
 }
 
+function favPrepareOwnedCard0141(node, record) {
+    node.removeAttribute?.('id');
+    node.querySelectorAll?.('[id]').forEach((child) => child.removeAttribute('id'));
+    node.dataset.ebsfId=record.id;
+    node.dataset.ebsfUrl=record.url;
+    node.dataset.ebsListingId=record.id;
+    node.dataset.ebsListingUrl=record.url;
+    node.dataset.ebsfTransplanted='1';
+    node.dataset.ebsfOwnedCard='1';
+    for(const img of node.querySelectorAll?.('img') || []){img.loading='lazy';img.removeAttribute('fetchpriority');}
+    for(const video of node.querySelectorAll?.('video') || []){video.preload='none';video.autoplay=false;}
+    return node;
+}
+
 function favNodeForRecord(record) {
-    const live=favState.nativeNodes.get(record.id); if(live){live.dataset.ebsfId=record.id;live.dataset.ebsfUrl=record.url;delete live.dataset.ebsfTransplanted;return live;}
-    let node=null;if(record.html){const t=document.createElement('template');t.innerHTML=record.html.trim();node=t.content.firstElementChild;} if(!node)node=favFallbackNode(record);
-    node.dataset.ebsfId=record.id;node.dataset.ebsfUrl=record.url;node.dataset.ebsListingId=record.id;node.dataset.ebsListingUrl=record.url;node.dataset.ebsfTransplanted='1';for(const img of node.querySelectorAll('img')){img.loading='lazy';img.removeAttribute('fetchpriority');}for(const video of node.querySelectorAll('video')){video.preload='none';video.autoplay=false;}return node;
+    const live=favState.nativeNodes.get(record.id);
+    if(live) return favPrepareOwnedCard0141(live.cloneNode(true), record);
+    let node=null;
+    if(record.html){const t=document.createElement('template');t.innerHTML=record.html.trim();node=t.content.firstElementChild;}
+    if(!node)node=favFallbackNode(record);
+    return favPrepareOwnedCard0141(node, record);
+}
+
+function favEnsureLocalGrid0141(nativeGrid) {
+    let grid=favState.localGrid0141;
+    if(grid?.isConnected && grid.previousElementSibling===nativeGrid)return grid;
+    favRemoveLocalGrid0141();
+    grid=document.createElement('ul');
+    grid.className=String(nativeGrid.className || '');
+    const role=nativeGrid.getAttribute('role');
+    if(role)grid.setAttribute('role',role);
+    grid.setAttribute('data-ebsf-local-grid','1');
+    grid.setAttribute('data-ebsf-owned','1');
+    nativeGrid.insertAdjacentElement('afterend',grid);
+    favState.localGrid0141=grid;
+    return grid;
 }
 
 function favRenderCount(totalShown) {
     const section=document.querySelector('.phase3-listing-cards-section'); if(!section)return;
     if(!favState.countNode){const node=document.createElement('div');node.className='ebsf-result-count wt-text-body-small';section.prepend(node);favState.countNode=node;}
-    const base=favState.total||favState.records.length; favState.countNode.textContent=`${base} favorites · ${totalShown} shown`;
+    const base=favState.total||favState.records.length;
+    const unresolved=Math.max(0,Number(favState.metadataCoverage0141?.unresolved)||0);
+    favState.countNode.textContent=`${base} favorites · ${totalShown} shown${unresolved ? ` · ${unresolved} metadata values unknown` : ''}`;
 }
 
 function favRenderPagination(totalPages) {
-    /* Installed by the final Favorites page-shell module, which reuses Etsy's
-     * WtPagination structure and preserves the native pager position. */
+    /* Etsy owns its native pager. Local pagination remains a later dedicated
+     * architecture phase; this release never mutates or reuses the Etsy pager. */
 }
 
 function favRenderCurrent() {
-    const grid=favMainGrid(); if(!grid)return;
-    favCaptureNativeGrid(); const matched=favFilteredRecords();favState.filtered=matched;const pages=Math.max(1,Math.ceil(matched.length/favState.pageSize));favState.localPage=Math.min(Math.max(1,favState.localPage),pages);const start=(favState.localPage-1)*favState.pageSize;const page=matched.slice(start,start+favState.pageSize);const frag=document.createDocumentFragment();
+    const nativeGrid=favNativeMainGrid0141(); if(!nativeGrid)return;
+    favCaptureNativeGrid();
+    const matched=favFilteredRecords();
+    favState.filtered=matched;
+    const pages=Math.max(1,Math.ceil(matched.length/favState.pageSize));
+    favState.localPage=Math.min(Math.max(1,favState.localPage),pages);
+    const start=(favState.localPage-1)*favState.pageSize;
+    const page=matched.slice(start,start+favState.pageSize);
+    const localGrid=favEnsureLocalGrid0141(nativeGrid);
+    const frag=document.createDocumentFragment();
     if(!page.length){const li=document.createElement('li');li.className='ebsf-empty';li.textContent='No favorites match these filters.';frag.append(li);}else for(const item of page)frag.append(favNodeForRecord(item));
-    favState.rendering=true;grid.replaceChildren(frag);favState.rendered=true;document.body.classList.add('ebsf-results-active');favRenderCount(matched.length);favRenderPagination(pages);queueMicrotask(()=>{favState.rendering=false;});
+    favState.rendering=true;
+    localGrid.replaceChildren(frag);
+    nativeGrid.hidden=true;
+    nativeGrid.setAttribute('aria-hidden','true');
+    nativeGrid.setAttribute('data-ebsf-native-hidden','1');
+    favState.rendered=true;
+    favState.renderMode0141='bettersearch-local';
+    document.body.classList.add('ebsf-results-active');
+    favRenderCount(matched.length);
+    favRenderPagination(pages);
+    queueMicrotask(()=>{favState.rendering=false;});
 }
 
 async function favReapply(force=false) {
@@ -98,19 +186,27 @@ async function favReapply(force=false) {
     const requestKey=favDatasetKey();
     favEnsureToolbar();
     if(!favEnhancementActive()){favRestoreNative();return;}
-    if(favSyncState.status==='running'){
-        const sameScope=favSyncCurrentScope().scopeKey===favSyncState.scopeKey;
-        const alreadyUsable=favState.loadKey===requestKey&&favState.loadComplete;
-        if(!alreadyUsable){await favSyncState.promise;if(!isFavoritesPage()||requestKey!==favDatasetKey())return;if(sameScope)force=false;}
+
+    /* No global sync wait: only the requested dataset can deduplicate this load. */
+    await favLoadAll(force);
+    if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
+
+    const coverage=await favMetadataEnsureCurrentRequirements0141();
+    if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
+    favState.metadataCoverage0141=coverage;
+    if(coverage.pending>0){
+        /* Required deep data is actively being resolved. Keep Etsy's useful
+         * native cards visible instead of presenting unknown as final false. */
+        favRestoreNative();
+        favState.metadataCoverage0141=coverage;
+        return;
     }
-    await favLoadAll(force);if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
-    if(favNeedsExtraInfo()&&!favState.extraReady){await favEnsureExtraInfo();if(!isFavoritesPage()||requestKey!==favDatasetKey())return;}
     favRenderCurrent();
 }
 
 function favRefreshAfterBackgroundSync0137(requestKey) {
     if(!isFavoritesPage()||requestKey!==favDatasetKey())return;
-    if(favEnhancementActive()&&favState.loadKey===requestKey&&favState.loadComplete)favRenderCurrent();
+    if(favEnhancementActive()&&favState.loadKey===requestKey&&favState.loadComplete)void favReapply();
     if(favState.filterOpen&&favState.rail?.isConnected)favRefreshRail();
     favUpdateScopeHeader0120?.();
 }
@@ -129,16 +225,61 @@ async function favRefreshRouteData(){
 
 function favRemoveLocalFavorite(idValue) {
     const idString=String(idValue||'');if(!idString||!favState.recordsById.has(idString))return false;
-    favState.recordsById.delete(idString);favState.records=favState.records.filter((item)=>item.id!==idString);favState.nativeNodes.delete(idString);favState.nativeOrder=favState.nativeOrder.filter((node)=>favListingIdFromNode(node)!==idString);favState.total=Math.max(0,(Number(favState.total)||favState.records.length+1)-1);favIndexMarkUnfavorite(idString).catch(()=>{});return true;
+    favState.recordsById.delete(idString);
+    favState.records=favState.records.filter((item)=>item.id!==idString);
+    favState.total=Math.max(0,(Number(favState.total)||favState.records.length+1)-1);
+    favIndexMarkUnfavorite(idString).catch(()=>{});
+    return true;
+}
+
+function favNativeActionForOwnedCard0141(card, target) {
+    const native=favState.nativeNodes.get(String(card?.dataset?.ebsfId || ''));
+    if(!native?.isConnected)return null;
+    const favorite=favoriteButtonFromEvent(target);
+    if(favorite){
+        const nativeFavorite=Array.from(native.querySelectorAll('button,[role="button"]')).find((button)=>favoriteButtonFromEvent(button)===button);
+        return nativeFavorite ? { type:'favorite', button:nativeFavorite } : null;
+    }
+    const button=target?.closest?.('button');
+    if(button&&/(add to cart|multiple options|select options)/i.test(button.textContent||'')){
+        const wanted=String(button.textContent||'').trim();
+        const nativeButton=Array.from(native.querySelectorAll('button')).find((candidate)=>String(candidate.textContent||'').trim()===wanted)
+            || Array.from(native.querySelectorAll('button')).find((candidate)=>/(add to cart|multiple options|select options)/i.test(candidate.textContent||''));
+        return nativeButton ? { type:'button', button:nativeButton } : null;
+    }
+    return null;
 }
 
 function favHandleTransplantedClick(event) {
-    const card=event.target?.closest?.('[data-ebsf-transplanted="1"]');if(!card)return;
-    const favorite=favoriteButtonFromEvent(event.target);if(favorite){event.preventDefault();event.stopImmediatePropagation();bridgeFavorite(card,favorite).then(()=>{if(!isFavoritedButton(favorite)){favRemoveLocalFavorite(card.dataset.ebsfId);favRenderCurrent();}});return;}
-    const button=event.target?.closest?.('button');if(button&&/(add to cart|multiple options|select options)/i.test(button.textContent||'')){event.preventDefault();event.stopImmediatePropagation();const url=card.dataset.ebsfUrl;if(url)window.open(url,'_blank','noopener');}
+    const card=event.target?.closest?.('[data-ebsf-owned-card="1"]');if(!card)return;
+    const favorite=favoriteButtonFromEvent(event.target);
+    if(favorite){
+        event.preventDefault();event.stopImmediatePropagation();
+        const nativeAction=favNativeActionForOwnedCard0141(card,event.target);
+        if(nativeAction?.button){
+            setFavoriteWorking(favorite,true);
+            nativeAction.button.click();
+            setTimeout(()=>{
+                const stillFavorited=isFavoritedButton(nativeAction.button);
+                setFavoriteWorking(favorite,false);
+                setFavoriteVisual(favorite,stillFavorited);
+                if(!stillFavorited){favRemoveLocalFavorite(card.dataset.ebsfId);favRenderCurrent();}
+            },900);
+            return;
+        }
+        bridgeFavorite(card,favorite).then(()=>{if(!isFavoritedButton(favorite)){favRemoveLocalFavorite(card.dataset.ebsfId);favRenderCurrent();}});
+        return;
+    }
+    const button=event.target?.closest?.('button');
+    if(button&&/(add to cart|multiple options|select options)/i.test(button.textContent||'')){
+        event.preventDefault();event.stopImmediatePropagation();
+        const nativeAction=favNativeActionForOwnedCard0141(card,event.target);
+        if(nativeAction?.button){nativeAction.button.click();return;}
+        const url=card.dataset.ebsfUrl;if(url)window.open(url,'_blank','noopener');
+    }
 }
 document.addEventListener('click',favHandleTransplantedClick,true);
-document.addEventListener('click',(event)=>{if(!isFavoritesPage())return;const card=event.target?.closest?.('.favorites-landing-listing-card-container:not([data-ebsf-transplanted="1"])');if(!card)return;const button=favoriteButtonFromEvent(event.target);if(!button||!isFavoritedButton(button))return;const idValue=card.dataset.ebsfId||favListingIdFromNode(card);if(!idValue)return;setTimeout(()=>{const current=card.querySelector('button[aria-label*="Favorite" i],button[data-accessible-btn-fave],[data-favorite-button]')||button;if(card.isConnected&&isFavoritedButton(current))return;const removed=document.body.classList.contains('ebsf-results-active')&&favRemoveLocalFavorite(idValue);if(!removed)favIndexMarkUnfavorite(idValue).catch(()=>{});if(removed)favRenderCurrent();},900);},false);
+document.addEventListener('click',(event)=>{if(!isFavoritesPage())return;const card=event.target?.closest?.('.favorites-landing-listing-card-container:not([data-ebsf-owned-card="1"])');if(!card)return;const button=favoriteButtonFromEvent(event.target);if(!button||!isFavoritedButton(button))return;const idValue=card.dataset.ebsfId||favListingIdFromNode(card);if(!idValue)return;setTimeout(()=>{const current=card.querySelector('button[aria-label*="Favorite" i],button[data-accessible-btn-fave],[data-favorite-button]')||button;if(card.isConnected&&isFavoritedButton(current))return;const removed=document.body.classList.contains('ebsf-results-active')&&favRemoveLocalFavorite(idValue);if(!removed)favIndexMarkUnfavorite(idValue).catch(()=>{});if(removed)favRenderCurrent();},900);},false);
 
 function favBindNativeSearch(){const form=favSearchInput()?.closest('form');if(!form||form.dataset.ebsfBound)return;form.dataset.ebsfBound='1';form.addEventListener('submit',()=>{favRestoreNative();setTimeout(()=>favScheduleSync(0),450);setTimeout(()=>favScheduleSync(0),1100);});}
 
@@ -147,13 +288,11 @@ function favResetForDatasetChange0137() {
     if(reopen)favCloseFilters();
     favState.controller?.abort();
     favRestoreNative();
-    favState.loadKey='';favState.loadPromise=null;favState.loadComplete=false;favState.records=[];favState.recordsById=new Map();favState.total=0;favState.extraPromise=null;favState.extraKey='';favState.extraReady=false;favState.groupQueryResolved=false;favState.localPage=favRequestedRoutePage0137();favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.nativeCaptureViewKey0137='';favState.openSectionsInitialized=false;favState.openSections=new Set();
+    favState.loadKey='';favState.loadPromise=null;favState.loadComplete=false;favState.records=[];favState.recordsById=new Map();favState.total=0;favState.extraPromise=null;favState.extraKey='';favState.extraReady=false;favState.groupQueryResolved=false;favState.localPage=favRequestedRoutePage0137();favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.nativeCaptureViewKey0137='';favState.openSectionsInitialized=false;favState.openSections=new Set();favState.metadataCoverage0141=null;
     favState.cacheKey0137='';favState.cachePromise0137=null;favState.cacheScope0137=null;favState.cachePresentationReady0137=false;favState.loadSource0137='';
     favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().catch(()=>{});favSyncHandleRouteChange();void favRefreshRouteData();if(reopen)requestAnimationFrame(()=>{if(isFavoritesPage()&&!favState.filterOpen)favOpenFilters();});
 }
 
-/* Keep the historical name callable for older modules, but its meaning is now
- * deliberately dataset-only. View-only navigation uses the lighter path below. */
 function favResetForNativeChange() {
     return favResetForDatasetChange0137();
 }
@@ -168,38 +307,23 @@ function favClearNativeViewCapture0137() {
 
 function favGridContainsFreshNativePage0137(grid) {
     if(!grid)return false;
-    if(grid!==favState.nativeGrid)return true;
-    if(!favState.rendered)return true;
-    /* BetterSearch marks every node it places in the enhanced grid. A listing
-     * card Etsy later reconciles into the same UL lacks those ownership marks,
-     * which is the signal that a new native page is ready to capture. */
-    return Array.from(grid.children).some((node)=>
-        favListingIdFromNode(node)
-        && !node.hasAttribute('data-ebsf-id')
-        && !node.hasAttribute('data-ebsf-transplanted')
-    );
+    if(grid!==favState.nativeGrid||!favState.nativeCaptured)return true;
+    if(favState.nativeCaptureViewKey0137!==favViewKey0137())return true;
+    const current=Array.from(grid.children).map((node)=>favListingIdFromNode(node)).filter(Boolean).join(',');
+    const captured=Array.from(favState.nativeOrder||[]).map((node)=>favListingIdFromNode(node)).filter(Boolean).join(',');
+    return current!==captured;
 }
 
 function favMaybeCaptureSettledNativePage0137() {
     if(!isFavoritesPage()||favState.rendering)return false;
-    const grid=favMainGrid();
+    const grid=favNativeMainGrid0141();
     if(!grid||!favGridContainsFreshNativePage0137(grid))return false;
     const viewKey=favViewKey0137();
-    if(
-        favState.nativeCaptured
-        && favState.nativeGrid===grid
-        && favState.nativeCaptureViewKey0137===viewKey
-        && !favState.rendered
-    ) return false;
-
     favState.nativeGrid=grid;
     favState.nativeOrder=Array.from(grid.children);
-    favState.nativeNodes=favCardMap(document);
+    favState.nativeNodes=favNativeCardMap0141(document);
     favState.nativeCaptured=true;
     favState.nativeCaptureViewKey0137=viewKey;
-    favState.rendered=false;
-    favState.countNode?.remove();favState.countNode=null;
-    document.body?.classList.remove('ebsf-results-active');
     return true;
 }
 
@@ -208,13 +332,11 @@ function favRefreshForViewChange0137() {
     favSyncHandleRouteChange();
     favEnsureToolbar();
     favBindNativeSearch();
-    /* Do not snapshot immediately: URL/history can change before Etsy has
-     * reconciled the new 20-card page. The debounced observer below captures
-     * the settled native page and, if needed, reapplies enhanced rendering. */
     favState.nativeCaptureViewKey0137='';
     favScheduleCurrentPageObservation(350);
 
     if(!favEnhancementActive()){
+        favRestoreNative();
         favClearNativeViewCapture0137();
         if(favState.filterOpen&&favState.rail?.isConnected)favRefreshRail();
         return;
@@ -223,7 +345,7 @@ function favRefreshForViewChange0137() {
     if(favState.loadKey===requestKey&&favState.loadComplete){
         requestAnimationFrame(()=>{
             if(!isFavoritesPage()||favDatasetKey()!==requestKey)return;
-            favRenderCurrent();
+            void favReapply();
             favUpdateScopeHeader0120?.();
         });
         return;
@@ -253,6 +375,7 @@ function favScheduleSync(delay=250){
         if(!isFavoritesPage()){
             favState.wasFavoritesPage0137=false;
             favState.nativeCaptureViewKey0137='';
+            favRestoreNative();
             favCloseFilters();favHideSyncProgress();return;
         }
         const reentered=!favState.wasFavoritesPage0137;
@@ -272,8 +395,6 @@ function favScheduleSync(delay=250){
         if(reentered){favRefreshAfterReentry0137();return;}
         if(datasetChanged){favResetForDatasetChange0137();return;}
         if(viewChanged){favRefreshForViewChange0137();return;}
-        /* href-only changes (for example ref= or tracking parameters) are not
-         * catalogue or view changes. Keep the current records and network work. */
         favEnsureToolbar();favBindNativeSearch();
     },delay);
 }
@@ -285,7 +406,7 @@ function favScheduleCurrentPageObservation(delay=1000){
         const recaptured=favMaybeCaptureSettledNativePage0137();
         favIndexObserveCurrentPage().catch(()=>{});
         if(recaptured&&favEnhancementActive()&&favState.loadKey===favDatasetKey()&&favState.loadComplete){
-            requestAnimationFrame(()=>{if(isFavoritesPage()&&favEnhancementActive())favRenderCurrent();});
+            requestAnimationFrame(()=>{if(isFavoritesPage()&&favEnhancementActive())void favReapply();});
         }
     },delay);
 }
@@ -302,5 +423,4 @@ function favStartRuntime() {
 }
 
 /* Started by the final Favorites shell module after all late filter/layout
- * overrides are installed. Starting here exposed a short-lived legacy rail
- * and editor during initial page hydration. */
+ * overrides are installed. */
