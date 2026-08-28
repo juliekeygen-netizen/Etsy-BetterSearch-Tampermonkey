@@ -7,12 +7,12 @@ const responsive = await readFile(new URL('../src/89-favorites-responsive-shell.
 const polish = await readFile(new URL('../src/90-favorites-responsive-polish.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('triple-audit hardening is the final Favorites module', () => {
+test('triple-audit hardening remains after the responsive shell layers', () => {
   const responsiveIndex = userscript.indexOf('/src/89-favorites-responsive-shell.js');
   const polishIndex = userscript.indexOf('/src/90-favorites-responsive-polish.js');
   const auditIndex = userscript.indexOf('/src/91-favorites-triple-audit-hardening.js');
   assert.ok(responsiveIndex >= 0 && polishIndex > responsiveIndex && auditIndex > polishIndex);
-  assert.match(userscript, /@version\s+0\.12\.4/);
+  assert.match(userscript, /@version\s+0\.12\.5/);
 });
 
 test('final collection installer ends the revision-2 versus revision-3 rebuild loop', () => {
