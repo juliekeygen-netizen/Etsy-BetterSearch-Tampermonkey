@@ -7,13 +7,13 @@ const parity = await readFile(new URL('../src/96-favorites-exact-header-parity.j
 const allNative = await readFile(new URL('../src/97-favorites-all-native-header.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.10 pagination, parity, then literal All native-header layer load after the native boundary', () => {
+test('v0.12.11 pagination, parity, then literal All native-header layer load after the native boundary', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
   const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
   assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex);
-  assert.match(userscript, /@version\s+0\.12\.10/);
+  assert.match(userscript, /@version\s+0\.12\.11/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
@@ -55,14 +55,32 @@ test('module 97 builds All from the literal native collection header structure',
   assert.doesNotMatch(allNative, /controls\.className = [^\n]*ebsf-scope-controls/);
 });
 
-test('All native mirror intentionally omits collection edit and add controls', () => {
+test('All title row keeps native edit/add button geometry without exposing controls', () => {
+  const spacer = allNative.slice(
+    allNative.indexOf('function favAllTitleSpacerButton0133'),
+    allNative.indexOf('function favBuildAllNativeCollectionHeader0133')
+  );
   const build = allNative.slice(
-    allNative.indexOf('function favBuildAllNativeCollectionHeader0132'),
-    allNative.indexOf('function favAllHeaderIsNativeCollectionMirror0132')
+    allNative.indexOf('function favBuildAllNativeCollectionHeader0133'),
+    allNative.indexOf('function favAllHeaderIsNativeCollectionMirror0133')
   );
   assert.match(build, /titleText\.textContent = 'All'/);
-  assert.match(build, /Private collection/);
-  assert.doesNotMatch(build, /createElement\('button'\)/);
+  assert.match(build, /editSpacerWrapper = document\.createElement\('div'\)/);
+  assert.match(build, /favAllTitleSpacerButton0133\('edit'\)/);
+  assert.match(build, /favAllTitleSpacerButton0133\('add'\)/);
+  assert.match(build, /titleContainer\.append\(title, editSpacerWrapper, addSpacer\)/);
+  assert.match(spacer, /wt-btn wt-btn--tertiary wt-btn--small wt-btn--icon/);
+  assert.match(spacer, /button\.tabIndex = -1/);
+  assert.match(spacer, /setAttribute\('aria-hidden', 'true'\)/);
+  assert.doesNotMatch(spacer, /addEventListener/);
+  assert.match(allNative, /\[data-ebsf-all-title-spacer\][\s\S]*visibility:hidden!important;[\s\S]*pointer-events:none!important/);
+});
+
+test('All mirror integrity requires both native title-control geometry twins', () => {
+  assert.match(allNative, /data-ebsf-native-collection-mirror="2"/);
+  assert.match(allNative, /spacers\?\.length === 2/);
+  assert.match(allNative, /data-ebsf-all-title-spacer-wrapper="edit"/);
+  assert.match(allNative, /data-ebsf-all-title-spacer="add"/);
 });
 
 test('All toolbar uses the same native listing host and right-side toolbar host as collections', () => {
@@ -81,17 +99,17 @@ test('All private metadata has one native-style icon and full wording', () => {
   assert.match(allNative, /count\.dataset\.ebsfScopeCount = ''/);
 });
 
-test('final Sort width is slightly narrower while still measuring the longest label', () => {
-  assert.match(allNative, /favSortTriggerWidth = function favSortTriggerWidth0132/);
-  assert.match(allNative, /Math\.max\(\.\.\.labels\.map\(\(label\) => measure\(label\)\), 0\) \+ 32/);
-  assert.match(allNative, /--ebsf-narrow-sort-width,188px/);
-  assert.doesNotMatch(allNative, /\+ 40\)/);
+test('final Sort width is tighter while still measuring the longest label', () => {
+  assert.match(allNative, /favSortTriggerWidth = function favSortTriggerWidth0133/);
+  assert.match(allNative, /Math\.max\(\.\.\.labels\.map\(\(label\) => measure\(label\)\), 0\) \+ 24/);
+  assert.match(allNative, /--ebsf-narrow-sort-width,180px/);
+  assert.doesNotMatch(allNative, /\+ 32\)/);
 });
 
 test('Search remains the sole flexible toolbar column and no fixed Search cap survives', () => {
   assert.match(parity, /\.ebsf-native-search-slot\{[\s\S]*grid-column:3!important;[\s\S]*width:100%!important;[\s\S]*max-width:none!important;/);
   assert.match(parity, /\.ebsf-native-search-slot input\{[\s\S]*width:100%!important;[\s\S]*max-width:none!important;[\s\S]*min-width:0!important;/);
-  assert.match(allNative, /grid-template-columns:var\(--ebsf-narrow-sort-width,188px\) 40px minmax\(0,1fr\)!important/);
+  assert.match(allNative, /grid-template-columns:var\(--ebsf-narrow-sort-width,180px\) 40px minmax\(0,1fr\)!important/);
   assert.doesNotMatch(`${parity}\n${allNative}`, /(?:width|max-width):[^;\n]*380px/);
 });
 
@@ -112,7 +130,7 @@ test('legacy measured toolbar geometry is cleared on every final repair', () => 
 test('responsive states retain the permanent-rail and phone toolbar behavior', () => {
   assert.match(parity, /@media\(max-width:899px\)/);
   assert.match(allNative, /@media\(max-width:760px\)/);
-  assert.match(allNative, /grid-template-columns:max-content var\(--ebsf-narrow-sort-width,188px\) 40px minmax\(0,1fr\)!important/);
+  assert.match(allNative, /grid-template-columns:max-content var\(--ebsf-narrow-sort-width,180px\) 40px minmax\(0,1fr\)!important/);
   assert.match(allNative, /@media\(max-width:520px\)/);
-  assert.match(allNative, /grid-template-columns:40px clamp\(156px,31vw,190px\) 40px minmax\(0,1fr\)!important/);
+  assert.match(allNative, /grid-template-columns:40px clamp\(152px,30vw,182px\) 40px minmax\(0,1fr\)!important/);
 });
