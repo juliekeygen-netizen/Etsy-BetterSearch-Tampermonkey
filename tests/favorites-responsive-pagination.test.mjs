@@ -65,11 +65,13 @@ test('All native mirror intentionally omits collection edit and add controls', (
   assert.doesNotMatch(build, /createElement\('button'\)/);
 });
 
-test('All toolbar is moved into the same right-side host used by real collections', () => {
+test('All toolbar uses the same native listing host and right-side toolbar host as collections', () => {
   assert.match(allNative, /controls\.dataset\.ebsfAllControls = ''/);
   assert.match(allNative, /header\.querySelector\('\[data-ebsf-all-controls\]'\)/);
   assert.match(allNative, /controls\.append\(toolbar\)/);
-  assert.match(allNative, /strip\.after\(header\)/);
+  assert.match(allNative, /const listingHost = content\.querySelector\('\.phase3-listing-cards-section'\) \|\| content/);
+  assert.match(allNative, /listingHost\.prepend\(header\)/);
+  assert.doesNotMatch(allNative, /strip\.after\(header\)/);
 });
 
 test('All private metadata has one native-style icon and full wording', () => {
