@@ -29,6 +29,12 @@ test('collection strip refreshes when native Create collection source late-mount
   assert.match(third, /favApplyNativeControlTheme0120\(installed\)/);
 });
 
+test('create-source refresh never discards a collection nav carrying live Etsy pagination', () => {
+  assert.match(third, /previousCreate !== nativeCreate && !favHasPaginationPayload0126\(current\)/);
+  const wrapper = third.slice(third.indexOf('favInstallCollectionStrip0120 = function favInstallCollectionStrip0127'), third.indexOf('favPositionSortMenu = function favPositionSortMenu0127'));
+  assert.ok(wrapper.indexOf('!favHasPaginationPayload0126(current)') < wrapper.indexOf('current.remove()'));
+});
+
 test('compact sort trigger opens a readable viewport-bounded popup', () => {
   assert.match(third, /favPositionSortMenu = function favPositionSortMenu0127/);
   assert.match(third, /const preferredWidth = Math\.max\(190, Math\.ceil\(rect\.width\)\)/);
