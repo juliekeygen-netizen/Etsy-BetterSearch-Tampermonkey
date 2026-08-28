@@ -1,6 +1,6 @@
 {
   "name": "etsy-bettersearch",
-  "version": "0.13.2",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "description": "Build and test tooling for Etsy BetterSearch userscript, Chrome extension, and Firefox extension.",
