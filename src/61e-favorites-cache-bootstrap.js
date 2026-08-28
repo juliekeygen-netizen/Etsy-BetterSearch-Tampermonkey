@@ -13,6 +13,7 @@ favState.cacheKey0137 = favState.cacheKey0137 || '';
 favState.cachePromise0137 = favState.cachePromise0137 || null;
 favState.cacheScope0137 = favState.cacheScope0137 || null;
 favState.cacheLoadedAt0137 = favState.cacheLoadedAt0137 || 0;
+favState.cachePresentationReady0137 = favState.cachePresentationReady0137 === true;
 favState.loadSource0137 = favState.loadSource0137 || '';
 
 function favCacheField0137(group, key) {
@@ -97,17 +98,38 @@ async function favCacheReadScope0137(scope = favIndexCurrentScope()) {
     const scopeKey = scope?.scopeKey || favIndexScopeKey(scope);
     if (!scopeKey) return null;
     const db = await favIndexOpen();
-    const transaction = db.transaction(['listings', 'shops', 'scopes'], 'readonly');
-    const [scopeRecord, listings, shops] = await Promise.all([
-        favIndexRequest(transaction.objectStore('scopes').get(scopeKey)),
-        favIndexRequest(transaction.objectStore('listings').getAll()),
-        favIndexRequest(transaction.objectStore('shops').getAll()),
-    ]);
+
+    /* Read only this scope and the records it references. The original draft
+     * used getAll() for listings/shops, which would turn cache-first startup into
+     * an O(entire database) scan for users with a long-lived index. */
+    const scopeRecord = await favIndexRequest(
+        db.transaction('scopes', 'readonly').objectStore('scopes').get(scopeKey)
+    );
     if (!scopeRecord?.complete) return null;
 
-    const listingById = new Map((listings || []).map((listing) => [String(listing?.listingId || ''), listing]));
-    const shopById = new Map((shops || []).map((shop) => [String(shop?.shopId || ''), shop]));
-    const ids = Array.from(scopeRecord.listingIds || [], String);
+    const ids = Array.from(new Set(Array.from(scopeRecord.listingIds || [], String).filter(Boolean)));
+    if (!ids.length) {
+        return {
+            scope:{ ...scope, scopeKey }, scopeRecord, ids,
+            listingById:new Map(), shopById:new Map(),
+        };
+    }
+
+    const listingStore = db.transaction('listings', 'readonly').objectStore('listings');
+    const listings = await Promise.all(ids.map((idValue) => favIndexRequest(listingStore.get(idValue))));
+    /* A scope marked complete but missing one of its referenced listing objects
+     * is not a safe complete snapshot. Fall back to the network/sync path. */
+    if (listings.some((listing) => !listing)) return null;
+
+    const shopIds = Array.from(new Set(listings.map((listing) => String(listing?.shopId || '')).filter(Boolean)));
+    let shops = [];
+    if (shopIds.length) {
+        const shopStore = db.transaction('shops', 'readonly').objectStore('shops');
+        shops = await Promise.all(shopIds.map((shopId) => favIndexRequest(shopStore.get(shopId))));
+    }
+
+    const listingById = new Map(listings.map((listing) => [String(listing.listingId), listing]));
+    const shopById = new Map(shopIds.map((shopId, index) => [shopId, shops[index]]).filter(([, shop]) => Boolean(shop)));
     return { scope:{ ...scope, scopeKey }, scopeRecord, ids, listingById, shopById };
 }
 
@@ -217,6 +239,21 @@ function favCacheMaterializeScope0137(snapshot) {
     return records;
 }
 
+function favCachePresentationReadyForScope0137(snapshot) {
+    if (!snapshot) return false;
+    const liveIds = new Set(
+        favListingsFromProps(favProps()).map((listing) => String(listing?.listingId ?? listing?.listing_id ?? '')).filter(Boolean)
+    );
+    return snapshot.ids.every((idValue) => {
+        const indexed = snapshot.listingById.get(String(idValue));
+        if (!indexed || indexed.isFavorite !== true) return true;
+        const membership = indexed.favoriteScopes?.[snapshot.scope.scopeKey];
+        if (membership?.active === false) return true;
+        if (liveIds.has(String(idValue))) return true;
+        return Number(indexed.presentationSnapshot?.version) >= FAV_CACHE_PRESENTATION_VERSION0137;
+    });
+}
+
 function favCacheHasRequiredExtraInfo0137(records = favState.records) {
     if (!favNeedsExtraInfo()) return true;
     const filters = favCfg.filters || {};
@@ -239,7 +276,7 @@ function favCacheHasRequiredExtraInfo0137(records = favState.records) {
 async function favPrimeDatasetFromCache0137(options = {}) {
     if (!isFavoritesPage()) return false;
     const key = favDatasetKey();
-    if (!options.force && favState.loadKey === key && favState.loadComplete) return true;
+    if (!options.force && favState.loadKey === key && favState.loadComplete && favState.loadSource0137 !== 'cache') return true;
     if (!options.force && favState.cacheKey0137 === key && favState.cachePromise0137) return favState.cachePromise0137;
 
     const scope = favIndexCurrentScope();
@@ -260,6 +297,7 @@ async function favPrimeDatasetFromCache0137(options = {}) {
             favState.loadSource0137 = 'cache';
             favState.cacheScope0137 = snapshot.scopeRecord;
             favState.cacheLoadedAt0137 = Date.now();
+            favState.cachePresentationReady0137 = favCachePresentationReadyForScope0137(snapshot);
             favState.groupQueryResolved = scope.type !== 'group' || !scope.query || snapshot.scopeRecord.complete === true;
             favState.extraReady = favCacheHasRequiredExtraInfo0137(records);
             favState.extraKey = favState.extraReady ? favExtraDatasetKey() : '';
@@ -278,17 +316,26 @@ async function favPrimeDatasetFromCache0137(options = {}) {
 
 /* Network loading remains the fallback for a missing/incomplete cache or an
  * explicit force refresh. Normal startup and same-dataset route changes get the
- * complete cached scope first and leave stale refresh policy to favMaybeAutoSync. */
+ * complete cached scope first and leave stale refresh policy to favMaybeAutoSync.
+ * A pre-v0.13 cache is still useful for metadata immediately, but one network
+ * refresh is allowed before enhanced grid rendering so off-page cards do not
+ * degrade into image-less placeholders during the presentation-snapshot migration. */
 var favLoadAllNetwork0137 = favLoadAll;
 favLoadAll = async function favLoadAllCacheFirst0137(force = false) {
     const key = favDatasetKey();
     if (!force) {
-        if (favState.loadKey === key && favState.loadComplete) return favState.records;
-        if (await favPrimeDatasetFromCache0137()) return favState.records;
+        if (
+            favState.loadKey === key
+            && favState.loadComplete
+            && (favState.loadSource0137 !== 'cache' || favState.cachePresentationReady0137)
+        ) return favState.records;
+        const primed = await favPrimeDatasetFromCache0137();
+        if (primed && favState.cachePresentationReady0137) return favState.records;
     }
     const records = await favLoadAllNetwork0137(force);
     if (isFavoritesPage() && favDatasetKey() === key && favState.loadComplete) {
         favState.loadSource0137 = 'network';
+        favState.cachePresentationReady0137 = true;
         favState.cacheScope0137 = await favIndexGetScope(favIndexCurrentScope().scopeKey).catch(() => null);
     }
     return records;
