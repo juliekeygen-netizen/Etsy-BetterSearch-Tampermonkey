@@ -72,6 +72,7 @@
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/93-favorites-narrow-toolbar.js?v=0.13.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/94-favorites-native-boundary.js?v=0.13.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/95-favorites-responsive-pagination.js?v=0.13.0
+// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/95a-favorites-native-page-state.js?v=0.13.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/96-favorites-exact-header-parity.js?v=0.13.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/97-favorites-all-native-header.js?v=0.13.0
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/98-favorites-exact-search-width.js?v=0.13.0
