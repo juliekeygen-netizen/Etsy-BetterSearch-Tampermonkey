@@ -9,6 +9,8 @@
  */
 favState.lastDatasetKey0137 = favState.lastDatasetKey0137 || '';
 favState.lastViewKey0137 = favState.lastViewKey0137 || '';
+favState.wasFavoritesPage0137 = favState.wasFavoritesPage0137 === true;
+favState.nativeCaptureViewKey0137 = favState.nativeCaptureViewKey0137 || '';
 
 function favRequestedRoutePage0137() {
     try {
@@ -25,9 +27,9 @@ function favViewKey0137() {
 
 function favCaptureNativeGrid() {
     const grid=favMainGrid(); if(!grid) return;
-    if(favState.nativeGrid===grid && favState.nativeCaptured) return;
+    if(favState.nativeGrid===grid && favState.nativeCaptured && favState.nativeCaptureViewKey0137===favViewKey0137()) return;
     if(favState.rendered && favState.nativeGrid===grid) return;
-    favState.nativeGrid=grid; favState.nativeOrder=Array.from(grid.children); favState.nativeNodes=favCardMap(document); favState.nativeCaptured=true; favState.rendered=false;
+    favState.nativeGrid=grid; favState.nativeOrder=Array.from(grid.children); favState.nativeNodes=favCardMap(document); favState.nativeCaptured=true; favState.rendered=false;favState.nativeCaptureViewKey0137=favViewKey0137();
 }
 
 function favRestoreNative() {
@@ -145,8 +147,8 @@ function favResetForDatasetChange0137() {
     if(reopen)favCloseFilters();
     favState.controller?.abort();
     favRestoreNative();
-    favState.loadKey='';favState.loadPromise=null;favState.loadComplete=false;favState.records=[];favState.recordsById=new Map();favState.total=0;favState.extraPromise=null;favState.extraKey='';favState.extraReady=false;favState.groupQueryResolved=false;favState.localPage=favRequestedRoutePage0137();favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.openSectionsInitialized=false;favState.openSections=new Set();
-    favState.cacheKey0137='';favState.cachePromise0137=null;favState.cacheScope0137=null;favState.loadSource0137='';
+    favState.loadKey='';favState.loadPromise=null;favState.loadComplete=false;favState.records=[];favState.recordsById=new Map();favState.total=0;favState.extraPromise=null;favState.extraKey='';favState.extraReady=false;favState.groupQueryResolved=false;favState.localPage=favRequestedRoutePage0137();favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.nativeCaptureViewKey0137='';favState.openSectionsInitialized=false;favState.openSections=new Set();
+    favState.cacheKey0137='';favState.cachePromise0137=null;favState.cacheScope0137=null;favState.cachePresentationReady0137=false;favState.loadSource0137='';
     favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().catch(()=>{});favSyncHandleRouteChange();void favRefreshRouteData();if(reopen)requestAnimationFrame(()=>{if(isFavoritesPage()&&!favState.filterOpen)favOpenFilters();});
 }
 
@@ -156,16 +158,64 @@ function favResetForNativeChange() {
     return favResetForDatasetChange0137();
 }
 
+function favClearNativeViewCapture0137() {
+    favState.nativeGrid=null;
+    favState.nativeOrder=[];
+    favState.nativeNodes=new Map();
+    favState.nativeCaptured=false;
+    favState.nativeCaptureViewKey0137='';
+}
+
+function favGridContainsFreshNativePage0137(grid) {
+    if(!grid)return false;
+    if(grid!==favState.nativeGrid)return true;
+    if(!favState.rendered)return true;
+    /* BetterSearch marks every node it places in the enhanced grid. A listing
+     * card Etsy later reconciles into the same UL lacks those ownership marks,
+     * which is the signal that a new native page is ready to capture. */
+    return Array.from(grid.children).some((node)=>
+        favListingIdFromNode(node)
+        && !node.hasAttribute('data-ebsf-id')
+        && !node.hasAttribute('data-ebsf-transplanted')
+    );
+}
+
+function favMaybeCaptureSettledNativePage0137() {
+    if(!isFavoritesPage()||favState.rendering)return false;
+    const grid=favMainGrid();
+    if(!grid||!favGridContainsFreshNativePage0137(grid))return false;
+    const viewKey=favViewKey0137();
+    if(
+        favState.nativeCaptured
+        && favState.nativeGrid===grid
+        && favState.nativeCaptureViewKey0137===viewKey
+        && !favState.rendered
+    ) return false;
+
+    favState.nativeGrid=grid;
+    favState.nativeOrder=Array.from(grid.children);
+    favState.nativeNodes=favCardMap(document);
+    favState.nativeCaptured=true;
+    favState.nativeCaptureViewKey0137=viewKey;
+    favState.rendered=false;
+    favState.countNode?.remove();favState.countNode=null;
+    document.body?.classList.remove('ebsf-results-active');
+    return true;
+}
+
 function favRefreshForViewChange0137() {
     const requestKey=favDatasetKey();
     favSyncHandleRouteChange();
     favEnsureToolbar();
     favBindNativeSearch();
-    favIndexObserveCurrentPage().catch(()=>{});
+    /* Do not snapshot immediately: URL/history can change before Etsy has
+     * reconciled the new 20-card page. The debounced observer below captures
+     * the settled native page and, if needed, reapplies enhanced rendering. */
+    favState.nativeCaptureViewKey0137='';
+    favScheduleCurrentPageObservation(350);
 
     if(!favEnhancementActive()){
-        favState.nativeGrid=null;favState.nativeOrder=[];favState.nativeNodes=new Map();favState.nativeCaptured=false;favState.rendered=false;
-        favCaptureNativeGrid();
+        favClearNativeViewCapture0137();
         if(favState.filterOpen&&favState.rail?.isConnected)favRefreshRail();
         return;
     }
@@ -181,10 +231,31 @@ function favRefreshForViewChange0137() {
     void favRefreshRouteData();
 }
 
+function favRefreshAfterReentry0137() {
+    if(!isFavoritesPage())return;
+    favState.wasFavoritesPage0137=true;
+    favState.lastHref=location.href;
+    favState.lastScopeKey=favScopeKey();
+    favState.lastDatasetKey0137=favDatasetKey();
+    favState.lastViewKey0137=favViewKey0137();
+    favClearNativeViewCapture0137();
+    favCaptureNativeGrid();
+    favEnsureToolbar();
+    favBindNativeSearch();
+    favIndexObserveCurrentPage().catch(()=>{});
+    favSyncHandleRouteChange();
+    void favRefreshRouteData();
+}
+
 function favScheduleSync(delay=250){
     clearTimeout(favState.syncTimer);
     favState.syncTimer=setTimeout(()=>{
-        if(!isFavoritesPage()){favCloseFilters();favHideSyncProgress();return;}
+        if(!isFavoritesPage()){
+            favState.wasFavoritesPage0137=false;
+            favState.nativeCaptureViewKey0137='';
+            favCloseFilters();favHideSyncProgress();return;
+        }
+        const reentered=!favState.wasFavoritesPage0137;
         const href=location.href;
         const scopeKey=favScopeKey();
         const datasetKey=favDatasetKey();
@@ -192,11 +263,13 @@ function favScheduleSync(delay=250){
         const datasetChanged=Boolean(favState.lastDatasetKey0137)&&favState.lastDatasetKey0137!==datasetKey;
         const viewChanged=Boolean(favState.lastViewKey0137)&&favState.lastViewKey0137!==viewKey;
 
+        favState.wasFavoritesPage0137=true;
         favState.lastHref=href;
         favState.lastScopeKey=scopeKey;
         favState.lastDatasetKey0137=datasetKey;
         favState.lastViewKey0137=viewKey;
 
+        if(reentered){favRefreshAfterReentry0137();return;}
         if(datasetChanged){favResetForDatasetChange0137();return;}
         if(viewChanged){favRefreshForViewChange0137();return;}
         /* href-only changes (for example ref= or tracking parameters) are not
@@ -205,14 +278,25 @@ function favScheduleSync(delay=250){
     },delay);
 }
 
-function favScheduleCurrentPageObservation(){clearTimeout(favState.observeTimer);favState.observeTimer=setTimeout(()=>{if(isFavoritesPage()&&!favState.rendering)favIndexObserveCurrentPage().catch(()=>{});},1000);}
+function favScheduleCurrentPageObservation(delay=1000){
+    clearTimeout(favState.observeTimer);
+    favState.observeTimer=setTimeout(()=>{
+        if(!isFavoritesPage()||favState.rendering)return;
+        const recaptured=favMaybeCaptureSettledNativePage0137();
+        favIndexObserveCurrentPage().catch(()=>{});
+        if(recaptured&&favEnhancementActive()&&favState.loadKey===favDatasetKey()&&favState.loadComplete){
+            requestAnimationFrame(()=>{if(isFavoritesPage()&&favEnhancementActive())favRenderCurrent();});
+        }
+    },delay);
+}
 
 function favStartRuntime() {
     if(!favState.runtimeObserverBound0121){
         favState.observer?.disconnect();favState.observer=new MutationObserver(()=>{if(!favState.rendering){favScheduleSync();favScheduleCurrentPageObservation();}});favState.observer.observe(document.body,{childList:true,subtree:true});
         window.addEventListener('popstate',()=>favScheduleSync(80));window.addEventListener('pageshow',(event)=>{if(event.persisted)favScheduleSync(0);});favState.runtimeObserverBound0121=true;
     }
-    if(!isFavoritesPage())return;
+    if(!isFavoritesPage()){favState.wasFavoritesPage0137=false;return;}
+    favState.wasFavoritesPage0137=true;
     favState.lastHref=location.href;favState.lastScopeKey=favScopeKey();favState.lastDatasetKey0137=favDatasetKey();favState.lastViewKey0137=favViewKey0137();
     favCaptureNativeGrid();favEnsureToolbar();favBindNativeSearch();favIndexObserveCurrentPage().then(()=>favDeepMaybeAutoScan()).catch(()=>{});void favRefreshRouteData();
 }
