@@ -148,10 +148,13 @@ test('Search uses a single 1px neutral stroke without nested outline rings', () 
 test('desktop collection toolbar moves 2px left without changing any width', () => {
   assert.match(exactSearch, /#collections-landing-phase-3-header-container:not\(\[data-ebsf-all-header\]\)/);
   assert.match(exactSearch, /transform:translateX\(-2px\)!important/);
-  const geometryCss = exactSearch.slice(exactSearch.indexOf('@media(min-width:900px)'));
-  assert.doesNotMatch(geometryCss, /width\s*:/);
-  assert.doesNotMatch(geometryCss, /max-width\s*:/);
-  assert.doesNotMatch(geometryCss, /min-width\s*:/);
+  const selectorStart = exactSearch.indexOf('#collections-landing-phase-3-header-container:not([data-ebsf-all-header])');
+  const ruleEnd = exactSearch.indexOf('}', selectorStart) + 1;
+  const geometryRule = exactSearch.slice(selectorStart, ruleEnd);
+  assert.ok(selectorStart >= 0 && ruleEnd > selectorStart);
+  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*width\s*:/);
+  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*max-width\s*:/);
+  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*min-width\s*:/);
 });
 
 test('loading progress is moved onto the metadata baseline instead of creating a header row', () => {
