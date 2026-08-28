@@ -5,15 +5,17 @@ import { readFile } from 'node:fs/promises';
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 const parity = await readFile(new URL('../src/96-favorites-exact-header-parity.js', import.meta.url), 'utf8');
 const allNative = await readFile(new URL('../src/97-favorites-all-native-header.js', import.meta.url), 'utf8');
+const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.12 pagination, parity, then final All/header geometry layer load after the native boundary', () => {
+test('v0.12.13 loads the exact Search parity layer after the native header stack', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
   const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
-  assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex);
-  assert.match(userscript, /@version\s+0\.12\.12/);
+  const exactSearchIndex = userscript.indexOf('/src/98-favorites-exact-search-width.js');
+  assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex && exactSearchIndex > allNativeIndex);
+  assert.match(userscript, /@version\s+0\.12\.13/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
@@ -103,18 +105,41 @@ test('Sort width is one shared final measurement across All and collection route
   assert.match(allNative, /favSortTriggerWidth = function favSortTriggerWidth0134/);
   assert.match(allNative, /Math\.max\(\.\.\.labels\.map\(\(label\) => measure\(label\)\), 0\) \+ 24/);
   assert.match(allNative, /--ebsf-shared-sort-width0134/);
-  assert.match(allNative, /favSyncNarrowSortWidth0128 = function favSyncNarrowSortWidth0134/);
-  assert.match(allNative, /favMeasureSortTrigger\?\.\(root\)/);
+  assert.match(exactSearch, /favMeasureSortTrigger\?\.\(root\)/);
+  assert.match(exactSearch, /--ebsf-shared-sort-width0134/);
 });
 
-test('Search width is derived from the full header and shared across page types', () => {
-  assert.match(allNative, /FAV_SHARED_SEARCH_RATIO0134 = 0\.5/);
-  assert.match(allNative, /const headerWidth = header\.getBoundingClientRect\(\)\.width/);
-  assert.match(allNative, /headerWidth \* FAV_SHARED_SEARCH_RATIO0134/);
-  assert.match(allNative, /--ebsf-shared-search-width0134/);
-  assert.match(allNative, /grid-template-columns:var\(--ebsf-shared-sort-width0134,180px\) 40px minmax\(0,var\(--ebsf-shared-search-width0134,50%\)\)!important/);
-  assert.match(allNative, /justify-content:end!important/);
-  assert.doesNotMatch(`${parity}\n${allNative}`, /(?:width|max-width):[^;\n]*380px/);
+test('Search width no longer depends on current title or current toolbar-row width', () => {
+  assert.match(exactSearch, /FAV_EXACT_SEARCH_RATIO0135 = 0\.5/);
+  assert.match(exactSearch, /FAV_EXACT_TOOLBAR_MAX_RATIO0135 = 0\.74/);
+  assert.match(exactSearch, /const headerWidth = header\.getBoundingClientRect\(\)\.width/);
+  assert.match(exactSearch, /desiredSearch = headerWidth \* FAV_EXACT_SEARCH_RATIO0135/);
+  assert.match(exactSearch, /toolbarCap = headerWidth \* FAV_EXACT_TOOLBAR_MAX_RATIO0135/);
+  assert.match(exactSearch, /right\.style\.setProperty\('flex', `0 0 \$\{toolbarCss\}`, 'important'\)/);
+  assert.match(exactSearch, /row\.style\.setProperty\('--ebsf-shared-search-width0134', searchCss\)/);
+  assert.doesNotMatch(exactSearch, /rowWidth/);
+  assert.doesNotMatch(exactSearch, /availableForSearch/);
+});
+
+test('desktop right-side toolbar width is deterministic and title-independent', () => {
+  assert.match(exactSearch, /if \(innerWidth < 900\)/);
+  assert.match(exactSearch, /toolbarWidth = reserved \+ searchWidth/);
+  assert.match(exactSearch, /right\.style\.setProperty\('width', toolbarCss, 'important'\)/);
+  assert.match(exactSearch, /right\.style\.setProperty\('max-width', toolbarCss, 'important'\)/);
+  assert.match(exactSearch, /right\.style\.setProperty\('min-width', toolbarCss, 'important'\)/);
+});
+
+test('narrow layouts release only the desktop width override and remain responsive', () => {
+  assert.match(exactSearch, /favClearExactDesktopToolbarWidth0135\(right\)/);
+  assert.match(exactSearch, /if \(innerWidth > 760\)/);
+  assert.match(exactSearch, /row\.style\.removeProperty\('--ebsf-shared-search-width0134'\)/);
+});
+
+test('Search outline is normalized to the same neutral control color', () => {
+  assert.match(exactSearch, /\.ebsf-native-search-slot \.wt-input-btn-group__input/);
+  assert.match(exactSearch, /\.ebsf-native-search-slot \.wt-input-btn-group__btn/);
+  assert.match(exactSearch, /border-color:#222!important/);
+  assert.match(exactSearch, /outline-color:#222!important/);
 });
 
 test('loading progress is moved onto the metadata baseline instead of creating a header row', () => {
@@ -134,19 +159,10 @@ test('real collection toolbar stays inside the content column', () => {
   assert.match(parity, /\.ebsf-content-column0131[\s\S]*flex:1 1 0%!important;[\s\S]*max-width:100%!important;[\s\S]*min-width:0!important;/);
 });
 
-test('legacy measured toolbar geometry is cleared before final shared geometry is applied', () => {
-  assert.match(parity, /favClearLegacyToolbarGeometry0126\?\.\(\)/);
-  assert.match(parity, /'margin-left'/);
-  assert.match(parity, /'flex-basis'/);
-  assert.match(parity, /row\?\.classList\.remove\('ebsf-toolbar-preserve-search', 'ebsf-toolbar-compact'\)/);
-  assert.match(allNative, /favClearFinalToolbarGeometry0131\?\.\(\)/);
-  assert.match(allNative, /favSharedToolbarGeometry0134\(\)/);
-});
-
-test('soft-route shell repair reapplies toolbar and progress geometry', () => {
-  assert.match(allNative, /favInstallPageShell0120 = function favInstallPageShell0134/);
-  assert.match(allNative, /favSharedToolbarGeometry0134\(\)/);
-  assert.match(allNative, /favPositionProgress0134\(\)/);
+test('soft-route shell repair reapplies exact Search geometry', () => {
+  assert.match(exactSearch, /favInstallPageShell0120 = function favInstallPageShell0135/);
+  assert.match(exactSearch, /favApplyExactSearchWidth0135\(\)/);
+  assert.match(exactSearch, /favSyncNarrowSortWidth0128 = function favSyncNarrowSortWidth0135/);
 });
 
 test('responsive states retain the permanent-rail and phone toolbar behavior', () => {
