@@ -8,14 +8,14 @@ const allNative = await readFile(new URL('../src/97-favorites-all-native-header.
 const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.14 loads the exact Search parity layer after the native header stack', () => {
+test('v0.12.15 loads the exact Search parity layer after the native header stack', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
   const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
   const exactSearchIndex = userscript.indexOf('/src/98-favorites-exact-search-width.js');
   assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex && exactSearchIndex > allNativeIndex);
-  assert.match(userscript, /@version\s+0\.12\.14/);
+  assert.match(userscript, /@version\s+0\.12\.15/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
@@ -131,6 +131,7 @@ test('desktop right-side toolbar width is deterministic and title-independent', 
 
 test('narrow layouts release only the desktop width override and remain responsive', () => {
   assert.match(exactSearch, /favClearExactDesktopToolbarWidth0135\(right\)/);
+  assert.match(exactSearch, /favClearCollectionToolbarX0136\(right\)/);
   assert.match(exactSearch, /if \(innerWidth > 760\)/);
   assert.match(exactSearch, /row\.style\.removeProperty\('--ebsf-shared-search-width0134'\)/);
 });
@@ -145,16 +146,22 @@ test('Search uses a single 1px neutral stroke without nested outline rings', () 
   assert.doesNotMatch(exactSearch, /outline-color:#222!important/);
 });
 
-test('desktop collection toolbar moves 2px left without changing any width', () => {
-  assert.match(exactSearch, /#collections-landing-phase-3-header-container:not\(\[data-ebsf-all-header\]\)/);
-  assert.match(exactSearch, /transform:translateX\(-2px\)!important/);
-  const selectorStart = exactSearch.indexOf('#collections-landing-phase-3-header-container:not([data-ebsf-all-header])');
-  const ruleEnd = exactSearch.indexOf('}', selectorStart) + 1;
-  const geometryRule = exactSearch.slice(selectorStart, ruleEnd);
-  assert.ok(selectorStart >= 0 && ruleEnd > selectorStart);
-  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*width\s*:/);
-  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*max-width\s*:/);
-  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*min-width\s*:/);
+test('desktop collection toolbar anchors to the All listing-column right edge instead of a guessed offset', () => {
+  assert.match(exactSearch, /function favCollectionToolbarTarget0136\(header\)/);
+  assert.match(exactSearch, /\.phase3-listing-cards-section/);
+  assert.match(exactSearch, /header\.matches\?\.\('\[data-ebsf-all-header\]'\)/);
+  assert.match(exactSearch, /const delta = targetRect\.right - rightRect\.right/);
+  assert.match(exactSearch, /right\.style\.setProperty\('transform', `translateX\(\$\{rounded\}px\)`, 'important'\)/);
+  assert.match(exactSearch, /favAlignCollectionToolbarX0136\(header, right\)/);
+  assert.doesNotMatch(exactSearch, /translateX\(-2px\)/);
+});
+
+test('typing in native Favorites Search reanchors collection toolbar after Etsy updates it', () => {
+  assert.match(exactSearch, /function favScheduleExactToolbar0136\(\)/);
+  assert.match(exactSearch, /requestAnimationFrame\(\(\) => \{[\s\S]*requestAnimationFrame\(\(\) => \{/);
+  assert.match(exactSearch, /for \(const eventName of \['input','search','change'\]\)/);
+  assert.match(exactSearch, /event\.target\?\.closest\?\.\('\.ebsf-native-search-slot'\)/);
+  assert.match(exactSearch, /favScheduleExactToolbar0136\(\)/);
 });
 
 test('loading progress is moved onto the metadata baseline instead of creating a header row', () => {
@@ -176,7 +183,7 @@ test('real collection toolbar stays inside the content column', () => {
 
 test('soft-route shell repair reapplies exact Search geometry', () => {
   assert.match(exactSearch, /favInstallPageShell0120 = function favInstallPageShell0135/);
-  assert.match(exactSearch, /favApplyExactSearchWidth0135\(\)/);
+  assert.match(exactSearch, /favScheduleExactToolbar0136\(\)/);
   assert.match(exactSearch, /favSyncNarrowSortWidth0128 = function favSyncNarrowSortWidth0135/);
 });
 
