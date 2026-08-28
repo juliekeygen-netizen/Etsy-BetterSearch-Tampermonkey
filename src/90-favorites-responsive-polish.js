@@ -66,6 +66,9 @@ function favBindCollectionScroller0125(scroller) {
     };
     strip.addEventListener('pointerup', finish);
     strip.addEventListener('pointercancel', finish);
+    strip.addEventListener('pointerleave', (event) => {
+        if (!dragging && pointerId === event.pointerId) finish(event);
+    });
 
     strip.addEventListener('click', (event) => {
         if (!suppressClick) return;
@@ -120,7 +123,7 @@ function favApplyScopeMetaDensity0125() {
     if (!meta || !privacy || !count) return;
 
     const width = header.getBoundingClientRect().width;
-    const compact = width > 0 && width < 930;
+    const compact = width > 0 && width < 1100;
     header.classList.toggle('ebsf-scope-meta-compact', compact);
 
     const { total, shown } = favScopeCounts0120();
@@ -148,6 +151,9 @@ window.addEventListener('resize', () => requestAnimationFrame(favApplyScopeMetaD
 document.fonts?.ready?.then?.(() => requestAnimationFrame(favApplyScopeMetaDensity0125)).catch?.(() => {});
 
 GM_addStyle(`
+  [data-ebsf-collection-strip]{
+    touch-action:pan-y!important;
+  }
   [data-ebsf-collection-strip],
   [data-ebsf-collection-strip] *{
     -webkit-user-select:none!important;
@@ -162,7 +168,7 @@ GM_addStyle(`
     cursor:grabbing!important;
   }
 
-  @media(min-width:760px) and (max-width:1180px){
+  @media(min-width:760px) and (max-width:1440px){
     .ebsf-scope-header{
       grid-template-columns:minmax(150px,27%) minmax(0,1fr)!important;
       column-gap:clamp(8px,1.1vw,16px)!important;
@@ -231,6 +237,7 @@ GM_addStyle(`
       flex:0 0 auto!important;
     }
     .ebsf-scope-copy [data-ebsf-scope-count]{
+      flex:0 1 auto!important;
       min-width:0!important;
       overflow:hidden!important;
       text-overflow:ellipsis!important;
