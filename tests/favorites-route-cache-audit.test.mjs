@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const cache = await readFile(new URL('../src/61e-favorites-cache-bootstrap.js', import.meta.url), 'utf8');
 const runtime = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
+const correction = await readFile(new URL('../src/99-favorites-v0131-correctness.js', import.meta.url), 'utf8');
 
 test('re-entering Favorites refreshes even when the previous dataset key is unchanged', () => {
   assert.match(runtime, /wasFavoritesPage0137/);
@@ -15,14 +16,15 @@ test('re-entering Favorites refreshes even when the previous dataset key is unch
   assert.match(block, /favRefreshRouteData\(\)/);
 });
 
-test('view changes wait for settled Etsy DOM before refreshing the native snapshot', () => {
-  const block = runtime.slice(runtime.indexOf('function favRefreshForViewChange0137'), runtime.indexOf('function favRefreshAfterReentry0137'));
-  assert.match(block, /nativeCaptureViewKey0137=''/);
+test('final view-change layer waits for settled Etsy DOM before cached enhanced rendering', () => {
+  const block = correction.slice(
+    correction.indexOf('favRefreshForViewChange0137 = function favRefreshForViewChange0140'),
+    correction.indexOf('favScheduleCurrentPageObservation = function favScheduleCurrentPageObservation0140')
+  );
+  assert.match(block, /nativeCaptureViewKey0137 = ''/);
   assert.match(block, /favScheduleCurrentPageObservation\(350\)/);
-  assert.doesNotMatch(block, /favIndexObserveCurrentPage\(\)\.catch/);
-  assert.match(runtime, /function favMaybeCaptureSettledNativePage0137\(\)/);
-  assert.match(runtime, /!node\.hasAttribute\('data-ebsf-id'\)/);
-  assert.match(runtime, /recaptured=favMaybeCaptureSettledNativePage0137\(\)/);
+  assert.match(block, /FAV_VIEW_NATIVE_SETTLE_FALLBACK_MS0140/);
+  assert.match(correction, /favMaybeCaptureSettledNativePage0137\(\)/);
 });
 
 test('cache scope read avoids whole-database bulk scans', () => {
@@ -34,12 +36,25 @@ test('cache scope read avoids whole-database bulk scans', () => {
   assert.match(block, /listings\.some\(\(listing\) => !listing\)/);
 });
 
-test('legacy complete cache never becomes an image-less enhanced-grid source', () => {
-  assert.match(cache, /function favCachePresentationReadyForScope0137/);
-  assert.match(cache, /presentationSnapshot\?\.version/);
-  assert.match(cache, /cachePresentationReady0137 = favCachePresentationReadyForScope0137\(snapshot\)/);
-  const wrapper = cache.slice(cache.indexOf('favLoadAll = async function favLoadAllCacheFirst0137'));
-  assert.match(wrapper, /loadSource0137 !== 'cache' \|\| favState\.cachePresentationReady0137/);
-  assert.match(wrapper, /primed && favState\.cachePresentationReady0137/);
-  assert.match(wrapper, /favLoadAllNetwork0137\(force\)/);
+test('final cache migration requires renderable presentation and forces the real network loader', () => {
+  assert.match(correction, /function favIndexedPresentationRenderable0140/);
+  assert.match(correction, /presentation\.imageUrl/);
+  assert.match(correction, /presentation\.secondaryImageUrl/);
+  assert.match(correction, /favLoadAllNetwork0137\(true\)/);
+  assert.match(correction, /presentationMigrationPromise0140/);
+  assert.doesNotMatch(
+    correction.slice(correction.indexOf('async function favRunPresentationMigration0140'), correction.indexOf('var favCommittedNativeQueryBefore0140')),
+    /favLoadAllNetwork0137\(false\)/
+  );
+});
+
+test('complete index reconciliation reads only prior scope ids plus incoming patches', () => {
+  const block = correction.slice(
+    correction.indexOf('favIndexReadObservation = async function favIndexReadObservation0140'),
+    correction.indexOf('function favRecordPresentationRenderable0140')
+  );
+  assert.match(block, /scope\?\.listingIds/);
+  assert.match(block, /patchIds/);
+  assert.match(block, /listingStore\.get\(idValue\)/);
+  assert.doesNotMatch(block, /getAll\(/);
 });
