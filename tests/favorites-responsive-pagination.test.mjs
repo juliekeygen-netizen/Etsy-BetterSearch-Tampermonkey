@@ -8,14 +8,14 @@ const allNative = await readFile(new URL('../src/97-favorites-all-native-header.
 const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-test('v0.12.13 loads the exact Search parity layer after the native header stack', () => {
+test('v0.12.14 loads the exact Search parity layer after the native header stack', () => {
   const boundary = userscript.indexOf('/src/94-favorites-native-boundary.js');
   const paginationIndex = userscript.indexOf('/src/95-favorites-responsive-pagination.js');
   const parityIndex = userscript.indexOf('/src/96-favorites-exact-header-parity.js');
   const allNativeIndex = userscript.indexOf('/src/97-favorites-all-native-header.js');
   const exactSearchIndex = userscript.indexOf('/src/98-favorites-exact-search-width.js');
   assert.ok(boundary >= 0 && paginationIndex > boundary && parityIndex > paginationIndex && allNativeIndex > parityIndex && exactSearchIndex > allNativeIndex);
-  assert.match(userscript, /@version\s+0\.12\.13/);
+  assert.match(userscript, /@version\s+0\.12\.14/);
 });
 
 test('module 95 stays focused on Etsy-style 20-item local paging', () => {
@@ -135,11 +135,26 @@ test('narrow layouts release only the desktop width override and remain responsi
   assert.match(exactSearch, /row\.style\.removeProperty\('--ebsf-shared-search-width0134'\)/);
 });
 
-test('Search outline is normalized to the same neutral control color', () => {
-  assert.match(exactSearch, /\.ebsf-native-search-slot \.wt-input-btn-group__input/);
+test('Search uses a single 1px neutral stroke without nested outline rings', () => {
+  assert.match(exactSearch, /\.ebsf-native-search-slot \.wt-input,/);
   assert.match(exactSearch, /\.ebsf-native-search-slot \.wt-input-btn-group__btn/);
   assert.match(exactSearch, /border-color:#222!important/);
-  assert.match(exactSearch, /outline-color:#222!important/);
+  assert.match(exactSearch, /border-width:1px!important/);
+  assert.match(exactSearch, /outline:0!important/);
+  assert.match(exactSearch, /box-shadow:none!important/);
+  assert.doesNotMatch(exactSearch, /outline-color:#222!important/);
+});
+
+test('desktop collection toolbar moves 2px left without changing any width', () => {
+  assert.match(exactSearch, /#collections-landing-phase-3-header-container:not\(\[data-ebsf-all-header\]\)/);
+  assert.match(exactSearch, /transform:translateX\(-2px\)!important/);
+  const selectorStart = exactSearch.indexOf('#collections-landing-phase-3-header-container:not([data-ebsf-all-header])');
+  const ruleEnd = exactSearch.indexOf('}', selectorStart) + 1;
+  const geometryRule = exactSearch.slice(selectorStart, ruleEnd);
+  assert.ok(selectorStart >= 0 && ruleEnd > selectorStart);
+  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*width\s*:/);
+  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*max-width\s*:/);
+  assert.doesNotMatch(geometryRule, /(?:^|[;{])\s*min-width\s*:/);
 });
 
 test('loading progress is moved onto the metadata baseline instead of creating a header row', () => {

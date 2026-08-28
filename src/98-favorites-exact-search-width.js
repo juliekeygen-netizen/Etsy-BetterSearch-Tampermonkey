@@ -1,6 +1,6 @@
 'use strict';
 
-/* v0.12.13 exact Favorites Search-width parity.
+/* v0.12.14 exact Favorites Search-width parity.
  *
  * v0.12.12 derived Search from the complete header, but then clamped it to the
  * CURRENT toolbar row width. On desktop that row is narrower/wider depending on
@@ -13,6 +13,10 @@
  * and Search therefore have exactly the same track sizes on All and collection
  * routes. At 899px and below Etsy already stacks the right side to 100%, so the
  * existing responsive layout remains untouched.
+ *
+ * v0.12.14 deliberately does NOT change any width math. It only normalizes the
+ * Search stroke to one native-sized border and moves the real collection
+ * toolbar 2 CSS px left on desktop so its right edge matches the content margin.
  */
 
 var FAV_EXACT_SEARCH_RATIO0135 = 0.5;
@@ -109,16 +113,36 @@ favInstallPageShell0120 = function favInstallPageShell0135() {
 };
 
 GM_addStyle(`
-  /* Search should use the same neutral outline as Sort, Settings and the other
-   * BetterSearch controls. Etsy's native Search field otherwise keeps its
-   * warmer brown border. Keep native focus behavior; only normalize color. */
-  .ebsf-native-search-slot.wt-input-btn-group,
-  .ebsf-native-search-slot .wt-input-btn-group,
+  /* Only color the actual Search control borders. Do not recolor Etsy's native
+   * outline ring: v0.12.13 did that on several nested elements at once, which
+   * made their focus/outline layers stack into the thick black stroke reported
+   * in testing. Keep exactly one 1px visible perimeter and remove child rings. */
   .ebsf-native-search-slot .wt-input,
-  .ebsf-native-search-slot .wt-input-btn-group__input,
   .ebsf-native-search-slot .wt-input-btn-group__btn{
     border-color:#222!important;
-    outline-color:#222!important;
+    border-width:1px!important;
+    outline:0!important;
+    box-shadow:none!important;
+  }
+  .ebsf-native-search-slot .wt-input:focus,
+  .ebsf-native-search-slot .wt-input:focus-visible,
+  .ebsf-native-search-slot .wt-input-btn-group__btn:focus,
+  .ebsf-native-search-slot .wt-input-btn-group__btn:focus-visible{
+    outline:0!important;
+    box-shadow:none!important;
+  }
+
+  /* Widths stay completely untouched. The real collection header alone was
+   * landing about 2 CSS px past the right content margin at the reported desktop
+   * size, so move the entire right-side toolbar visually left by exactly 2px.
+   * transform changes X position only; it does not participate in layout or
+   * alter Sort / Settings / Search track widths. All has data-ebsf-all-header
+   * and is intentionally excluded. */
+  @media(min-width:900px){
+    #collections-landing-phase-3-header-container:not([data-ebsf-all-header])
+      >#collections-landing-right-side-header-container{
+      transform:translateX(-2px)!important;
+    }
   }
 `);
 
