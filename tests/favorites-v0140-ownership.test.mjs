@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 const dataSource = await readFile(new URL('../src/61-favorites-data.js', import.meta.url), 'utf8');
 const syncSource = await readFile(new URL('../src/61b-favorites-sync.js', import.meta.url), 'utf8');
-const catalogSource = await readFile(new URL('../src/61g-favorites-catalog-service.js', import.meta.url), 'utf8');
+const catalogSource = syncSource;
 const metadataSource = await readFile(new URL('../src/61h-favorites-metadata-coordinator.js', import.meta.url), 'utf8');
 const runtimeSource = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
@@ -62,22 +62,24 @@ async function crawlLengths(lengths) {
   return { fixture, result };
 }
 
-test('v0.14.0 wires the ownership services before Favorites runtime', () => {
+test('v0.14.0 wires the consolidated catalogue/sync owner before metadata and Favorites runtime', () => {
   assert.match(userscript, /@version\s+0\.14\.0/);
-  const catalog = userscript.indexOf('/src/61g-favorites-catalog-service.js');
+  const catalog = userscript.indexOf('/src/61b-favorites-sync.js');
   const metadata = userscript.indexOf('/src/61h-favorites-metadata-coordinator.js');
   const runtime = userscript.indexOf('/src/63-favorites-runtime.js');
   assert.ok(catalog > 0 && metadata > catalog && runtime > metadata);
+  assert.doesNotMatch(userscript, /61g-favorites-catalog-service/);
 });
 
 test('there is exactly one production complete-catalogue crawler', () => {
   assert.doesNotMatch(dataSource, /for\s*\(let offset\s*=\s*0;\s*;/);
-  assert.doesNotMatch(syncSource, /favFetchJson\s*\(/);
-  assert.doesNotMatch(syncSource, /favSyncFetchSimpleScope/);
   assert.match(dataSource, /return favCatalogAcquireCurrent/);
-  assert.match(syncSource, /favCatalogRefresh\(scope/);
-  assert.match(catalogSource, /async function favCatalogCrawlSimple0141/);
-  assert.equal((catalogSource.match(/async function favCatalogCrawlSimple0141/g) || []).length, 1);
+  assert.match(syncSource, /async function favCatalogCrawlSimple0141/);
+  assert.equal((syncSource.match(/async function favCatalogCrawlSimple0141/g) || []).length, 1);
+  const compatibility = syncSource.slice(syncSource.indexOf('/* Sync UI/controller compatibility.'));
+  assert.doesNotMatch(compatibility, /favFetchJson\s*\(/);
+  assert.doesNotMatch(compatibility, /favSyncFetchSimpleScope/);
+  assert.match(compatibility, /favCatalogRefresh\(scope/);
 });
 
 test('catalogue completeness verifies a short boundary for exact page multiples and 61 items', async () => {
