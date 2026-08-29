@@ -56,12 +56,13 @@ test('loading status remains out of flow on the metadata baseline', () => {
   assert.doesNotMatch(finalProgress, /section\.prepend\(node\)/);
 });
 
-test('native pagination ownership stays frozen while local pagination remains deferred', () => {
+test('native pagination stays Etsy-owned while v0.15 local pagination stays separate', () => {
   assert.match(pagination, /function favPageRouteKey0129/);
   assert.match(pagination, /function favRequestedPage0129/);
-  assert.doesNotMatch(pagination, /FAV_LOCAL_PAGE_SIZE0129/);
-  assert.doesNotMatch(pagination, /favState\.pageSize\s*=/);
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
+  assert.match(pagination, /favRenderPagination\s*=\s*function favRenderPagination0150/);
+  assert.match(pagination, /pager\.dataset\.ebsfLocalPagination = '1'/);
+  assert.match(pagination, /BetterSearch filtered favorites pages/);
   assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
-  assert.doesNotMatch(pagination, /createElement\(['"]nav['"]\)|replaceChildren\(|\.after\(nav\)|append\(nav\)/);
+  assert.doesNotMatch(pagination, /data-clg-id="WtPagination"|wt-action-group__item-container/);
 });

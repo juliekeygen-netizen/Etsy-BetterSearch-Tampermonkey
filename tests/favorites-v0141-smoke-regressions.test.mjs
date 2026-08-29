@@ -4,18 +4,22 @@ import { readFile } from 'node:fs/promises';
 
 const hardening = await readFile(new URL('../src/101-favorites-v0141-smoke-fixes.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8').catch(() => '');
-const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8').catch(() => '{"version":"0.14.2"}'));
+const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8').catch(() => '{"version":"0.0.0"}'));
 const shell = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const legacyPagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 
-test('v0.14.2 cache-busts every userscript module and keeps browser hardening last', () => {
-  assert.equal(packageJson.version, '0.14.2');
+test('current release cache-busts every userscript module and keeps browser hardening last', () => {
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   if (!userscript) return;
-  assert.match(userscript, /@version\s+0\.14\.2/);
+  const metaVersion = userscript.match(/^\/\/ @version\s+(\S+)$/m)?.[1] || '';
+  assert.equal(metaVersion, packageJson.version);
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
   assert.ok(requires.length > 50, 'expected the shared module chain');
-  assert.ok(requires.every((url) => /[?&]v=0\.14\.2(?:&|$)/.test(url)), 'every @require must invalidate the v0.14.1 cache');
-  assert.match(requires.at(-1) || '', /\/src\/101-favorites-v0141-smoke-fixes\.js\?v=0\.14\.2$/);
+  assert.ok(requires.every((url) => new URL(url).searchParams.get('v') === packageJson.version), 'every @require must use the current package version as its cache key');
+  assert.equal(
+    requires.at(-1) || '',
+    `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/101-favorites-v0141-smoke-fixes.js?v=${packageJson.version}`,
+  );
 });
 
 test('shown count follows the current signed local-grid ownership', () => {
@@ -41,13 +45,14 @@ test('desktop rail ownership is claimed early and fails safe to Etsy native side
   assert.match(hardening, /Filter rail install failed; restored Etsy sidebar/);
 });
 
-test('legacy module 95 preserves page identity without replacing renderer or native pager', () => {
+test('v0.15 module 95 owns local pagination without replacing the authoritative renderer', () => {
   assert.match(legacyPagination, /function favPageRouteKey0129/);
   assert.match(legacyPagination, /function favRequestedPage0129/);
   assert.match(legacyPagination, /function favSyncLocalPageFromRoute0129/);
-  assert.doesNotMatch(legacyPagination, /FAV_LOCAL_PAGE_SIZE0129/);
+  assert.match(legacyPagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
+  assert.match(legacyPagination, /function favGoToLocalPage0150/);
+  assert.match(legacyPagination, /favRenderPagination\s*=\s*function favRenderPagination0150/);
   assert.doesNotMatch(legacyPagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(legacyPagination, /favRenderPagination\s*=/);
   assert.doesNotMatch(legacyPagination, /favRenderCurrentBefore0122/);
 });
 

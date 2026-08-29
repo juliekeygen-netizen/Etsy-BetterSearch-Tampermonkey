@@ -101,14 +101,17 @@ test('page shell replaces the native desktop sidebar and renders only real colle
   assert.match(styles, /@media\(max-width:899px\)/);
 });
 
-test('only native Etsy pagination remains and local results no longer create a pager', async () => {
+test('page shell leaves pagination to native Etsy mode or the dedicated BetterSearch pager', async () => {
   const runtime = await readFile(resolve(ROOT, 'src/63-favorites-runtime.js'), 'utf8');
   const baseStyles = await readFile(resolve(ROOT, 'src/65-favorites-style.js'), 'utf8');
   const shell = await readFile(resolve(ROOT, 'src/86-favorites-page-shell.js'), 'utf8');
   const styles = await readFile(resolve(ROOT, 'src/87-favorites-revamp-style.js'), 'utf8');
+  const pagination = await readFile(resolve(ROOT, 'src/95-favorites-responsive-pagination.js'), 'utf8');
   assert.doesNotMatch(`${runtime}\n${baseStyles}\n${shell}\n${styles}`, /ebsf-pagination|ebsf-page-active|data-ebsf-pagination/);
-  assert.match(shell, /favRenderPagination=function favRenderPagination0122\(\)\{favRestorePagination0122\(\);\}/);
-  assert.match(shell, /favState\.pageSize=Math\.max\(1,favState\.records\.length\)/);
+  assert.doesNotMatch(shell, /favRenderPagination\s*=/);
+  assert.doesNotMatch(shell, /pageSize\s*=\s*Math\.max\(1,favState\.records\.length\)/);
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
+  assert.match(pagination, /favRenderPagination = function favRenderPagination0150/);
   assert.doesNotMatch(shell, /data-clg-id="WtPagination"|wt-action-group__item-container/);
   assert.doesNotMatch(styles, /native-pagination[^}]*margin-(?:left|right)/);
   assert.equal((shell.match(/scrollIntoView/g) || []).length, 0);
@@ -166,7 +169,7 @@ test('persistent controls retain live config references and price changes stay l
   assert.match(filter, /favState\.loadComplete&&favState\.loadKey===favDatasetKey\(\)/);
 });
 
-test('shell recaptures late native sidebar nodes and leaves pagination to Etsy', async () => {
+test('shell recaptures late native sidebar nodes and keeps result pagination outside the page shell', async () => {
   const runtime = await readFile(resolve(ROOT, 'src/63-favorites-runtime.js'), 'utf8');
   const shell = await readFile(resolve(ROOT, 'src/86-favorites-page-shell.js'), 'utf8');
   const styles = await readFile(resolve(ROOT, 'src/87-favorites-revamp-style.js'), 'utf8');
@@ -175,7 +178,8 @@ test('shell recaptures late native sidebar nodes and leaves pagination to Etsy',
   assert.match(capture, /source\.append\(\.\.\.children\)/);
   assert.doesNotMatch(capture, /isConnected\)return/);
   assert.match(styles, /ebsf-sidebar-permanent>:not\(\.ebsf-native-favorites-source\):not\(\[data-ebsf-rail\]\)\{display:none!important\}/);
-  assert.match(shell, /BetterSearch no longer creates, rewrites, moves, or duplicates pagination/);
+  assert.match(shell, /page-shell code no longer owns result pagination/);
+  assert.doesNotMatch(shell, /favRenderPagination\s*=/);
   assert.doesNotMatch(shell, /section\.append\(nav\)/);
   assert.match(styles, /\.ebsf-empty\{grid-column:1\/-1!important/);
   assert.doesNotMatch(runtime, /\nfavStartRuntime\(\);/);

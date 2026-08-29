@@ -80,11 +80,11 @@ function fixture({ cacheReady = false } = {}) {
   return { context, networkForces, get syncCalls() { return syncCalls; } };
 }
 
-test('v0.13.1 correctness layer stays after final geometry modules across v0.14 patch releases', () => {
+test('v0.13.1 correctness layer stays after final geometry modules across current releases', () => {
   const p98 = userscript.indexOf('/src/98-favorites-exact-search-width.js');
   const p99 = userscript.indexOf('/src/99-favorites-v0131-correctness.js');
   assert.ok(p98 >= 0 && p99 > p98);
-  assert.match(userscript, /^\/\/ @version\s+0\.14\.\d+$/m);
+  assert.match(userscript, /^\/\/ @version\s+\d+\.\d+\.\d+$/m);
 });
 
 test('incomplete presentation cache forces one real network migration and marks source only after completion', async () => {

@@ -66,9 +66,9 @@ test('native page-state adapter loads after local paging and before final UI/run
 });
 
 test('Favorites page identity reads Etsy WtPagination button state before URL fallback', () => {
-  assert.match(adapter, /nav\[aria-label="Favorite Items Page Results"\]/);
-  assert.match(adapter, /button\[aria-current="true"\]/);
-  assert.match(adapter, /button\.wt-is-selected/);
+  assert.ok(adapter.includes('nav[aria-label="Favorite Items Page Results"]'));
+  assert.ok(adapter.includes('button[aria-current="true"]'));
+  assert.ok(adapter.includes('button.wt-is-selected'));
   assert.match(adapter, /function favNativeSelectedPage0139\(\)/);
   assert.match(adapter, /function favUrlPage0139\(\)/);
   const current = adapter.slice(
@@ -95,29 +95,31 @@ test('URL page remains a direct/history fallback when native WtPagination is not
   assert.equal(fixture.context.favCurrentFavoritePage0139(), 4);
 });
 
-test('runtime and 20-item renderer are rebound to the same native page identity', () => {
+test('native view identity and BetterSearch local-result page identity are intentionally separate', () => {
   assert.match(runtime, /function favViewKey0137\(\)/);
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
   assert.match(pagination, /function favSyncLocalPageFromRoute0129\(\)/);
+  assert.match(pagination, /Compatibility no-op/);
   assert.match(adapter, /favRequestedRoutePage0137 = function favRequestedRoutePage0139/);
   assert.match(adapter, /favViewKey0137 = function favViewKey0139/);
   assert.match(adapter, /favPageRouteKey0129 = function favPageRouteKey0139/);
   assert.match(adapter, /favRequestedPage0129 = function favRequestedPage0139/);
   assert.match(adapter, /page:\$\{favCurrentFavoritePage0139\(\)\}/);
-  assert.match(adapter, /favState\.localPageRouteKey0129 = ''/);
+  assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
 });
 
-test('native pager clicks seed page intent but never hijack Etsy pagination', () => {
+test('native pager clicks seed native intent but never hijack Etsy pagination or BetterSearch localPage', () => {
   assert.match(adapter, /document\.addEventListener\('click'/);
   assert.match(adapter, /favPagerButtonTargetPage0139\(button\)/);
   assert.match(adapter, /favSetNativePageIntent0139\(target\)/);
-  assert.match(adapter, /favState\.localPage = target/);
+  assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
   assert.match(adapter, /favScheduleSync\(0\)/);
   assert.match(adapter, /favScheduleCurrentPageObservation\(300\)/);
   assert.doesNotMatch(adapter, /preventDefault\(|stopPropagation\(|stopImmediatePropagation\(/);
   assert.doesNotMatch(adapter, /replaceChildren\(|createElement\(['"]nav['"]\)|\.remove\(\)/);
 });
 
-test('a numeric native page click immediately becomes the local view intent while Etsy owns the click', () => {
+test('a numeric Etsy page click changes native view intent but leaves local result page untouched', () => {
   const fixture = executeAdapterFixture({ selectedPage: 1 });
   const button = {
     textContent: '2',
@@ -126,11 +128,11 @@ test('a numeric native page click immediately becomes the local view intent whil
     querySelector: () => null,
   };
   fixture.click(button);
-  assert.equal(fixture.context.favState.localPage, 2);
+  assert.equal(fixture.context.favState.localPage, 1);
   assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
 });
 
-test('Previous and Next button intents derive from Etsy current page', () => {
+test('Previous and Next button intents derive only from Etsy current page', () => {
   const block = adapter.slice(
     adapter.indexOf('function favPagerButtonTargetPage0139'),
     adapter.indexOf('function favScheduleNativePageReconcile0139')
@@ -141,17 +143,19 @@ test('Previous and Next button intents derive from Etsy current page', () => {
   assert.match(block, /Math\.max\(1, current - 1\)/);
   assert.match(block, /button\.disabled/);
   assert.match(block, /aria-disabled/);
+  assert.doesNotMatch(block, /favState\.localPage/);
 });
 
-test('page-only interaction cannot clear or redownload the complete catalogue', () => {
+test('native page-only interaction cannot clear or redownload the complete catalogue', () => {
   assert.doesNotMatch(adapter, /favResetForDatasetChange0137\(/);
   assert.doesNotMatch(adapter, /favLoadAll\(/);
   assert.doesNotMatch(adapter, /controller\?\.abort|records\s*=\s*\[\]|loadComplete\s*=\s*false/);
-  assert.match(adapter, /favState\.localPageRouteKey0129 = ''/);
 });
 
-test('history page navigation can seed the transient page intent before runtime classification', () => {
+test('history page navigation seeds native transient intent without mutating local result pagination', () => {
   assert.match(adapter, /window\.addEventListener\('popstate'/);
   assert.match(adapter, /const page = favUrlPage0139\(\)/);
   assert.match(adapter, /favSetNativePageIntent0139\(page\)/);
+  const popstateBlock = adapter.slice(adapter.indexOf("window.addEventListener('popstate'"));
+  assert.doesNotMatch(popstateBlock, /favState\.localPage/);
 });
