@@ -1,8 +1,8 @@
 'use strict';
 
 /* v0.12.0 Favorites page shell: permanent desktop rail, collection strip,
- * collection-style All header, truthful counts, loading state and native Etsy
- * pagination styling.
+ * collection-style All header, truthful counts, non-destructive loading state
+ * and native Etsy pagination styling.
  */
 
 favState.nativeSource0120 = favState.nativeSource0120 || null;
@@ -143,7 +143,7 @@ function favScopeCounts0120() {
 }
 
 function favUpdateScopeHeader0120() {
-    const {total,shown}=favScopeCounts0120();const count=`${total} favorites · ${shown} shown`;
+    const {total,shown}=favScopeCounts0120();const unresolved=Math.max(0,Number(favState.metadataCoverage0141?.unresolved)||0);const count=`${total} favorites · ${shown} shown${unresolved?` · ${unresolved} metadata values unknown`:''}`;
     if(favScope().type==='items'){
         const header=document.querySelector('[data-ebsf-all-header]');const node=header?.querySelector('[data-ebsf-scope-count]');if(node)node.textContent=count;
     }else{
@@ -202,39 +202,22 @@ favRenderPagination=function favRenderPagination0122(){favRestorePagination0122(
 
 favRenderCount=function favRenderCount0120(){favUpdateScopeHeader0120();};
 
-function favShowResultsLoading0120() {
-    const grid=favMainGrid();if(!grid||grid.querySelector('[data-ebsf-results-loading]'))return;favCaptureNativeGrid();const item=document.createElement('li');item.className='ebsf-results-loading';item.dataset.ebsfResultsLoading='';item.setAttribute('role','status');item.setAttribute('aria-live','polite');item.textContent='Loading…';favState.rendering=true;grid.replaceChildren(item);favState.loadingPlaceholder0120=item;queueMicrotask(()=>{favState.rendering=false;});
-}
-
+/* v0.14.0: catalogue refresh progress belongs in the established progress UI.
+ * Never replace Etsy's hydrated product children with a temporary Loading row. */
+function favShowResultsLoading0120() {favState.loadingPlaceholder0120=null;}
 function favHideResultsLoading0120() {favState.loadingPlaceholder0120=null;}
 
 var favRestoreNativeBefore0120=favRestoreNative;
 favRestoreNative=function favRestoreNative0120(){const result=favRestoreNativeBefore0120();favRestorePagination0122();return result;};
 
 var favLoadAllBefore0120=favLoadAll;
-favLoadAll=function favLoadAll0120(force=false){const requestKey=favDatasetKey();const cached=!force&&favState.loadKey===requestKey&&favState.loadComplete;const result=favLoadAllBefore0120(force);if(!cached)favShowResultsLoading0120();return Promise.resolve(result).then((records)=>{if(requestKey!==favDatasetKey())return records;favHideResultsLoading0120();if(!favEnhancementActive())favRestoreNative();favUpdateScopeHeader0120();return records;},(error)=>{if(requestKey!==favDatasetKey())throw error;favHideResultsLoading0120();if(favState.records.length)favRenderCurrent();else favRestoreNative();throw error;});};
+favLoadAll=function favLoadAll0120(force=false){const requestKey=favDatasetKey();const result=favLoadAllBefore0120(force);return Promise.resolve(result).then((records)=>{if(requestKey!==favDatasetKey())return records;favHideResultsLoading0120();if(!favEnhancementActive())favRestoreNative();favUpdateScopeHeader0120();return records;},(error)=>{if(requestKey!==favDatasetKey())throw error;favHideResultsLoading0120();favRestoreNative();throw error;});};
 
 var favReapplyBefore0120=favReapply;
-function favScheduleLocalRender0121() {
-    favState.localRenderRequestedKey0121=favDatasetKey();
-    if(favState.localRenderPromise0121)return favState.localRenderPromise0121;
-    favState.localRenderPromise0121=new Promise((resolve)=>{
-        const finish=(value)=>{favState.localRenderPromise0121=null;resolve(value);};
-        const attempt=(remaining)=>requestAnimationFrame(()=>{
-            const requestKey=favState.localRenderRequestedKey0121;
-            if(!isFavoritesPage()||requestKey!==favDatasetKey()){finish([]);return;}
-            if(!favMainGrid()&&remaining>0){setTimeout(()=>attempt(remaining-1),40);return;}
-            if(favEnhancementActive())favRenderCurrent();else favRestoreNative();
-            favInstallPageShell0120();favUpdateScopeHeader0120();finish(favEnhancementActive()?favState.filtered:favState.records);
-        });
-        attempt(8);
-    });
-    return favState.localRenderPromise0121;
-}
-
-favReapply=async function favReapply0120(force=false){if(!force&&favState.loadComplete&&favState.loadKey===favDatasetKey()&&(!favNeedsExtraInfo()||favState.extraReady)){
-    return favScheduleLocalRender0121();
-}return favReapplyBefore0120(force);};
+/* Keep the historical helper callable, but route it through the v0.14.0 base
+ * reapply path so every local render evaluates metadata requirements first. */
+function favScheduleLocalRender0121(force=false) {return favReapplyBefore0120(force);}
+favReapply=async function favReapply0120(force=false){return favReapplyBefore0120(force);};
 
 window.addEventListener('resize',()=>{const desktop=favDesktopShell0120();if(desktop!==favState.shellDesktop0120){favState.shellDesktop0120=desktop;if(desktop&&favState.overlay)favCloseFiltersMobile0120();else if(!desktop)favState.filterOpen=false;}favPolishFilterButton();favInstallPageShell0120();},{passive:true});
 /* The base runtime intentionally debounces heavy route work. Shell capture is
