@@ -1,0 +1,175 @@
+name: Finalize Repo AutoPull v5
+
+on:
+  push:
+    branches:
+      - repo-autopull-v5
+    paths:
+      - tools/repo-autopull-v5-update/**
+      - .github/workflows/repo-autopull-v5-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, '[autopull-v5-finalize]') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+
+      - name: Apply Repo AutoPull v5 changes
+        shell: pwsh
+        run: python tools/repo-autopull-v5-update/apply_v5.py
+
+      - name: Parse PowerShell and audit v5 UI/config contracts
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile('Repo_AutoPull/Repo-AutoPull.ps1', [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          $source = Get-Content 'Repo_AutoPull/Repo-AutoPull.ps1' -Raw
+          $required = @(
+            'configVersion       = 5',
+            'pullMode            = "autostash"',
+            'promptOnPullFailure = $true',
+            '[3/5] Pull behavior',
+            'Show interactive recovery options when a pull fails?',
+            'function Select-CommandShell',
+            'function Read-CommandContent',
+            'Use clipboard contents (best for multi-line scripts)',
+            'function Invoke-PullWithRecovery',
+            'Type RESET to continue',
+            'Format-GitFailureDetail',
+            'CommandEntry'
+          )
+          foreach ($needle in $required) {
+            if (-not $source.Contains($needle)) { throw "Missing v5 contract: $needle" }
+          }
+          Write-Host 'PowerShell parser + v5 contract audit: OK'
+
+      - name: Exercise CMD and multi-line PowerShell custom commands
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile('Repo_AutoPull/Repo-AutoPull.ps1', [ref]$tokens, [ref]$errors)
+          foreach ($name in @('Convert-ToCommandArray','Invoke-CustomCommand')) {
+            $fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
+            if ($null -eq $fn) { throw "$name not found" }
+            Invoke-Expression $fn.Extent.Text
+          }
+
+          $work = Join-Path $env:RUNNER_TEMP 'repo-autopull-v5-command-test'
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+
+          $cmdEntry = [pscustomobject]@{ shell = 'cmd'; text = 'echo cmd-cwd>cmd-proof.txt' }
+          $cmdResult = Invoke-CustomCommand -RepoPath $work -CommandEntry $cmdEntry
+          if (-not $cmdResult.Success -or -not (Test-Path (Join-Path $work 'cmd-proof.txt'))) {
+            throw "CMD command test failed: $($cmdResult.Detail)"
+          }
+
+          $apkDir = Join-Path $work 'app\build\outputs\apk\variant\arm64-v8a'
+          New-Item -ItemType Directory -Path $apkDir -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $apkDir 'sample.apk') -Value 'apk-test'
+          $psText = @'
+          $apk = Get-ChildItem .\app\build\outputs\apk -Recurse -Filter *.apk |
+              Where-Object FullName -Match "arm64-v8a" |
+              Select-Object -First 1
+
+          Copy-Item $apk.FullName .\Artemis-Plus-debug-arm64.apk -Force
+          '@
+          $psEntry = [pscustomobject]@{ shell = 'powershell'; text = $psText }
+          $psResult = Invoke-CustomCommand -RepoPath $work -CommandEntry $psEntry
+          if (-not $psResult.Success) { throw "PowerShell command test failed: $($psResult.Detail)" }
+          if (-not (Test-Path (Join-Path $work 'Artemis-Plus-debug-arm64.apk'))) {
+            throw 'Multi-line PowerShell command did not create output in repo working directory.'
+          }
+
+          $failEntry = [pscustomobject]@{ shell = 'powershell'; text = 'exit 9' }
+          $failResult = Invoke-CustomCommand -RepoPath $work -CommandEntry $failEntry
+          if ($failResult.Success -or $failResult.ExitCode -ne 9) { throw "PowerShell exit code handling failed: $($failResult.ExitCode)" }
+          $global:LASTEXITCODE = 0
+          Write-Host 'CMD + multi-line PowerShell command execution: OK'
+
+      - name: Audit pull modes, diagnostics, and destructive guard
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile('Repo_AutoPull/Repo-AutoPull.ps1', [ref]$tokens, [ref]$errors)
+          foreach ($name in @('Get-NonEmptyLines','Get-PullArguments','Format-GitFailureDetail')) {
+            $fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
+            if ($null -eq $fn) { throw "$name not found" }
+            Invoke-Expression $fn.Extent.Text
+          }
+          $upstream = [pscustomobject]@{ TrackingConfigured = $true; Remote = 'origin'; RemoteBranch = 'main' }
+          $auto = @(Get-PullArguments -UpstreamInfo $upstream -PullMode 'autostash')
+          $strict = @(Get-PullArguments -UpstreamInfo $upstream -PullMode 'strict')
+          if ('--autostash' -notin $auto) { throw 'autostash mode omitted --autostash' }
+          if ('--autostash' -in $strict) { throw 'strict mode unexpectedly contains --autostash' }
+          if ('--ff-only' -notin $auto -or '--ff-only' -notin $strict) { throw 'ff-only safety missing' }
+
+          $sample = [pscustomobject]@{ ExitCode = 1; Lines = @('error: Pulling is not possible because you have unmerged files.', 'hint: Fix them up in the work tree.', 'You can run "git stash pop" or "git stash drop" at any time.') }
+          $detail = Format-GitFailureDetail $sample
+          if ($detail -notmatch 'unmerged files') { throw "Diagnostic did not surface root cause: $detail" }
+
+          $source = Get-Content 'Repo_AutoPull/Repo-AutoPull.ps1' -Raw
+          if (-not $source.Contains('@("reset", "--hard", $UpstreamInfo.Upstream)')) { throw 'Recovery reset implementation missing.' }
+          if (-not $source.Contains('$confirm -cne "RESET"')) { throw 'Destructive reset confirmation guard missing.' }
+          Write-Host 'Pull strategy + diagnostics + destructive guard: OK'
+
+      - name: Run repository CI
+        shell: pwsh
+        run: npm run ci
+
+      - name: Build standalone Windows EXE
+        shell: pwsh
+        run: |
+          Copy-Item Repo_AutoPull/Repo-AutoPull.ps1 tools/repo-autopull-exe/embedded.ps1 -Force
+          Push-Location tools/repo-autopull-exe
+          try {
+            go vet ./...
+            if ($LASTEXITCODE -ne 0) { throw 'go vet failed' }
+            go build -buildvcs=false -trimpath -ldflags '-s -w' -o ../../Repo_AutoPull/RepoAutoPull.exe .
+            if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
+          }
+          finally {
+            Pop-Location
+            Remove-Item tools/repo-autopull-exe/embedded.ps1 -Force -ErrorAction SilentlyContinue
+          }
+          if (-not (Test-Path Repo_AutoPull/RepoAutoPull.exe)) { throw 'RepoAutoPull.exe was not built.' }
+          Write-Host 'Standalone EXE build: OK'
+
+      - name: Diff hygiene
+        shell: pwsh
+        run: |
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
+
+      - name: Commit finalized v5 source and executable
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r tools/repo-autopull-v5-update
+          git rm .github/workflows/repo-autopull-v5-finalize.yml
+          git add Repo_AutoPull/Repo-AutoPull.ps1 Repo_AutoPull/README.txt
+          git add -f Repo_AutoPull/RepoAutoPull.exe
+          git commit -m 'feat: add PowerShell commands and pull recovery [autopull-v5-finalize]'
+          git push origin HEAD:repo-autopull-v5
