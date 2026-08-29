@@ -7,23 +7,27 @@ const serviceWorker = await readFile(new URL('../diagnostics-extension/service-w
 const backgroundControls = await readFile(new URL('../diagnostics-extension/background-controls.js', import.meta.url), 'utf8');
 const backgroundDetach = await readFile(new URL('../diagnostics-extension/background-detach-autoexport.js', import.meta.url), 'utf8');
 const backgroundHealth = await readFile(new URL('../diagnostics-extension/background-session-health.js', import.meta.url), 'utf8');
+const backgroundStreaming = await readFile(new URL('../diagnostics-extension/background-streaming-export.js', import.meta.url), 'utf8');
 const bootstrapGuard = await readFile(new URL('../diagnostics-extension/bootstrap-guard.js', import.meta.url), 'utf8');
 const controls = await readFile(new URL('../diagnostics-extension/controls.js', import.meta.url), 'utf8');
+const exportStreaming = await readFile(new URL('../diagnostics-extension/export-streaming.js', import.meta.url), 'utf8');
 const controlsDetach = await readFile(new URL('../diagnostics-extension/controls-detach-autoexport.js', import.meta.url), 'utf8');
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2.5 loads passive-startup, observer-loop, controls and detach hardening in safe order', () => {
+test('diagnostics v0.2.6 display build loads passive-startup, observer-loop, streaming export and detach hardening in safe order', () => {
   assert.equal(manifest.version, '0.2.5');
+  assert.equal(manifest.version_name, '0.2.6');
   assert.deepEqual(manifest.content_scripts[0].js, [
-    'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'controls-detach-autoexport.js'
+    'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'export-streaming.js', 'controls-detach-autoexport.js'
   ]);
   assert.match(serviceWorker, /background-detach-autoexport\.js/);
   assert.match(serviceWorker, /background-session-health\.js/);
+  assert.match(serviceWorker, /background-streaming-export\.js/);
   assert.match(bootstrapGuard, /__EBSF_DIAG_PANEL_OBSERVER_GUARD__/);
   assert.match(bootstrapGuard, /attributeOldValue: true/);
   assert.match(bootstrapGuard, /isNoopAttributeMutation/);
-  for (const file of ['background-detach-autoexport.js', 'background-session-health.js', 'bootstrap-guard.js', 'controls-detach-autoexport.js', 'transport.js', 'controls.js']) {
+  for (const file of ['background-detach-autoexport.js', 'background-session-health.js', 'background-streaming-export.js', 'bootstrap-guard.js', 'export-streaming.js', 'controls-detach-autoexport.js', 'transport.js', 'controls.js']) {
     assert.match(build, new RegExp(file.replaceAll('.', '\\.')));
   }
 });
@@ -150,15 +154,31 @@ test('manual marker dialog has true Cancel that removes captured marker artifact
 });
 
 
-test('large stopped exports use a persistent chunk cache instead of one giant runtime response', () => {
-  assert.match(backgroundControls, /EXPORT_DB_NAME/);
-  assert.match(backgroundControls, /EXPORT_CHUNK_CHARS = 256 \* 1024/);
-  assert.match(backgroundControls, /prepare_export/);
-  assert.match(backgroundControls, /export_chunk/);
-  assert.match(backgroundControls, /persistExportChunks/);
-  assert.match(controls, /readPreparedExport/);
-  assert.match(controls, /Reading export data/);
-  assert.doesNotMatch(controls, /action: 'export_stopped'/);
+test('v0.2.6 bypasses the old whole-recording JSON stringify and whole-recording join exporter', () => {
+  assert.match(backgroundControls, /JSON\.stringify\(\{ ok: true, session, summary, har, events \}\)/);
+  assert.match(controls, /parts\.join\(''\)/);
+  assert.match(backgroundStreaming, /prepare_stream_export/);
+  assert.match(backgroundStreaming, /stream_export_chunk/);
+  assert.match(backgroundStreaming, /boundedPieces/);
+  assert.match(backgroundStreaming, /harPieces/);
+  assert.match(backgroundStreaming, /ndjsonPieces/);
+  assert.doesNotMatch(backgroundStreaming, /JSON\.stringify\(\{ ok: true, session, summary, har, events \}\)/);
+  assert.match(exportStreaming, /StreamingZipBuilder/);
+  assert.match(exportStreaming, /zip\.addParts/);
+  assert.match(exportStreaming, /stream_export_chunk/);
+  assert.doesNotMatch(exportStreaming, /parts\.join\(''\)/);
+  assert.match(exportStreaming, /document\.addEventListener\('click'/);
+  assert.match(exportStreaming, /stopImmediatePropagation/);
+});
+
+
+test('streaming exporter keeps every runtime transfer bounded and clears only temporary prepared chunks', () => {
+  assert.match(backgroundStreaming, /CHUNK_CHARS = 256 \* 1024/);
+  assert.match(backgroundStreaming, /persistFile/);
+  assert.match(backgroundStreaming, /clear_stream_export_cache/);
+  assert.match(exportStreaming, /clear_stream_export_cache/);
+  assert.match(exportStreaming, /captured data remains retained/);
+  assert.doesNotMatch(exportStreaming, /finalize_export/);
 });
 
 
@@ -171,6 +191,8 @@ test('stopped data survives export failure, successful download request and refr
   assert.doesNotMatch(exportBody, /finalize_export/);
   assert.match(controls, /discardStoppedIfNeeded/);
   assert.match(controls, /finalize_export/);
+  assert.match(exportStreaming, /readStopped\(\)/);
+  assert.match(exportStreaming, /Export failed safely:/);
 });
 
 
@@ -206,6 +228,7 @@ test('Chrome debugger banner Cancel turns canceled_by_user detach into stop plus
   assert.match(controlsDetach, /clearReloadArm\(\)/);
   assert.match(controlsDetach, /stop\.click\(\)/);
   assert.match(controlsDetach, /ZIP download requested:/);
+  assert.match(exportStreaming, /ZIP download requested:/);
 });
 
 
