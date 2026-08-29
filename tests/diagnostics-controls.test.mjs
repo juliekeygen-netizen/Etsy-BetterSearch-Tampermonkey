@@ -192,7 +192,8 @@ test('Chrome debugger banner Cancel still means Stop + Export, separate from in-
   assert.match(backgroundDetach, /canceled_by_user/);
   assert.match(backgroundDetach, /autoExportPending = true/);
   assert.match(controlsDetach, /stop\.click\(\)/);
-  assert.match(controlsDetach, /ZIP download requested:/);
+  assert.match(controlsDetach, /Export complete\\\./);
+  assert.doesNotMatch(controlsDetach, /ZIP download requested:/);
   assert.match(exportStreaming, /ZIP download requested:/);
   assert.match(exportStreaming, /handleCancelClick/);
 });
