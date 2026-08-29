@@ -40,11 +40,13 @@ const diagnosticsManifestSource = await readFile(resolve(diagnosticsRoot, 'manif
 const diagnosticsManifest = JSON.parse(diagnosticsManifestSource);
 const diagnosticsBackground = await readFile(resolve(diagnosticsRoot, 'background.js'), 'utf8');
 const diagnosticsBackgroundControls = await readFile(resolve(diagnosticsRoot, 'background-controls.js'), 'utf8');
+const diagnosticsBackgroundDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'background-detach-autoexport.js'), 'utf8');
 const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
 const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
 const diagnosticsTransport = await readFile(resolve(diagnosticsRoot, 'transport.js'), 'utf8');
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 const diagnosticsControls = await readFile(resolve(diagnosticsRoot, 'controls.js'), 'utf8');
+const diagnosticsControlsDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'controls-detach-autoexport.js'), 'utf8');
 
 if (!diagnosticsManifest.version) throw new Error('Diagnostics manifest version is missing.');
 if (!diagnosticsManifest.permissions?.includes('debugger')) throw new Error('Diagnostics extension must declare the debugger permission.');
@@ -60,11 +62,13 @@ try {
   new Function(backgroundSource);
   new Function(diagnosticsBackground);
   new Function(diagnosticsBackgroundControls);
+  new Function(diagnosticsBackgroundDetachAutoExport);
   new Function(diagnosticsHarExtraInfo);
   new Function(diagnosticsServiceWorker);
   new Function(diagnosticsTransport);
   new Function(diagnosticsContent);
   new Function(diagnosticsControls);
+  new Function(diagnosticsControlsDetachAutoExport);
 } catch (error) {
   throw new Error(`Generated extension bundle has invalid syntax: ${error.message}`, { cause: error });
 }
@@ -91,22 +95,35 @@ for (const target of ['chrome', 'firefox']) {
 
 const diagnosticsDir = resolve(distRoot, 'diagnostics-chrome');
 await mkdir(diagnosticsDir, { recursive: true });
+const diagnosticsSourceFiles = [
+  'service-worker.js',
+  'background.js',
+  'background-controls.js',
+  'background-detach-autoexport.js',
+  'har-extra-info.js',
+  'transport.js',
+  'content.js',
+  'controls.js',
+  'controls-detach-autoexport.js'
+];
 await Promise.all([
   writeFile(resolve(diagnosticsDir, 'manifest.json'), `${JSON.stringify(diagnosticsManifest, null, 2)}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background.js'), `${diagnosticsBackground.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-controls.js'), `${diagnosticsBackgroundControls.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'background-detach-autoexport.js'), `${diagnosticsBackgroundDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'transport.js'), `${diagnosticsTransport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls.js'), `${diagnosticsControls.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'controls-detach-autoexport.js'), `${diagnosticsControlsDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(
     resolve(diagnosticsDir, 'BUILD_INFO.json'),
     `${JSON.stringify({
       version: diagnosticsManifest.version,
       target: 'chrome',
       source: 'diagnostics-extension',
-      sourceFiles: ['service-worker.js', 'background.js', 'background-controls.js', 'har-extra-info.js', 'transport.js', 'content.js', 'controls.js'],
+      sourceFiles: diagnosticsSourceFiles,
       companionForBetterSearchVersion: version
     }, null, 2)}\n`,
     'utf8'
