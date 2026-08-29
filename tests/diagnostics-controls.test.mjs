@@ -6,21 +6,23 @@ const manifest = JSON.parse(await readFile(new URL('../diagnostics-extension/man
 const serviceWorker = await readFile(new URL('../diagnostics-extension/service-worker.js', import.meta.url), 'utf8');
 const backgroundControls = await readFile(new URL('../diagnostics-extension/background-controls.js', import.meta.url), 'utf8');
 const backgroundDetach = await readFile(new URL('../diagnostics-extension/background-detach-autoexport.js', import.meta.url), 'utf8');
+const backgroundHealth = await readFile(new URL('../diagnostics-extension/background-session-health.js', import.meta.url), 'utf8');
+const bootstrapGuard = await readFile(new URL('../diagnostics-extension/bootstrap-guard.js', import.meta.url), 'utf8');
 const controls = await readFile(new URL('../diagnostics-extension/controls.js', import.meta.url), 'utf8');
 const controlsDetach = await readFile(new URL('../diagnostics-extension/controls-detach-autoexport.js', import.meta.url), 'utf8');
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2.2 loads transport, controls and detach hardening in safe order', () => {
-  assert.equal(manifest.version, '0.2.2');
+test('diagnostics v0.2.3 loads stale-arm, controls and detach hardening in safe order', () => {
+  assert.equal(manifest.version, '0.2.3');
   assert.deepEqual(manifest.content_scripts[0].js, [
-    'transport.js', 'content.js', 'controls.js', 'controls-detach-autoexport.js'
+    'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'controls-detach-autoexport.js'
   ]);
   assert.match(serviceWorker, /background-detach-autoexport\.js/);
-  assert.match(build, /background-detach-autoexport\.js/);
-  assert.match(build, /controls-detach-autoexport\.js/);
-  assert.match(build, /transport\.js/);
-  assert.match(build, /controls\.js/);
+  assert.match(serviceWorker, /background-session-health\.js/);
+  for (const file of ['background-detach-autoexport.js', 'background-session-health.js', 'bootstrap-guard.js', 'controls-detach-autoexport.js', 'transport.js', 'controls.js']) {
+    assert.match(build, new RegExp(file.replaceAll('.', '\\.')));
+  }
 });
 
 
@@ -64,11 +66,11 @@ test('drawer remembers open\/closed preference across reload while active reload
 });
 
 
-test('final collapsed launcher is a centered square around the unchanged 42px plus control', () => {
-  assert.match(controlsDetach, /width:44px!important;min-width:44px!important/);
-  assert.match(controlsDetach, /height:44px!important;min-height:44px!important/);
+test('final collapsed launcher shell exactly matches the unchanged 42px plus control', () => {
+  assert.match(controlsDetach, /width:42px!important;min-width:42px!important;max-width:42px!important/);
+  assert.match(controlsDetach, /height:42px!important;min-height:42px!important;max-height:42px!important/);
+  assert.doesNotMatch(controlsDetach, /width:44px!important/);
   assert.match(controlsDetach, /header>button\{/);
-  assert.match(controlsDetach, /position:static!important/);
   assert.match(controlsDetach, /width:42px!important;height:42px!important/);
   assert.match(controlsDetach, /place-items:center!important/);
 });
@@ -90,6 +92,24 @@ test('Record & Reload remains document-start armed and Start button is repurpose
   assert.match(controls, /target\.matches\('\[data-start="start"\]'\)/);
   assert.match(controls, /pauseRecording/);
   assert.match(controls, /resumeRecording/);
+});
+
+
+test('document-start arm is freshness stamped and stale arms are removed before content.js', () => {
+  assert.match(bootstrapGuard, /MAX_ARM_AGE_MS = 45 \* 1000/);
+  assert.match(bootstrapGuard, /armedAt/);
+  assert.match(bootstrapGuard, /Storage\.prototype\.setItem/);
+  assert.match(bootstrapGuard, /sessionStorage\.removeItem\(ARM_KEY\)/);
+  assert.match(bootstrapGuard, /one-shot/);
+});
+
+
+test('get_state refuses to resurrect a heavy recorder when Chrome no longer has debugger attached', () => {
+  assert.match(backgroundHealth, /chrome\.debugger\.getTargets\(\)/);
+  assert.match(backgroundHealth, /stale-active-session-without-debugger/);
+  assert.match(backgroundHealth, /recoverStopped/);
+  assert.match(backgroundHealth, /message\?\.action !== 'get_state'/);
+  assert.match(backgroundHealth, /chrome\.storage\.session\.remove\(activeKey\(tabId\)\)/);
 });
 
 
@@ -169,6 +189,7 @@ test('Chrome debugger Cancel turns unexpected detach into stop plus automatic re
   assert.match(backgroundDetach, /clear_auto_export/);
   assert.match(controlsDetach, /__EBSF_DIAG_TRANSPORT__/);
   assert.match(controlsDetach, /setCaptureEnabled\(false\)/);
+  assert.match(controlsDetach, /clearReloadArm\(\)/);
   assert.match(controlsDetach, /stop\.click\(\)/);
   assert.match(controlsDetach, /ZIP download requested:/);
   assert.match(controlsDetach, /get_state/);

@@ -64,6 +64,9 @@ if (!diagnosticsContentScript) throw new Error('Diagnostics recorder must load a
 if (diagnosticsContentScript.js?.[0] !== 'transport.js') {
   throw new Error('Diagnostics transport hardening must load before the recorder content script.');
 }
+if (diagnosticsContentScript.js?.[1] !== 'bootstrap-guard.js') {
+  throw new Error('Diagnostics stale-arm guard must load before the recorder content script.');
+}
 if (!diagnosticsContentScript.js?.includes('controls.js')) {
   throw new Error('Diagnostics recorder must load its controls layer.');
 }
@@ -80,8 +83,10 @@ const checkFiles = [
   'diagnostics-extension/background.js',
   'diagnostics-extension/background-controls.js',
   'diagnostics-extension/background-detach-autoexport.js',
+  'diagnostics-extension/background-session-health.js',
   'diagnostics-extension/har-extra-info.js',
   'diagnostics-extension/transport.js',
+  'diagnostics-extension/bootstrap-guard.js',
   'diagnostics-extension/content.js',
   'diagnostics-extension/controls.js',
   'diagnostics-extension/controls-detach-autoexport.js',
@@ -112,4 +117,4 @@ for (const file of checkFiles) {
 console.log(`Syntax checked ${checkFiles.length} files.`);
 console.log(`Verified ${modules.length} userscript modules and v${version} cache-busters.`);
 console.log(`Verified ${defined.size} versioned runtime symbol definitions.`);
-console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, transport, service worker and document_start wiring.`);
+console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, transport, stale-arm guard, service worker and document_start wiring.`);
