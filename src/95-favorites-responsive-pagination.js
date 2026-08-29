@@ -1,13 +1,18 @@
 'use strict';
 
-/* v0.12.9 native pagination compatibility.
+/* v0.14.2 native pagination compatibility.
  *
- * Keep this module deliberately narrow: enhanced Favorites results use a
- * 20-item local page while Etsy continues to own the actual pager DOM. Final
- * header/responsive ownership and runtime release live in module 96.
+ * v0.12.9 briefly coupled BetterSearch's local renderer to Etsy's native pager
+ * by replacing favRenderCurrent() with a 20-item slice. v0.14 explicitly
+ * deferred local pagination and module 94 already restored Etsy's pager as a
+ * native-only boundary. Keep only the route/page helper names that the native
+ * page-state adapter (95a) still rebinds; never replace the renderer or pager.
+ *
+ * This is important for lifecycle correctness too: module 89 wraps the real
+ * renderer with the post-render shell/rail repair. Jumping back to an older
+ * saved renderer silently skipped that repair and could leave the sidebar
+ * column empty after an Etsy reconciliation.
  */
-
-var FAV_LOCAL_PAGE_SIZE0129 = 20;
 favState.localPageRouteKey0129 = favState.localPageRouteKey0129 || '';
 
 function favPageRouteKey0129() {
@@ -35,27 +40,7 @@ function favSyncLocalPageFromRoute0129() {
     favState.localPage = favRequestedPage0129();
 }
 
-favRenderCurrent = function favRenderCurrent0129() {
-    favSyncLocalPageFromRoute0129();
-    favState.pageSize = FAV_LOCAL_PAGE_SIZE0129;
-    return favRenderCurrentBefore0122();
-};
-
-/* Etsy owns pagination markup. BetterSearch only hides the complete native
- * control when the current filtered result set fits on one local page. */
-favRenderPagination = function favRenderPagination0129(totalPages) {
-    document.body?.classList.toggle('ebsf-local-single-page0129', Number(totalPages) <= 1);
-};
-
-var favRestorePaginationBefore0129 = favRestorePagination0122;
-favRestorePagination0122 = function favRestorePagination0129() {
-    document.body?.classList.remove('ebsf-local-single-page0129');
-    return favRestorePaginationBefore0129();
-};
-
-GM_addStyle(`
-  body.ebsf-local-single-page0129 nav[aria-label="Favorite Items Page Results"],
-  body.ebsf-local-single-page0129 nav[data-clg-id="WtPagination"][aria-label*="Favorite" i]{
-    display:none!important;
-  }
-`);
+/* Defensive cleanup for profiles that previously ran the v0.12.9 rule. The
+ * final native-boundary module owns the pager and no current code should add
+ * this class again. */
+document.body?.classList.remove('ebsf-local-single-page0129');
