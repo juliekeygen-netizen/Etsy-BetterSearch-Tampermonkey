@@ -21,6 +21,7 @@
         "https://www.etsy.com/*"
       ],
       "js": [
+        "transport.js",
         "content.js",
         "controls.js"
       ],
