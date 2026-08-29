@@ -1,0 +1,201 @@
+name: Finalize Repo AutoPull portable EXE
+
+on:
+  push:
+    branches:
+      - repo-autopull-portable-icon
+    paths:
+      - tools/repo-autopull-portable-update/**
+      - .github/workflows/repo-autopull-portable-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, '[portable-finalize]') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+
+      - name: Apply portable EXE changes
+        shell: pwsh
+        run: python tools/repo-autopull-portable-update/apply.py
+
+      - name: Generate icon assets
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow
+          python tools/repo-autopull-exe/generate_icon.py
+          if (-not (Test-Path Repo_AutoPull/assets/RepoAutoPull.ico)) { throw 'ICO was not generated.' }
+          if (-not (Test-Path Repo_AutoPull/assets/RepoAutoPull.png)) { throw 'PNG was not generated.' }
+
+      - name: Parse PowerShell and audit portable config contracts
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('Repo_AutoPull/Repo-AutoPull.ps1', [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
+          $ps = Get-Content Repo_AutoPull/Repo-AutoPull.ps1 -Raw
+          $go = Get-Content tools/repo-autopull-exe/main.go -Raw
+          $requiredPs = @(
+            'REPO_AUTOPULL_CONFIG_PATH',
+            '$ExplicitConfigPath',
+            'Repo-AutoPull.config.json'
+          )
+          foreach ($needle in $requiredPs) {
+            if (-not $ps.Contains($needle)) { throw "Missing PowerShell portable-config contract: $needle" }
+          }
+          $requiredGo = @(
+            'portableConfigName = "RepoAutoPull.config.json"',
+            'REPO_AUTOPULL_CONFIG_PATH=',
+            'filepath.Join(exeDir, portableConfigName)',
+            'filepath.Join(appData, "RepoAutoPull", legacyConfigName)',
+            'the folder containing RepoAutoPull.exe is not writable'
+          )
+          foreach ($needle in $requiredGo) {
+            if (-not $go.Contains($needle)) { throw "Missing Go portable-config contract: $needle" }
+          }
+          Write-Host 'PowerShell parser + portable config contracts: OK'
+
+      - name: Exercise per-copy config migration and isolation
+        shell: pwsh
+        run: |
+          Copy-Item Repo_AutoPull/Repo-AutoPull.ps1 tools/repo-autopull-exe/embedded.ps1 -Force
+          @'
+          package main
+
+          import (
+              "os"
+              "path/filepath"
+              "testing"
+          )
+
+          func mustRead(t *testing.T, path string) string {
+              t.Helper()
+              b, err := os.ReadFile(path)
+              if err != nil { t.Fatal(err) }
+              return string(b)
+          }
+
+          func TestPortableConfigMigrationAndIsolation(t *testing.T) {
+              root := t.TempDir()
+              appData := filepath.Join(root, "appdata")
+              legacyDir := filepath.Join(appData, "RepoAutoPull")
+              if err := os.MkdirAll(legacyDir, 0755); err != nil { t.Fatal(err) }
+              legacy := filepath.Join(legacyDir, legacyConfigName)
+              if err := os.WriteFile(legacy, []byte("appdata-legacy"), 0600); err != nil { t.Fatal(err) }
+              t.Setenv("APPDATA", appData)
+
+              a := filepath.Join(root, "copy-a")
+              b := filepath.Join(root, "copy-b")
+              if err := os.MkdirAll(a, 0755); err != nil { t.Fatal(err) }
+              if err := os.MkdirAll(b, 0755); err != nil { t.Fatal(err) }
+
+              pathA, err := ensurePortableConfig(a)
+              if err != nil { t.Fatal(err) }
+              pathB, err := ensurePortableConfig(b)
+              if err != nil { t.Fatal(err) }
+              if pathA == pathB { t.Fatalf("different EXE folders shared a config path: %s", pathA) }
+              if filepath.Base(pathA) != portableConfigName || filepath.Base(pathB) != portableConfigName {
+                  t.Fatalf("wrong portable config names: %s / %s", pathA, pathB)
+              }
+              if got := mustRead(t, pathA); got != "appdata-legacy" { t.Fatalf("copy A migration = %q", got) }
+              if got := mustRead(t, pathB); got != "appdata-legacy" { t.Fatalf("copy B migration = %q", got) }
+
+              if err := os.WriteFile(pathA, []byte("copy-a-own-settings"), 0600); err != nil { t.Fatal(err) }
+              againA, err := ensurePortableConfig(a)
+              if err != nil { t.Fatal(err) }
+              if againA != pathA { t.Fatalf("local config path changed: %s -> %s", pathA, againA) }
+              if got := mustRead(t, pathA); got != "copy-a-own-settings" { t.Fatalf("local source of truth was overwritten: %q", got) }
+              if got := mustRead(t, pathB); got != "appdata-legacy" { t.Fatalf("copy B was affected by copy A: %q", got) }
+
+              c := filepath.Join(root, "copy-c")
+              if err := os.MkdirAll(c, 0755); err != nil { t.Fatal(err) }
+              adjacentLegacy := filepath.Join(c, legacyConfigName)
+              if err := os.WriteFile(adjacentLegacy, []byte("adjacent-legacy"), 0600); err != nil { t.Fatal(err) }
+              pathC, err := ensurePortableConfig(c)
+              if err != nil { t.Fatal(err) }
+              if got := mustRead(t, pathC); got != "adjacent-legacy" { t.Fatalf("adjacent legacy did not win: %q", got) }
+          }
+          '@ | Set-Content tools/repo-autopull-exe/main_test.go -Encoding UTF8
+          try {
+            Push-Location tools/repo-autopull-exe
+            go test ./...
+            if ($LASTEXITCODE -ne 0) { throw 'Go portable-config tests failed.' }
+          }
+          finally {
+            Pop-Location
+            Remove-Item tools/repo-autopull-exe/main_test.go -Force -ErrorAction SilentlyContinue
+            Remove-Item tools/repo-autopull-exe/embedded.ps1 -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build EXE with embedded icon and metadata
+        shell: pwsh
+        run: |
+          & tools/repo-autopull-exe/build.ps1 -RefreshResources
+          if (-not (Test-Path tools/repo-autopull-exe/rsrc_windows_amd64.syso)) { throw 'Windows resource object missing.' }
+          if (-not (Test-Path Repo_AutoPull/RepoAutoPull.exe)) { throw 'RepoAutoPull.exe missing.' }
+
+          $info = (Get-Item Repo_AutoPull/RepoAutoPull.exe).VersionInfo
+          if ($info.FileDescription -ne 'Repo AutoPull') { throw "FileDescription mismatch: $($info.FileDescription)" }
+          if ($info.ProductName -ne 'Repo AutoPull') { throw "ProductName mismatch: $($info.ProductName)" }
+          if ($info.OriginalFilename -ne 'RepoAutoPull.exe') { throw "OriginalFilename mismatch: $($info.OriginalFilename)" }
+          Write-Host 'Windows version metadata: OK'
+
+          $extractDir = Join-Path $env:RUNNER_TEMP 'repoautopull-resources'
+          New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+          go run github.com/tc-hib/go-winres@v0.3.3 extract --dir $extractDir Repo_AutoPull/RepoAutoPull.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Could not extract EXE resources.' }
+          $icons = @(Get-ChildItem $extractDir -Recurse -Filter *.ico -ErrorAction SilentlyContinue)
+          if ($icons.Count -lt 1) { throw 'No embedded icon resource was extracted from RepoAutoPull.exe.' }
+          Write-Host "Embedded icon resource: OK ($($icons[0].Name))"
+
+      - name: Verify ordinary build reuses committed-style resources
+        shell: pwsh
+        run: |
+          $before = (Get-FileHash Repo_AutoPull/RepoAutoPull.exe -Algorithm SHA256).Hash
+          & tools/repo-autopull-exe/build.ps1
+          $after = (Get-FileHash Repo_AutoPull/RepoAutoPull.exe -Algorithm SHA256).Hash
+          if ($before -ne $after) { throw "Rebuild was not reproducible: $before != $after" }
+          Write-Host "Reproducible EXE SHA256: $after"
+
+      - name: Run repository CI
+        shell: pwsh
+        run: npm run ci
+
+      - name: Diff hygiene
+        shell: pwsh
+        run: |
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed.' }
+
+      - name: Commit finalized portable EXE and icon
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r tools/repo-autopull-portable-update
+          git rm .github/workflows/repo-autopull-portable-finalize.yml
+          git add .gitignore
+          git add Repo_AutoPull/README.txt Repo_AutoPull/Repo-AutoPull.ps1 Repo_AutoPull/assets
+          git add tools/repo-autopull-exe/main.go tools/repo-autopull-exe/build.ps1 tools/repo-autopull-exe/README.md tools/repo-autopull-exe/generate_icon.py tools/repo-autopull-exe/rsrc_windows_amd64.syso
+          git add -f Repo_AutoPull/RepoAutoPull.exe
+          git commit -m 'feat: make Repo AutoPull EXE portable and add icon [portable-finalize]'
+          git push origin HEAD:repo-autopull-portable-icon
