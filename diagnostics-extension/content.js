@@ -463,7 +463,7 @@
 
   function armSession(session) {
     try {
-      localStorage.setItem(ARM_KEY, JSON.stringify({
+      sessionStorage.setItem(ARM_KEY, JSON.stringify({
         sessionId: session.sessionId,
         startedAt: session.startedAt,
         startedIso: session.startedIso,
@@ -473,12 +473,12 @@
   }
 
   function disarmSession() {
-    try { localStorage.removeItem(ARM_KEY); } catch (_) {}
+    try { sessionStorage.removeItem(ARM_KEY); } catch (_) {}
   }
 
   function readArmedSession() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(ARM_KEY) || 'null');
+      const parsed = JSON.parse(sessionStorage.getItem(ARM_KEY) || 'null');
       return parsed?.sessionId ? parsed : null;
     } catch (_) {
       return null;
