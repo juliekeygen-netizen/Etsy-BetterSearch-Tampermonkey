@@ -43,6 +43,7 @@ const diagnosticsBackgroundControls = await readFile(resolve(diagnosticsRoot, 'b
 const diagnosticsBackgroundDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'background-detach-autoexport.js'), 'utf8');
 const diagnosticsBackgroundSessionHealth = await readFile(resolve(diagnosticsRoot, 'background-session-health.js'), 'utf8');
 const diagnosticsBackgroundStreamingExport = await readFile(resolve(diagnosticsRoot, 'background-streaming-export.js'), 'utf8');
+const diagnosticsBackgroundDiscardHardening = await readFile(resolve(diagnosticsRoot, 'background-discard-hardening.js'), 'utf8');
 const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
 const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
 const diagnosticsTransport = await readFile(resolve(diagnosticsRoot, 'transport.js'), 'utf8');
@@ -69,6 +70,7 @@ try {
   new Function(diagnosticsBackgroundDetachAutoExport);
   new Function(diagnosticsBackgroundSessionHealth);
   new Function(diagnosticsBackgroundStreamingExport);
+  new Function(diagnosticsBackgroundDiscardHardening);
   new Function(diagnosticsHarExtraInfo);
   new Function(diagnosticsServiceWorker);
   new Function(diagnosticsTransport);
@@ -110,6 +112,7 @@ const diagnosticsSourceFiles = [
   'background-detach-autoexport.js',
   'background-session-health.js',
   'background-streaming-export.js',
+  'background-discard-hardening.js',
   'har-extra-info.js',
   'transport.js',
   'bootstrap-guard.js',
@@ -125,6 +128,7 @@ await Promise.all([
   writeFile(resolve(diagnosticsDir, 'background-detach-autoexport.js'), `${diagnosticsBackgroundDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-session-health.js'), `${diagnosticsBackgroundSessionHealth.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-streaming-export.js'), `${diagnosticsBackgroundStreamingExport.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'background-discard-hardening.js'), `${diagnosticsBackgroundDiscardHardening.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'transport.js'), `${diagnosticsTransport.trim()}\n`, 'utf8'),
