@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Etsy BetterSearch Diagnostics",
+  "version": "0.1.0",
+  "description": "Records Etsy BetterSearch network, DOM lifecycle, timing, errors, interactions and problem markers into one diagnostic ZIP.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "debugger",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.etsy.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.etsy.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "Etsy BetterSearch Diagnostics"
+  }
+}

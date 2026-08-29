@@ -28,7 +28,7 @@ for (const module of modules) {
   if (module.cacheVersion !== version) {
     throw new Error(`${module.path} uses cache-buster ${module.cacheVersion || '(missing)'} instead of ${version}.`);
   }
-  moduleSources.push({ path:module.path, source:await readFile(path, 'utf8') });
+  moduleSources.push({ path: module.path, source: await readFile(path, 'utf8') });
 }
 
 /* The shared Favorites code intentionally uses version-suffixed global helper
@@ -36,8 +36,7 @@ for (const module of modules) {
  * cannot catch a call to a misspelled/renamed global helper; the generated
  * bundle remains syntactically valid and only fails in the browser. Audit the
  * complete module chain for versioned fav...#### identifiers that are referenced
- * but never declared/assigned anywhere. This would have caught the v0.14.1
- * favMetadataEnsureCurrentRequirements0141 ReferenceError before artifact upload. */
+ * but never declared/assigned anywhere. */
 const runtimeSource = moduleSources.map(({ source }) => source).join('\n');
 const versionedPattern = /\b(fav[A-Za-z0-9_$]*\d{4})\b/g;
 const referenced = new Set(Array.from(runtimeSource.matchAll(versionedPattern), (match) => match[1]));
@@ -54,11 +53,25 @@ if (missingRuntimeSymbols.length) {
   throw new Error(`Undefined versioned runtime symbol${missingRuntimeSymbols.length === 1 ? '' : 's'}: ${missingRuntimeSymbols.join(', ')}`);
 }
 
+const diagnosticsManifest = JSON.parse(await readFile(resolve(ROOT, 'diagnostics-extension/manifest.json'), 'utf8'));
+if (diagnosticsManifest.manifest_version !== 3) throw new Error('Diagnostics extension must use Manifest V3.');
+if (!diagnosticsManifest.permissions?.includes('debugger')) throw new Error('Diagnostics extension must declare debugger permission.');
+if (diagnosticsManifest.background?.service_worker !== 'service-worker.js') {
+  throw new Error('Diagnostics extension must use its service-worker wrapper.');
+}
+if (!diagnosticsManifest.content_scripts?.some((item) => item.run_at === 'document_start')) {
+  throw new Error('Diagnostics recorder must load at document_start.');
+}
+
 const checkFiles = [
   'etsy-bettersearch.user.js',
   ...modules.map((item) => item.path),
   'extension/platform-prelude.js',
   'extension/background.js',
+  'diagnostics-extension/service-worker.js',
+  'diagnostics-extension/background.js',
+  'diagnostics-extension/har-extra-info.js',
+  'diagnostics-extension/content.js',
   'scripts/project.mjs',
   'scripts/build.mjs',
   'scripts/check.mjs',
@@ -66,7 +79,9 @@ const checkFiles = [
   'tests/favorites.test.mjs',
   'tests/favorites-deep-parser.test.mjs',
   'tests/favorites-deep-queue.test.mjs',
-  'tests/favorites-revamp.test.mjs'
+  'tests/favorites-revamp.test.mjs',
+  'tests/diagnostics-recorder.test.mjs',
+  'tests/diagnostics-har-extra-info.test.mjs'
 ];
 
 for (const file of checkFiles) {
@@ -82,3 +97,4 @@ for (const file of checkFiles) {
 console.log(`Syntax checked ${checkFiles.length} files.`);
 console.log(`Verified ${modules.length} userscript modules and v${version} cache-busters.`);
 console.log(`Verified ${defined.size} versioned runtime symbol definitions.`);
+console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, service worker and document_start wiring.`);
