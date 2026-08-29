@@ -15,6 +15,8 @@ var FAV_LOCAL_PAGE_SIZE0144 = 20;
 favState.localPageRouteKey0129 = favState.localPageRouteKey0129 || '';
 favState.localPagingKey0144 = String(favState.localPagingKey0144 || '');
 favState.localPagination0144 = favState.localPagination0144 || null;
+favState.nativeGridVisibility0144 = favState.nativeGridVisibility0144 instanceof WeakMap ? favState.nativeGridVisibility0144 : new WeakMap();
+favState.nativeGridVisibilityNodes0144 = favState.nativeGridVisibilityNodes0144 instanceof Set ? favState.nativeGridVisibilityNodes0144 : new Set();
 
 /* These helpers remain native-view helpers. They must not mutate local result
  * pagination. 95a rebinds them to Etsy's hydrated WtPagination state. */
@@ -83,10 +85,36 @@ function favNativeResultGrids0144() {
     )).filter((grid) => !grid.hasAttribute('data-ebsf-local-grid'));
 }
 
+function favRememberNativeGridVisibility0144(nativeGrid) {
+    if (!nativeGrid || favState.nativeGridVisibility0144.has(nativeGrid)) return;
+    favState.nativeGridVisibility0144.set(nativeGrid, {
+        hidden:Boolean(nativeGrid.hidden),
+        ariaHiddenPresent:nativeGrid.hasAttribute('aria-hidden'),
+        ariaHidden:nativeGrid.getAttribute('aria-hidden'),
+        markerPresent:nativeGrid.hasAttribute('data-ebsf-native-hidden'),
+        marker:nativeGrid.getAttribute('data-ebsf-native-hidden'),
+        display:nativeGrid.style.getPropertyValue('display'),
+        displayPriority:nativeGrid.style.getPropertyPriority('display'),
+    });
+    favState.nativeGridVisibilityNodes0144.add(nativeGrid);
+}
+
+function favRememberNativeGridVisibilitySet0144() {
+    for (const nativeGrid of favNativeResultGrids0144()) favRememberNativeGridVisibility0144(nativeGrid);
+}
+
+function favNativeGridSuppressed0144(nativeGrid) {
+    if (!nativeGrid?.isConnected) return false;
+    if (nativeGrid.style.getPropertyValue('display') === 'none') return true;
+    try { return getComputedStyle(nativeGrid).display === 'none'; }
+    catch (_) { return false; }
+}
+
 function favEnforceLocalGridOwnership0144() {
     if (favState.renderMode0141 !== 'bettersearch-local' || !favState.localGrid0141?.isConnected) return false;
     favPruneStrayLocalGrids0144();
     for (const nativeGrid of favNativeResultGrids0144()) {
+        favRememberNativeGridVisibility0144(nativeGrid);
         nativeGrid.hidden = true;
         nativeGrid.setAttribute('aria-hidden', 'true');
         nativeGrid.setAttribute('data-ebsf-native-hidden', '1');
@@ -96,16 +124,23 @@ function favEnforceLocalGridOwnership0144() {
     }
     favState.localGrid0141.hidden = false;
     favState.localGrid0141.style.removeProperty('display');
-    return true;
+    return favNativeResultGrids0144().every((nativeGrid) => favNativeGridSuppressed0144(nativeGrid));
 }
 
 function favReleaseNativeGridOwnership0144() {
-    for (const nativeGrid of favNativeResultGrids0144()) {
-        nativeGrid.style.removeProperty('display');
-        nativeGrid.hidden = false;
-        nativeGrid.removeAttribute('aria-hidden');
-        nativeGrid.removeAttribute('data-ebsf-native-hidden');
+    for (const nativeGrid of Array.from(favState.nativeGridVisibilityNodes0144)) {
+        const previous = favState.nativeGridVisibility0144.get(nativeGrid);
+        if (!previous) continue;
+        nativeGrid.hidden = previous.hidden;
+        if (previous.ariaHiddenPresent) nativeGrid.setAttribute('aria-hidden', previous.ariaHidden ?? '');
+        else nativeGrid.removeAttribute('aria-hidden');
+        if (previous.markerPresent) nativeGrid.setAttribute('data-ebsf-native-hidden', previous.marker ?? '');
+        else nativeGrid.removeAttribute('data-ebsf-native-hidden');
+        if (previous.display) nativeGrid.style.setProperty('display', previous.display, previous.displayPriority || '');
+        else nativeGrid.style.removeProperty('display');
+        favState.nativeGridVisibility0144.delete(nativeGrid);
     }
+    favState.nativeGridVisibilityNodes0144.clear();
 }
 
 function favLocalPageTokens0144(totalPages, currentPage) {
@@ -127,10 +162,9 @@ function favSetLocalPage0144(page, totalPages) {
     const target = Math.min(Math.max(1, Number.parseInt(String(page), 10) || 1), Math.max(1, totalPages));
     if (target === favState.localPage) return false;
     favState.localPage = target;
-    favRenderCurrent();
-    requestAnimationFrame(() => {
+    void Promise.resolve(favReapply()).then(() => {
         document.querySelector('.phase3-listing-cards-section')?.scrollIntoView?.({ block:'start', behavior:'auto' });
-    });
+    }).catch((error) => console.debug?.('[EBSF] local Favorites page change deferred', error));
     return true;
 }
 
@@ -205,6 +239,9 @@ var favRenderCurrentBefore0144 = favRenderCurrent;
 favRenderCurrent = function favRenderCurrent0144() {
     favPrepareLocalPage0144();
     favPruneStrayLocalGrids0144();
+    /* Snapshot BEFORE the base renderer adds hidden/aria ownership markers so
+     * native mode can restore Etsy's exact pre-local state later. */
+    favRememberNativeGridVisibilitySet0144();
     const result = favRenderCurrentBefore0144();
     favEnforceLocalGridOwnership0144();
     return result;
@@ -219,6 +256,8 @@ favRestoreNative = function favRestoreNative0144() {
     favState.localPage = 1;
     favState.pageSize = FAV_LOCAL_PAGE_SIZE0144;
     const result = favRestoreNativeBefore0144();
+    /* Base restore makes the primary native grid usable; reapply the exact
+     * snapshot afterward so a grid Etsy had intentionally hidden stays hidden. */
     favReleaseNativeGridOwnership0144();
     return result;
 };
