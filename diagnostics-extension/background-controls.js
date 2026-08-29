@@ -2,9 +2,33 @@
 
 // Diagnostics control-state extensions. This file loads after background.js and
 // har-extra-info.js so it can wrap the existing message router without
-// duplicating chrome.runtime.onMessage listeners.
+// duplicating the core recorder implementation.
 (() => {
   const coreHandleMessage = handleMessage;
+  const LAST_SESSION_KEY_PREFIX = 'ebsf-diagnostics:last-session:';
+
+  function lastSessionKey(tabId) {
+    return `${LAST_SESSION_KEY_PREFIX}${tabId}`;
+  }
+
+  async function rememberSession(tabId, session) {
+    if (!session?.sessionId) return;
+    await chrome.storage.session.set({ [lastSessionKey(tabId)]: {
+      sessionId: session.sessionId,
+      tabId,
+      startedAt: session.startedAt,
+      startedIso: session.startedIso
+    } });
+  }
+
+  async function forgetSession(tabId) {
+    await chrome.storage.session.remove(lastSessionKey(tabId));
+  }
+
+  async function rememberedSession(tabId) {
+    const value = await chrome.storage.session.get(lastSessionKey(tabId));
+    return value[lastSessionKey(tabId)] || null;
+  }
 
   async function deleteMarkerEvents(sessionId, markerId) {
     if (!sessionId || !markerId) return 0;
@@ -79,6 +103,40 @@
     return { ok: true, markerId, deleted };
   }
 
+  // The core onDetach handler marks the DB session stopped and clears the active
+  // tab key. Recover accidental detachments after that cleanup so captured data
+  // remains exportable. Explicit Stop/Discard writes stoppedAt or deletes the
+  // session before this delayed recovery runs, so those paths are left alone.
+  chrome.debugger.onDetach.addListener((source, reason) => {
+    const tabId = source.tabId;
+    if (!Number.isInteger(tabId)) return;
+    setTimeout(() => {
+      void (async () => {
+        if (await getActive(tabId)) return;
+        const remembered = await rememberedSession(tabId);
+        if (!remembered?.sessionId) return;
+        const persisted = await getSession(remembered.sessionId);
+        if (!persisted || persisted.stoppedAt) return;
+
+        const stoppedAt = Date.now();
+        persisted.recording = false;
+        persisted.paused = false;
+        persisted.debuggerAttached = false;
+        persisted.debuggerDetachReason = String(reason || persisted.debuggerDetachReason || 'unexpected-detach');
+        persisted.stoppedAt = stoppedAt;
+        persisted.stoppedIso = new Date(stoppedAt).toISOString();
+        persisted.recoverableAfterDetach = true;
+        await putSession(persisted);
+        await setActive(tabId, persisted);
+        await addEvent(persisted.sessionId, 'recorder', 'unexpected-detach-recovered', {
+          tabId,
+          reason: persisted.debuggerDetachReason,
+          stoppedAt
+        });
+      })().catch(() => {});
+    }, 250);
+  });
+
   handleMessage = async function handleMessageWithRecorderControls(message, sender) {
     const tabId = sender.tab?.id;
     if (!Number.isInteger(tabId)) return coreHandleMessage(message, sender);
@@ -92,6 +150,21 @@
         return exportStopped(message);
       case 'cancel_marker':
         return cancelMarker(tabId, message);
+      case 'start_recording': {
+        const result = await coreHandleMessage(message, sender);
+        if (result?.ok && result.session) await rememberSession(tabId, result.session);
+        return result;
+      }
+      case 'finalize_export': {
+        const result = await coreHandleMessage(message, sender);
+        if (result?.ok) await forgetSession(tabId);
+        return result;
+      }
+      case 'discard_recording': {
+        const result = await coreHandleMessage(message, sender);
+        if (result?.ok) await forgetSession(tabId);
+        return result;
+      }
       default:
         return coreHandleMessage(message, sender);
     }
