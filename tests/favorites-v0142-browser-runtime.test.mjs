@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const metadata = await readFile(new URL('../src/61h-favorites-metadata-coordinator.js', import.meta.url), 'utf8');
+const shell = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
+const adapter = await readFile(new URL('../src/95a-favorites-native-page-state.js', import.meta.url), 'utf8');
 const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
 const hardening = await readFile(new URL('../src/101-favorites-v0141-smoke-fixes.js', import.meta.url), 'utf8');
 const data = await readFile(new URL('../src/61-favorites-data.js', import.meta.url), 'utf8');
@@ -21,21 +23,40 @@ test('repository check rejects undefined version-suffixed Favorites runtime symb
   assert.match(check, /missingRuntimeSymbols/);
 });
 
-test('legacy module 95 no longer replaces the renderer or native pager', () => {
+test('no late shell layer can reintroduce the obsolete all-results-on-one-page renderer', () => {
+  assert.doesNotMatch(shell, /favRenderCurrent\s*=\s*function favRenderCurrent0122/);
+  assert.doesNotMatch(shell, /pageSize\s*=\s*Math\.max\(1,favState\.records\.length\)/);
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
+  assert.match(pagination, /favRenderPagination = function favRenderPagination0150/);
   assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
-  assert.doesNotMatch(pagination, /FAV_LOCAL_PAGE_SIZE0129/);
-  assert.match(pagination, /function favPageRouteKey0129/);
-  assert.match(pagination, /function favRequestedPage0129/);
-  assert.match(pagination, /classList\.remove\('ebsf-local-single-page0129'\)/);
 });
 
-test('final browser hardening never jumps backward to a historical renderer', () => {
+test('native pager and local-result page identity cannot alias each other', () => {
+  assert.match(adapter, /Native page identity is ONLY a view identity/);
+  assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
+  assert.match(pagination, /Compatibility no-op/);
+  assert.match(pagination, /favState\.localResultKey0150/);
+  assert.match(pagination, /favState\.localPage = 1/);
+});
+
+test('local ownership strongly suppresses native grid and pager and restores them on native mode', () => {
+  assert.match(pagination, /\[data-ebsf-native-hidden="1"\]\{\s*display:none!important/);
+  assert.match(pagination, /nav\[data-ebsf-native-pager-hidden="1"\]\{\s*display:none!important/);
+  assert.match(pagination, /function favApplyLocalVisualOwnership0150/);
+  assert.match(pagination, /function favRestoreNativePagers0150/);
+  assert.match(pagination, /function favRemoveLocalPagination0150/);
+  assert.match(pagination, /favRestoreNative = function favRestoreNative0150/);
+});
+
+test('final browser hardening verifies computed visibility and pagination ownership', () => {
   assert.doesNotMatch(hardening, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(hardening, /favRenderCurrentBefore0122/);
   assert.match(hardening, /favReapplyBefore0142/);
   assert.match(hardening, /favRequestedRenderSignature0143/);
   assert.match(hardening, /favState\.renderSignature0143 === favRequestedRenderSignature0143\(\)/);
+  assert.match(hardening, /function favNodeVisuallySuppressed0143/);
+  assert.match(hardening, /getComputedStyle\(node\)\.display === 'none'/);
+  assert.match(hardening, /favLocalPaginationOwnershipHealthy0150\(\)/);
+  assert.match(hardening, /favApplyLocalVisualOwnership0150\?\.\(\)/);
 });
 
 test('desktop rail failure restores Etsy native sidebar instead of leaving an empty column', () => {

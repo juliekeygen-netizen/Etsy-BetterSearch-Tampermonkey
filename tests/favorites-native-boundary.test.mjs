@@ -44,14 +44,14 @@ test('final collection installer contains no pagination recovery or movement', (
   assert.doesNotMatch(install, /WtPagination|Favorite Items Page Results|favHasPaginationPayload0126|favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
 
-test('pagination compatibility hooks remain native-only and module 95 cannot reintroduce pager policy', () => {
+test('module 94 leaves Etsy pager structurally native and module 95 adds a separate local-only pager', () => {
   assert.match(boundary, /favProtectNativePagination0126 = function favProtectNativePagination0128\(\) \{\};/);
   assert.match(boundary, /favRestorePagination0122 = function favRestorePagination0128\(\) \{\s*favState\.nativePagination0120 = null;\s*\};/);
   assert.match(boundary, /favRenderPagination = function favRenderPagination0128\(\) \{\};/);
-  assert.doesNotMatch(pagination, /classList\.toggle\('ebsf-local-single-page0129'/);
-  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
+  assert.match(pagination, /favRenderPagination = function favRenderPagination0150/);
+  assert.match(pagination, /BetterSearch filtered favorites pages/);
+  assert.match(pagination, /nav\[aria-label="Favorite Items Page Results"\]/);
   assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.match(pagination, /classList\.remove\('ebsf-local-single-page0129'\)/);
   assert.doesNotMatch(`${pagination}\n${final}`, /favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
 

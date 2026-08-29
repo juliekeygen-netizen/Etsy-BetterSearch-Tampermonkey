@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+const shell = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
+const adapter = await readFile(new URL('../src/95a-favorites-native-page-state.js', import.meta.url), 'utf8');
 const parity = await readFile(new URL('../src/96-favorites-exact-header-parity.js', import.meta.url), 'utf8');
 const allNative = await readFile(new URL('../src/97-favorites-all-native-header.js', import.meta.url), 'utf8');
 const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
@@ -19,21 +21,37 @@ test('exact Search parity layer stays after native boundary/page-state modules',
   assert.ok(boundary >= 0 && paginationIndex > boundary && adapterIndex > paginationIndex && parityIndex > adapterIndex && allNativeIndex > parityIndex && exactSearchIndex > allNativeIndex);
 });
 
-test('module 95 is page-identity compatibility only and cannot bypass the renderer chain', () => {
-  assert.match(pagination, /function favPageRouteKey0129/);
-  assert.match(pagination, /function favRequestedPage0129/);
-  assert.match(pagination, /function favSyncLocalPageFromRoute0129/);
-  assert.match(pagination, /searchParams\.get\('page'\)/);
-  assert.doesNotMatch(pagination, /FAV_LOCAL_PAGE_SIZE0129/);
+test('module 86 no longer disables the base 20-item local slice', () => {
+  assert.doesNotMatch(shell, /favRenderCurrent\s*=\s*function favRenderCurrent0122/);
+  assert.doesNotMatch(shell, /pageSize\s*=\s*Math\.max\(1,favState\.records\.length\)/);
+  assert.doesNotMatch(shell, /favState\.localPage\s*=\s*1;favState\.pageSize/);
+});
+
+test('module 95 owns local pagination without replacing the renderer chain', () => {
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
+  assert.match(pagination, /function favSyncLocalPageFromRoute0129\(\)/);
+  assert.match(pagination, /function favLocalResultRequestKey0150\(\)/);
+  assert.match(pagination, /favRenderPagination = function favRenderPagination0150/);
+  assert.match(pagination, /function favGoToLocalPage0150\(page\)/);
   assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
   assert.doesNotMatch(pagination, /favRenderCurrentBefore0122/);
 });
 
-test('native pager remains structurally owned by Etsy', () => {
-  assert.doesNotMatch(pagination, /createElement\(['"]nav['"]\)|replaceChildren\(|\.after\(nav\)|append\(nav\)/);
-  assert.doesNotMatch(pagination, /classList\.toggle\('ebsf-local-single-page0129'/);
-  assert.match(pagination, /classList\.remove\('ebsf-local-single-page0129'\)/);
+test('native and BetterSearch pagers have distinct ownership and labels', () => {
+  assert.match(pagination, /nav\[aria-label="Favorite Items Page Results"\]/);
+  assert.match(pagination, /aria-label', 'BetterSearch filtered favorites pages'/);
+  assert.match(pagination, /data-ebsf-native-pager-hidden/);
+  assert.match(pagination, /data-ebsf-local-pagination/);
+  assert.match(pagination, /favRestoreNativePagers0150/);
+  assert.match(pagination, /favRemoveLocalPagination0150/);
+  assert.doesNotMatch(pagination, /createElement\(['"]nav['"]\)[^]*Favorite Items Page Results/);
+});
+
+test('native page adapter cannot map Etsy page buttons into localPage', () => {
+  assert.match(adapter, /favSetNativePageIntent0139\(target\)/);
+  assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
+  const targetBlock = adapter.slice(adapter.indexOf('function favPagerButtonTargetPage0139'), adapter.indexOf('function favScheduleNativePageReconcile0139'));
+  assert.doesNotMatch(targetBlock, /favState\.localPage/);
 });
 
 test('every historical All metadata callback is rebound to one invariant full writer', () => {

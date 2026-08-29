@@ -192,13 +192,10 @@ favRefreshRail=function favRefreshRail0120(){if(favDesktopShell0120()){
 
 function favRestorePagination0122(){const saved=favState.nativePagination0120;if(saved?.nav?.isConnected){if(saved.generated)saved.nav.remove();else{saved.nav.replaceChildren(...saved.children);saved.nav.hidden=saved.hidden;delete saved.nav.dataset.ebsfNativePagination;if(saved.parent?.isConnected)saved.parent.insertBefore(saved.nav,saved.next?.parentNode===saved.parent?saved.next:null);}}for(const entry of saved?.others||[])if(entry.pager?.isConnected)entry.pager.hidden=entry.hidden;favState.nativePagination0120=null;for(const nav of document.querySelectorAll('nav[data-ebsf-native-pagination]')){if(nav.getAttribute('aria-label')==='Favorite Items Page Results')nav.remove();else delete nav.dataset.ebsfNativePagination;}}
 
-/* BetterSearch no longer creates, rewrites, moves, or duplicates pagination.
- * Etsy's own pager remains the single pagination control. Enhanced results are
- * rendered as one local set so removing the custom pager cannot strand later
- * matches on unreachable local pages. */
-var favRenderCurrentBefore0122=favRenderCurrent;
-favRenderCurrent=function favRenderCurrent0122(){favState.localPage=1;favState.pageSize=Math.max(1,favState.records.length);return favRenderCurrentBefore0122();};
-favRenderPagination=function favRenderPagination0122(){favRestorePagination0122();};
+/* v0.15.0: page-shell code no longer owns result pagination or mutates the
+ * local result page size. The base v0.14 renderer keeps its 20-item slice and
+ * module 95 owns the separate BetterSearch local pager when local mode is
+ * active. This preserves the module-89 post-render shell/rail repair chain. */
 
 favRenderCount=function favRenderCount0120(){favUpdateScopeHeader0120();};
 

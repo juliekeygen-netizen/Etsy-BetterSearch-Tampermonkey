@@ -1,6 +1,7 @@
 'use strict';
 
-/* v0.14.1 smoke fixes + v0.14.2 browser-runtime hardening.
+/* v0.14.1 smoke fixes + v0.14.2 browser-runtime hardening + v0.15.0
+ * local-pagination ownership verification.
  *
  * The logged-in HAR/browser passes exposed ownership seams between the v0.14
  * catalogue/metadata runtime and the older late Favorites shell chain. This
@@ -13,11 +14,13 @@
  * 4. refresh cloned local cards from Etsy's hidden native cards when Etsy later
  *    hydrates Shipping / delivery / returns metadata;
  * 5. keep unknown filter capability data visible instead of treating unknown as
- *    definitely unavailable and collapsing whole drawers.
+ *    definitely unavailable and collapsing whole drawers;
+ * 6. verify the native grid/pager are ACTUALLY visually suppressed while the
+ *    v0.15 BetterSearch local grid/pager own the visible results.
  *
- * Local pagination remains deferred. Module 95 no longer replaces the renderer
- * or pager, so the post-render shell repair installed by module 89 stays in the
- * real render chain instead of being bypassed by a historical saved function.
+ * Module 95 now owns deliberate local pagination without replacing
+ * favRenderCurrent(), so the post-render shell repair installed by module 89
+ * remains in the real renderer chain.
  */
 favState.renderIntegrityTimer0142 = Number(favState.renderIntegrityTimer0142) || 0;
 favState.renderSignature0143 = String(favState.renderSignature0143 || '');
@@ -34,19 +37,31 @@ function favRequestedRenderSignature0143() {
     return `${favDatasetKey()}|${config}`;
 }
 
+function favNodeVisuallySuppressed0143(node) {
+    if (!node?.isConnected) return false;
+    if (typeof favVisualDisplayNone0150 === 'function') return favVisualDisplayNone0150(node);
+    try { return getComputedStyle(node).display === 'none'; }
+    catch (_) { return node.hidden === true; }
+}
+
 function favLocalGridMounted0143() {
     const currentNative = favNativeMainGrid0141?.();
     const nativeGrid = currentNative?.isConnected
         ? currentNative
         : favState.nativeGrid?.isConnected ? favState.nativeGrid : null;
     const local = favState.localGrid0141;
+    const paginationHealthy = typeof favLocalPaginationOwnershipHealthy0150 !== 'function'
+        || favLocalPaginationOwnershipHealthy0150();
     return Boolean(
         favState.renderMode0141 === 'bettersearch-local'
         && local?.isConnected
         && !local.hidden
+        && !favNodeVisuallySuppressed0143(local)
         && nativeGrid?.isConnected
         && nativeGrid.hidden === true
         && nativeGrid.hasAttribute?.('data-ebsf-native-hidden')
+        && favNodeVisuallySuppressed0143(nativeGrid)
+        && paginationHealthy
     );
 }
 
@@ -257,6 +272,14 @@ function favRenderIntegrityReady0142(datasetKey) {
 
 function favRepairLocalOwnership0142(datasetKey) {
     if (!favRenderIntegrityReady0142(datasetKey)) return;
+
+    /* Etsy can reconcile display/native pager state without removing our local
+     * grid. Reassert visual ownership first; only re-run the catalogue/metadata
+     * pipeline if the current result signature is still not authoritative. */
+    if (favState.renderMode0141 === 'bettersearch-local' && favState.localGrid0141?.isConnected) {
+        favApplyLocalVisualOwnership0150?.();
+    }
+
     if (favLocalGridAuthoritative0142()) {
         favUpdateScopeHeader0120?.();
         favEnsurePermanentRail0142();
@@ -290,6 +313,7 @@ favReapply = async function favReapply0142(...args) {
     try {
         const result = await favReapplyBefore0142(...args);
         if (datasetKey !== favDatasetKey()) return result;
+        if (favState.renderMode0141 === 'bettersearch-local') favApplyLocalVisualOwnership0150?.();
         if (favLocalGridMounted0143()) {
             favState.renderSignature0143 = favRequestedRenderSignature0143();
             favSetRenderStatus0143('bettersearch-local');
