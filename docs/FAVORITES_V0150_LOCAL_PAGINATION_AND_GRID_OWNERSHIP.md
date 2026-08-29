@@ -181,3 +181,62 @@ The remaining lifecycle/patch-chain consolidation work is still valuable, but v0
 6. Return to Etsy order/no local filters and verify Etsy's native pager still handles page 1 -> 2 -> 3 normally.
 7. Repeat All -> collection -> All and local -> native -> local transitions.
 8. Confirm the filter rail, metadata hydration, Search geometry, favorite/unfavorite, and cart delegation remain intact.
+
+---
+
+## Post-v0.15.1 browser evidence — 2026-08-29
+
+The long Diagnostics session analyzed in `FAVORITES_DIAGNOSTICS_AND_INDEXEDDB_AUDIT_2026-08-29.md` exposed two additional ownership failures that must be treated as part of the next grid/pager hardening phase.
+
+### Local empty result can win after Etsy has already restored valid native cards
+
+A native-search clear transition reached a state where Etsy's native grid again contained real cards, but BetterSearch subsequently kept it hidden and rendered a local grid containing only `No favorites match these filters.`
+
+This means visual exclusivity alone is insufficient. The local renderer needs a **generation/transaction validity check** before it is allowed to take ownership.
+
+The local takeover signature should include at least:
+
+```text
+dataset key
+committed native-query generation
+catalogue generation/completeness
+filter/sort config hash
+metadata requirement generation
+```
+
+If any component changes while local work is in flight, the result is stale and native ownership must remain visible.
+
+### Native pager can remain visible while local grid owns an empty result
+
+The recording also captured:
+
+```text
+local grid visible: empty result
+native grid: real cards but hidden
+native pager: visible
+local pager: absent
+```
+
+Grid owner and pager owner must therefore transition atomically. It is an invariant failure for local results to be authoritative while the native pager is still visibly actionable.
+
+### Known v0.15.1 native/local pager selector alias remains a separate source issue
+
+The recording's marked page-3 transition was genuinely native and did not reproduce the selector alias. However current source must still ensure every native-pager lookup excludes `[data-ebsf-local-pagination]`; a BetterSearch local pager must never be eligible to seed native page intent or native view identity.
+
+Add a dual-pager regression fixture containing a retained/hidden native page-1 pager and a visible BetterSearch local page-2 pager. Assertions should prove:
+
+- native current page remains 1;
+- local current page remains 2;
+- clicking local pagination does not set native page intent;
+- unrelated DOM mutations do not reinterpret the local pager as an Etsy native view transition;
+- entering/leaving local mode changes both grid and pager ownership as one operation.
+
+### Acceptance criteria added after the full capture
+
+A correct next release must also prove:
+
+1. clearing native search cannot leave a stale local empty state over a restored native grid;
+2. a local render prepared for an old dataset/query generation is discarded;
+3. native pager visible + local owner is detected as an invariant violation;
+4. local pager nodes are excluded from every native pager discovery path;
+5. repeated ownership reconcile with unchanged state does not rewrite hidden/ARIA/style state unnecessarily.
