@@ -53,8 +53,8 @@ test('Exporting overlay blocks the page and mirrors exporter progress', () => {
   assert.match(guard, /textContent = 'Exporting…'/);
   assert.match(guard, /position:fixed!important;inset:0!important;z-index:2147483647!important/);
   assert.match(guard, /backdrop-filter:blur\(4px\)/);
-  assert.match(guard, /data-role=\\"detail\\"/);
-  assert.match(guard, /Reading ZIP file|status-v2/);
+  assert.match(guard, /data-role="detail"/);
+  assert.match(guard, /status-v2/);
   assert.match(guard, /updateOverlayDetail/);
 });
 
