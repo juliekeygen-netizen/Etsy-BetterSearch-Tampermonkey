@@ -1,39 +1,32 @@
-﻿param(
+param(
     [switch]$Setup,
     [switch]$TestNotification
 )
 
 $ErrorActionPreference = "Stop"
-$Host.UI.RawUI.WindowTitle = "BetterSearch AutoPull + Notifications v1.2"
+$Host.UI.RawUI.WindowTitle = "BetterSearch AutoPull + Notifications v1.3"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $ScriptDir "BetterSearch-AutoPull.config.json"
+$script:GitExe = $null
 
 function Show-DesktopNotification {
-    param(
-        [string]$Title,
-        [string]$Message
-    )
-
+    param([string]$Title, [string]$Message)
     try {
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
-
         $notify = New-Object System.Windows.Forms.NotifyIcon
         $notify.Icon = [System.Drawing.SystemIcons]::Information
         $notify.Visible = $true
         $notify.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
         $notify.BalloonTipTitle = $Title
         $notify.BalloonTipText = $Message
-
         [System.Media.SystemSounds]::Asterisk.Play()
-        $notify.ShowBalloonTip(7000)
-
-        Start-Sleep -Seconds 7
+        $notify.ShowBalloonTip(6000)
+        Start-Sleep -Seconds 5
         $notify.Dispose()
     }
     catch {
-        Write-Warning "Could not show desktop notification: $($_.Exception.Message)"
         try { [System.Media.SystemSounds]::Asterisk.Play() } catch {}
     }
 }
@@ -44,58 +37,25 @@ function Normalize-EnteredPath {
     return $PathText.Trim().Trim('"').Trim("'")
 }
 
-function Find-AutoGitPullExe {
-    $candidate = Get-ChildItem -LiteralPath $ScriptDir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -ieq ".exe" -and $_.Name -match "autogitpull" } |
-        Select-Object -First 1
-
-    if ($candidate) { return $candidate.FullName }
-    return ""
-}
-
 function Read-Configuration {
-    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-        return $null
-    }
-
-    try {
-        return Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
-    }
-    catch {
-        Write-Warning "The saved config could not be read. Setup will run again."
-        return $null
-    }
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { return $null }
+    try { return Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json }
+    catch { return $null }
 }
 
 function Save-Configuration {
-    param(
-        [string]$AutoGitPullExe,
-        [string]$RepoPath,
-        [string]$Interval
-    )
-
-    [pscustomobject]@{
-        autogitpullExe = $AutoGitPullExe
-        repoPath       = $RepoPath
-        interval       = $Interval
-    } | ConvertTo-Json | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
+    param([string]$RepoPath, [string]$Interval)
+    [pscustomobject]@{ repoPath = $RepoPath; interval = $Interval } |
+        ConvertTo-Json | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
 }
 
 function Convert-IntervalToSeconds {
     param([string]$Interval)
-
     $value = if ($null -eq $Interval) { "" } else { $Interval.Trim() }
-
-    # Plain "30" means 30 seconds, matching autogitpull's behavior.
-    if ($value -match "^\d+$") {
-        return [Math]::Max(1, [int]$value)
-    }
-
+    if ($value -match "^\d+$") { return [Math]::Max(1, [int]$value) }
     if ($value -match "^(\d+)\s*(ms|s|m|h|d|w)$") {
         $amount = [int]$Matches[1]
-        $unit = $Matches[2]
-
-        switch ($unit) {
+        switch ($Matches[2]) {
             "ms" { return [Math]::Max(1, [int][Math]::Ceiling($amount / 1000.0)) }
             "s"  { return [Math]::Max(1, $amount) }
             "m"  { return [Math]::Max(1, $amount * 60) }
@@ -104,49 +64,120 @@ function Convert-IntervalToSeconds {
             "w"  { return [Math]::Max(1, $amount * 604800) }
         }
     }
+    throw "Unsupported interval '$Interval'. Use 30, 30s, 1m, etc."
+}
 
-    throw "Unsupported interval '$Interval'. Use values like 30, 30s, 1m, or 5m."
+function Find-Git {
+    try { return (Get-Command git -ErrorAction Stop).Source }
+    catch { throw "Git was not found on PATH. This helper uses the same Git CLI as your manual 'git pull'." }
+}
+
+function Invoke-Git {
+    param([string]$RepoPath, [string[]]$GitArgs)
+    $oldPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $raw = @(& $script:GitExe -C $RepoPath @GitArgs 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $oldPreference }
+    $lines = @($raw | ForEach-Object { if ($null -ne $_) { $_.ToString() } })
+    return [pscustomobject]@{ ExitCode = $exitCode; Lines = $lines }
+}
+
+function Get-FirstLine {
+    param($Result)
+    $lines = @($Result.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($lines.Count -eq 0) { return "" }
+    return $lines[0]
+}
+
+function Get-LastLine {
+    param($Result)
+    $lines = @($Result.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($lines.Count -eq 0) { return "" }
+    return $lines[$lines.Count - 1]
+}
+
+function Short-Hash {
+    param([string]$Hash)
+    if ([string]::IsNullOrWhiteSpace($Hash)) { return "unknown" }
+    if ($Hash.Length -le 7) { return $Hash }
+    return $Hash.Substring(0, 7)
+}
+
+function Get-HeadHash {
+    param([string]$RepoPath)
+    $r = Invoke-Git -RepoPath $RepoPath -GitArgs @("rev-parse", "HEAD")
+    if ($r.ExitCode -ne 0) { return $null }
+    return (Get-FirstLine $r).Trim().ToLowerInvariant()
+}
+
+function Get-CommitSubject {
+    param([string]$RepoPath, [string]$Hash)
+    if ([string]::IsNullOrWhiteSpace($Hash)) { return "" }
+    $r = Invoke-Git -RepoPath $RepoPath -GitArgs @("show", "-s", "--format=%s", $Hash)
+    if ($r.ExitCode -ne 0) { return "" }
+    return (Get-FirstLine $r).Trim()
+}
+
+function Get-UpstreamInfo {
+    param([string]$RepoPath)
+    $tracking = Invoke-Git -RepoPath $RepoPath -GitArgs @("rev-parse", "--abbrev-ref", "--symbolic-full-name", '@{u}')
+    $trackingConfigured = $false
+    $upstream = ""
+    if ($tracking.ExitCode -eq 0) {
+        $upstream = (Get-FirstLine $tracking).Trim()
+        $trackingConfigured = -not [string]::IsNullOrWhiteSpace($upstream)
+    }
+
+    $branchResult = Invoke-Git -RepoPath $RepoPath -GitArgs @("branch", "--show-current")
+    if ($branchResult.ExitCode -ne 0) { throw "Could not determine the current Git branch." }
+    $localBranch = (Get-FirstLine $branchResult).Trim()
+    if ([string]::IsNullOrWhiteSpace($localBranch)) { throw "Detached HEAD detected. Auto-pull is disabled." }
+    if (-not $trackingConfigured) { $upstream = "origin/$localBranch" }
+
+    $slash = $upstream.IndexOf("/")
+    if ($slash -lt 1 -or $slash -ge ($upstream.Length - 1)) { throw "Could not understand upstream '$upstream'." }
+
+    return [pscustomobject]@{
+        LocalBranch = $localBranch
+        Upstream = $upstream
+        Remote = $upstream.Substring(0, $slash)
+        RemoteBranch = $upstream.Substring($slash + 1)
+        TrackingConfigured = $trackingConfigured
+    }
+}
+
+function Test-IsAncestor {
+    param([string]$RepoPath, [string]$Older, [string]$Newer)
+    $r = Invoke-Git -RepoPath $RepoPath -GitArgs @("merge-base", "--is-ancestor", $Older, $Newer)
+    return ($r.ExitCode -eq 0)
 }
 
 function Run-Setup {
-    $detectedExe = Find-AutoGitPullExe
-    $exePath = ""
-
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host " BetterSearch AutoPull + Notifications v1.2 - setup"
+    Write-Host " BetterSearch AutoPull + Notifications v1.3 - setup"
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host ""
-
-    if ($detectedExe) {
-        Write-Host "Found autogitpull automatically:" -ForegroundColor Green
-        Write-Host "  $detectedExe"
-        $answer = Read-Host "Use this EXE? [Y/n]"
-        if ([string]::IsNullOrWhiteSpace($answer) -or $answer -match "^[Yy]") {
-            $exePath = $detectedExe
-        }
-    }
-
-    while ([string]::IsNullOrWhiteSpace($exePath) -or -not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
-        Write-Host ""
-        Write-Host "Enter the full path to the autogitpull .exe." -ForegroundColor Yellow
-        Write-Host "Tip: drag the EXE from Explorer into this window."
-        $exePath = Normalize-EnteredPath (Read-Host "autogitpull.exe path")
-        if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
-            Write-Host "That file does not exist. Try again." -ForegroundColor Red
-            $exePath = ""
-        }
-    }
+    Write-Host "v1.3 uses your normal Git installation directly."
+    Write-Host "autogitpull.exe is no longer needed." -ForegroundColor Green
 
     $repoPath = ""
-    while ([string]::IsNullOrWhiteSpace($repoPath) -or -not (Test-Path -LiteralPath (Join-Path $repoPath ".git"))) {
+    while ([string]::IsNullOrWhiteSpace($repoPath)) {
         Write-Host ""
-        Write-Host "Enter the LOCAL folder containing your Etsy BetterSearch repository." -ForegroundColor Yellow
-        Write-Host "It must be the folder containing .git."
-        Write-Host "Tip: drag the repo folder from Explorer into this window."
+        Write-Host "Enter the LOCAL BetterSearch repository folder." -ForegroundColor Yellow
+        Write-Host "Tip: drag the folder from Explorer into this window."
         $repoPath = Normalize-EnteredPath (Read-Host "Repo folder")
-        if (-not (Test-Path -LiteralPath (Join-Path $repoPath ".git"))) {
-            Write-Host "I couldn't find .git in that folder. Try again." -ForegroundColor Red
+        if ([string]::IsNullOrWhiteSpace($repoPath) -or -not (Test-Path -LiteralPath $repoPath -PathType Container)) {
+            Write-Host "That folder does not exist." -ForegroundColor Red
+            $repoPath = ""
+            continue
+        }
+        $probe = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-parse", "--is-inside-work-tree")
+        if ($probe.ExitCode -ne 0 -or (Get-FirstLine $probe).Trim() -ne "true") {
+            Write-Host "That folder is not a Git repository." -ForegroundColor Red
             $repoPath = ""
         }
     }
@@ -155,140 +186,76 @@ function Run-Setup {
         Write-Host ""
         $interval = Normalize-EnteredPath (Read-Host "How often should it check? [default: 30s]")
         if ([string]::IsNullOrWhiteSpace($interval)) { $interval = "30s" }
-
-        try {
-            [void](Convert-IntervalToSeconds $interval)
-            break
-        }
-        catch {
-            Write-Host $_.Exception.Message -ForegroundColor Red
-        }
+        try { [void](Convert-IntervalToSeconds $interval); break }
+        catch { Write-Host $_.Exception.Message -ForegroundColor Red }
     }
 
-    Save-Configuration -AutoGitPullExe $exePath -RepoPath $repoPath -Interval $interval
-
+    Save-Configuration -RepoPath $repoPath -Interval $interval
     Write-Host ""
-    Write-Host "Saved configuration:" -ForegroundColor Green
-    Write-Host "  autogitpull: $exePath"
-    Write-Host "  repository : $repoPath"
-    Write-Host "  interval   : $interval"
-    Write-Host ""
-    Write-Host "Showing a test notification now..." -ForegroundColor Cyan
-    Show-DesktopNotification -Title "BetterSearch AutoPull" -Message "Notifications are working. You'll get one whenever a new commit is pulled."
-
+    Write-Host "Saved." -ForegroundColor Green
+    Show-DesktopNotification -Title "BetterSearch AutoPull" -Message "Notifications are working."
     return Read-Configuration
 }
 
-function Get-HeadHash {
-    param([string]$RepoPath)
+function Render-Dashboard {
+    param(
+        [string]$RepoPath,
+        [int]$IntervalSeconds,
+        $UpstreamInfo,
+        [string]$HeadHash,
+        [string]$HeadSubject,
+        [string]$Status,
+        [string]$StatusKind,
+        [string]$Detail,
+        [Nullable[datetime]]$LastCheck,
+        [Nullable[datetime]]$NextCheck,
+        [object[]]$PullHistory
+    )
 
-    # Use Git when available. This handles normal repos, worktrees, packed refs, etc.
-    try {
-        $git = Get-Command git -ErrorAction Stop
-        $hash = & $git.Source -C $RepoPath rev-parse HEAD 2>$null
-        if ($LASTEXITCODE -eq 0 -and $hash) {
-            return ($hash | Select-Object -First 1).Trim().ToLowerInvariant()
-        }
+    Clear-Host
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host " BetterSearch AutoPull + Notifications v1.3"
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host "Repo   : $RepoPath"
+    Write-Host "Branch : $($UpstreamInfo.LocalBranch) -> $($UpstreamInfo.Upstream)"
+    Write-Host "Every  : ${IntervalSeconds}s"
+    Write-Host ("HEAD   : {0}  {1}" -f (Short-Hash $HeadHash), $HeadSubject)
+    Write-Host ""
+
+    $statusColor = switch ($StatusKind) {
+        "ok" { "Green" }
+        "updated" { "Green" }
+        "checking" { "Cyan" }
+        "warning" { "Yellow" }
+        "error" { "Red" }
+        default { "Gray" }
     }
-    catch {}
 
-    # Fallback for a standard non-worktree .git directory.
-    $gitDir = Join-Path $RepoPath ".git"
-    $headPath = Join-Path $gitDir "HEAD"
-    if (-not (Test-Path -LiteralPath $headPath -PathType Leaf)) { return $null }
+    Write-Host "Status : $Status" -ForegroundColor $statusColor
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) { Write-Host "         $Detail" -ForegroundColor DarkGray }
+    if ($LastCheck.HasValue) { Write-Host ("Checked: {0}" -f $LastCheck.Value.ToString("HH:mm:ss")) } else { Write-Host "Checked: not yet" }
+    if ($NextCheck.HasValue) { Write-Host ("Next   : {0}" -f $NextCheck.Value.ToString("HH:mm:ss")) } else { Write-Host "Next   : after this check" }
 
-    $head = (Get-Content -LiteralPath $headPath -Raw).Trim()
-
-    if ($head -notmatch "^ref:\s+(.+)$") {
-        if ($head -match "^[0-9a-fA-F]{7,40}$") { return $head.ToLowerInvariant() }
-        return $null
+    Write-Host ""
+    Write-Host "Recent pulls:" -ForegroundColor Cyan
+    if ($null -eq $PullHistory -or $PullHistory.Count -eq 0) {
+        Write-Host "  none yet" -ForegroundColor DarkGray
     }
-
-    $refName = $Matches[1].Trim()
-    $looseRefPath = Join-Path $gitDir ($refName -replace "/", "\")
-
-    if (Test-Path -LiteralPath $looseRefPath -PathType Leaf) {
-        $hash = (Get-Content -LiteralPath $looseRefPath -Raw).Trim()
-        if ($hash -match "^[0-9a-fA-F]{7,40}$") { return $hash.ToLowerInvariant() }
-    }
-
-    $packedRefs = Join-Path $gitDir "packed-refs"
-    if (Test-Path -LiteralPath $packedRefs -PathType Leaf) {
-        foreach ($line in Get-Content -LiteralPath $packedRefs) {
-            if ($line -match "^([0-9a-fA-F]{40})\s+(.+)$" -and $Matches[2] -eq $refName) {
-                return $Matches[1].ToLowerInvariant()
+    else {
+        foreach ($entry in $PullHistory) {
+            $suffix = if ($entry.CommitCount -eq 1) { "" } else { "s" }
+            Write-Host ("  {0}  {1} -> {2}  ({3} commit{4})" -f $entry.Time, $entry.Before, $entry.After, $entry.CommitCount, $suffix) -ForegroundColor Green
+            foreach ($commit in $entry.Commits) {
+                Write-Host ("           {0}" -f ($commit -replace "`t", "  ")) -ForegroundColor DarkGray
             }
         }
     }
 
-    return $null
+    Write-Host ""
+    Write-Host "Close this window or press Ctrl+C to stop." -ForegroundColor DarkGray
 }
 
-function Get-CommitSubject {
-    param(
-        [string]$RepoPath,
-        [string]$Hash
-    )
-
-    try {
-        $git = Get-Command git -ErrorAction Stop
-        $subject = & $git.Source -C $RepoPath show -s --format=%s $Hash 2>$null
-        if ($LASTEXITCODE -eq 0 -and $subject) {
-            return ($subject | Select-Object -First 1).Trim()
-        }
-    }
-    catch {}
-
-    return ""
-}
-
-function Quote-ProcessArgument {
-    param([string]$Value)
-    return '"' + $Value + '"'
-}
-
-function Start-OneAutoGitPullScan {
-    param(
-        [string]$ExePath,
-        [string]$RepoPath
-    )
-
-    # --single-run: one scan cycle, then exit.
-    # --no-hash-check: force autogitpull to attempt the pull operation each scan
-    #                  instead of relying on its preliminary remote hash check.
-    # --include-private: also allows GitHub remotes that require authentication
-    #                    (for example an SSH-authenticated GitHub remote).
-    # --show-skipped: if autogitpull refuses a repo (dirty/auth/etc.), SHOW WHY.
-    #
-    # We intentionally DO NOT use --force-pull / --discard-dirty.
-    $arguments =
-        "--root " + (Quote-ProcessArgument $RepoPath) +
-        " --single-repo" +
-        " --single-run" +
-        " --no-hash-check" +
-        " --include-private" +
-        " --show-skipped" +
-        " --cli"
-
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $ExePath
-    $psi.Arguments = $arguments
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $false
-
-    return [System.Diagnostics.Process]::Start($psi)
-}
-
-function Wait-Countdown {
-    param([int]$Seconds)
-
-    for ($remaining = $Seconds; $remaining -gt 0; $remaining--) {
-        $next = (Get-Date).AddSeconds($remaining).ToString("HH:mm:ss")
-        Write-Host ("`rNext GitHub check in {0}s  (about {1})   " -f $remaining, $next) -NoNewline -ForegroundColor DarkGray
-        Start-Sleep -Seconds 1
-    }
-    Write-Host "`rStarting next GitHub check...                         " -ForegroundColor Cyan
-}
+$script:GitExe = Find-Git
 
 if ($TestNotification) {
     Show-DesktopNotification -Title "BetterSearch AutoPull" -Message "Test notification: everything is working."
@@ -296,113 +263,161 @@ if ($TestNotification) {
 }
 
 $config = Read-Configuration
-if ($Setup -or $null -eq $config) {
-    $config = Run-Setup
-}
+if ($Setup -or $null -eq $config -or [string]::IsNullOrWhiteSpace([string]$config.repoPath)) { $config = Run-Setup }
 
-$exePath = [string]$config.autogitpullExe
 $repoPath = [string]$config.repoPath
 $interval = [string]$config.interval
+if ([string]::IsNullOrWhiteSpace($interval)) { $interval = "30s" }
 
-if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) {
-    Write-Host "Saved autogitpull EXE no longer exists:" -ForegroundColor Red
-    Write-Host "  $exePath"
-    Write-Host ""
-    Write-Host "Run 'Reset setup.cmd' and configure it again."
-    Read-Host "Press Enter to close"
-    exit 1
-}
-
-if (-not (Test-Path -LiteralPath (Join-Path $repoPath ".git"))) {
-    Write-Host "Saved repository folder is no longer valid:" -ForegroundColor Red
-    Write-Host "  $repoPath"
-    Write-Host ""
-    Write-Host "Run 'Reset setup.cmd' and configure it again."
-    Read-Host "Press Enter to close"
-    exit 1
-}
-
-try {
-    $intervalSeconds = Convert-IntervalToSeconds $interval
-}
+try { $intervalSeconds = Convert-IntervalToSeconds $interval }
 catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
-    Write-Host "Run 'Reset setup.cmd' and enter a valid interval."
+    Write-Host "Run 'Reset setup.cmd' to change the interval."
     Read-Host "Press Enter to close"
     exit 1
 }
 
-$lastHash = Get-HeadHash -RepoPath $repoPath
-$checkNumber = 0
-
-Write-Host ""
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host " BetterSearch AutoPull + Notifications v1.2"
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "Repository : $repoPath"
-Write-Host "Check every: $intervalSeconds seconds"
-if ($lastHash) {
-    Write-Host "Current HEAD: $($lastHash.Substring(0, [Math]::Min(7, $lastHash.Length)))"
+if (-not (Test-Path -LiteralPath $repoPath -PathType Container)) {
+    Write-Host "Saved repository folder no longer exists:" -ForegroundColor Red
+    Write-Host "  $repoPath"
+    Read-Host "Press Enter to close"
+    exit 1
 }
-Write-Host ""
-Write-Host "This version runs ONE real autogitpull scan at a time." -ForegroundColor Green
-Write-Host "After each scan you'll see exactly when the next one runs."
-Write-Host "Close this window or press Ctrl+C to stop."
-Write-Host ""
+
+$probe = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-parse", "--is-inside-work-tree")
+if ($probe.ExitCode -ne 0) {
+    Write-Host "Saved folder is not a usable Git repository:" -ForegroundColor Red
+    Write-Host "  $repoPath"
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
+try { $upstreamInfo = Get-UpstreamInfo -RepoPath $repoPath }
+catch {
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
+$pullHistory = @()
+$lastCheck = $null
 
 while ($true) {
-    $checkNumber++
-    $startedAt = Get-Date
     $beforeHash = Get-HeadHash -RepoPath $repoPath
-    if ($beforeHash) { $lastHash = $beforeHash }
+    $beforeSubject = Get-CommitSubject -RepoPath $repoPath -Hash $beforeHash
 
-    Write-Host ""
-    Write-Host ("[{0}] CHECK #{1} - contacting Git remote..." -f $startedAt.ToString("HH:mm:ss"), $checkNumber) -ForegroundColor Cyan
+    Render-Dashboard -RepoPath $repoPath -IntervalSeconds $intervalSeconds -UpstreamInfo $upstreamInfo `
+        -HeadHash $beforeHash -HeadSubject $beforeSubject -Status "Checking GitHub..." -StatusKind "checking" `
+        -Detail "" -LastCheck $lastCheck -NextCheck $null -PullHistory $pullHistory
 
-    try {
-        $process = Start-OneAutoGitPullScan -ExePath $exePath -RepoPath $repoPath
+    $dirtyResult = Invoke-Git -RepoPath $repoPath -GitArgs @("status", "--porcelain")
+    $isDirty = ($dirtyResult.ExitCode -eq 0 -and @($dirtyResult.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0)
 
-        while (-not $process.HasExited) {
-            Start-Sleep -Milliseconds 250
-        }
+    $fetchResult = Invoke-Git -RepoPath $repoPath -GitArgs @("fetch", "--quiet", $upstreamInfo.Remote)
 
-        $exitCode = $process.ExitCode
-    }
-    catch {
-        Write-Host ("CHECK #{0} could not start autogitpull: {1}" -f $checkNumber, $_.Exception.Message) -ForegroundColor Red
-        $exitCode = -1
-    }
-
-    $afterHash = Get-HeadHash -RepoPath $repoPath
-
-    if ($afterHash -and $lastHash -and $afterHash -ne $lastHash) {
-        $shortHash = $afterHash.Substring(0, [Math]::Min(7, $afterHash.Length))
-        $subject = Get-CommitSubject -RepoPath $repoPath -Hash $afterHash
-
-        if ($subject) {
-            $message = "Pulled $shortHash - $subject"
-        }
-        else {
-            $message = "Repository updated to $shortHash"
-        }
-
-        Write-Host ("[{0}] UPDATE DETECTED: {1}" -f (Get-Date).ToString("HH:mm:ss"), $message) -ForegroundColor Green
-        Show-DesktopNotification -Title "BetterSearch updated" -Message $message
-        $lastHash = $afterHash
-        Write-Host "Update handled successfully. Monitoring will continue." -ForegroundColor Green
-    }
-    elseif ($afterHash -and -not $lastHash) {
-        $lastHash = $afterHash
-        Write-Host ("[{0}] CHECK #{1} finished. HEAD is {2}." -f (Get-Date).ToString("HH:mm:ss"), $checkNumber, $afterHash.Substring(0,7)) -ForegroundColor DarkGray
+    if ($fetchResult.ExitCode -ne 0) {
+        $status = "Fetch failed"
+        $statusKind = "error"
+        $detail = Get-LastLine $fetchResult
     }
     else {
-        if ($exitCode -eq 0) {
-            Write-Host ("[{0}] CHECK #{1} finished - pull attempted; HEAD unchanged." -f (Get-Date).ToString("HH:mm:ss"), $checkNumber) -ForegroundColor DarkGray
+        $remoteResult = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-parse", $upstreamInfo.Upstream)
+        if ($remoteResult.ExitCode -ne 0) {
+            $status = "Remote branch not found"
+            $statusKind = "error"
+            $detail = Get-LastLine $remoteResult
         }
         else {
-            Write-Host ("[{0}] CHECK #{1} finished with autogitpull exit code {2}." -f (Get-Date).ToString("HH:mm:ss"), $checkNumber, $exitCode) -ForegroundColor Yellow
+            $remoteHash = (Get-FirstLine $remoteResult).Trim().ToLowerInvariant()
+            $localHash = Get-HeadHash -RepoPath $repoPath
+
+            if ($localHash -eq $remoteHash) {
+                $status = "Up to date"
+                $statusKind = "ok"
+                $detail = ""
+            }
+            elseif (Test-IsAncestor -RepoPath $repoPath -Older $localHash -Newer $remoteHash) {
+                $countResult = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-list", "--count", "$localHash..$remoteHash")
+                $availableCount = if ($countResult.ExitCode -eq 0) { [int](Get-FirstLine $countResult) } else { 1 }
+
+                if ($isDirty) {
+                    $status = "Update waiting"
+                    $statusKind = "warning"
+                    $detail = "$availableCount remote commit(s) available, but local changes are present. Auto-pull skipped."
+                }
+                else {
+                    $pullArgs = if ($upstreamInfo.TrackingConfigured) {
+                        @("pull", "--ff-only", "--quiet")
+                    }
+                    else {
+                        @("pull", "--ff-only", "--quiet", $upstreamInfo.Remote, $upstreamInfo.RemoteBranch)
+                    }
+
+                    $pullResult = Invoke-Git -RepoPath $repoPath -GitArgs $pullArgs
+                    if ($pullResult.ExitCode -ne 0) {
+                        $status = "Pull failed"
+                        $statusKind = "error"
+                        $detail = Get-LastLine $pullResult
+                    }
+                    else {
+                        $afterHash = Get-HeadHash -RepoPath $repoPath
+                        if ($afterHash -and $afterHash -ne $localHash) {
+                            $logResult = Invoke-Git -RepoPath $repoPath -GitArgs @("log", "--reverse", "--format=%h%x09%s", "$localHash..$afterHash")
+                            $commits = @($logResult.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                            $commitCount = $commits.Count
+                            if ($commitCount -eq 0) { $commitCount = 1 }
+
+                            $entry = [pscustomobject]@{
+                                Time = (Get-Date).ToString("HH:mm:ss")
+                                Before = Short-Hash $localHash
+                                After = Short-Hash $afterHash
+                                CommitCount = $commitCount
+                                Commits = $commits
+                            }
+                            $pullHistory = @($entry) + @($pullHistory)
+                            if ($pullHistory.Count -gt 6) { $pullHistory = @($pullHistory | Select-Object -First 6) }
+
+                            $latestSubject = Get-CommitSubject -RepoPath $repoPath -Hash $afterHash
+                            if ($commitCount -eq 1) {
+                                $notificationMessage = "Pulled $(Short-Hash $afterHash) - $latestSubject"
+                            }
+                            else {
+                                $notificationMessage = "Pulled $commitCount commits. Latest: $(Short-Hash $afterHash) - $latestSubject"
+                            }
+                            Show-DesktopNotification -Title "BetterSearch updated" -Message $notificationMessage
+                            $status = "Updated"
+                            $statusKind = "updated"
+                            $detail = $notificationMessage
+                        }
+                        else {
+                            $status = "Up to date"
+                            $statusKind = "ok"
+                            $detail = ""
+                        }
+                    }
+                }
+            }
+            elseif (Test-IsAncestor -RepoPath $repoPath -Older $remoteHash -Newer $localHash) {
+                $status = "Local branch is ahead"
+                $statusKind = "warning"
+                $detail = "Nothing was pulled because your local branch contains commits not on $($upstreamInfo.Upstream)."
+            }
+            else {
+                $status = "Local and remote diverged"
+                $statusKind = "warning"
+                $detail = "Auto-pull stopped for safety. Resolve the Git history manually."
+            }
         }
     }
 
-    Wait-Countdown -Seconds $intervalSeconds
+    $lastCheck = Get-Date
+    $nextCheck = $lastCheck.AddSeconds($intervalSeconds)
+    $headHash = Get-HeadHash -RepoPath $repoPath
+    $headSubject = Get-CommitSubject -RepoPath $repoPath -Hash $headHash
+
+    Render-Dashboard -RepoPath $repoPath -IntervalSeconds $intervalSeconds -UpstreamInfo $upstreamInfo `
+        -HeadHash $headHash -HeadSubject $headSubject -Status $status -StatusKind $statusKind `
+        -Detail $detail -LastCheck $lastCheck -NextCheck $nextCheck -PullHistory $pullHistory
+
+    Start-Sleep -Seconds $intervalSeconds
 }
