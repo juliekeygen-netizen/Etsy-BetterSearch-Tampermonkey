@@ -134,7 +134,7 @@ function favClearProgress() {
 }
 
 /* Compatibility entry point. The complete-dataset implementation lives only
- * in FavoritesCatalogService (61g). */
+ * in the catalogue/sync owner (61b). */
 function favLoadAll(force = false) {
     return favCatalogAcquireCurrent({ force:force === true });
 }
