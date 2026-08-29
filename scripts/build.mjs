@@ -41,9 +41,11 @@ const diagnosticsManifest = JSON.parse(diagnosticsManifestSource);
 const diagnosticsBackground = await readFile(resolve(diagnosticsRoot, 'background.js'), 'utf8');
 const diagnosticsBackgroundControls = await readFile(resolve(diagnosticsRoot, 'background-controls.js'), 'utf8');
 const diagnosticsBackgroundDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'background-detach-autoexport.js'), 'utf8');
+const diagnosticsBackgroundSessionHealth = await readFile(resolve(diagnosticsRoot, 'background-session-health.js'), 'utf8');
 const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
 const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
 const diagnosticsTransport = await readFile(resolve(diagnosticsRoot, 'transport.js'), 'utf8');
+const diagnosticsBootstrapGuard = await readFile(resolve(diagnosticsRoot, 'bootstrap-guard.js'), 'utf8');
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 const diagnosticsControls = await readFile(resolve(diagnosticsRoot, 'controls.js'), 'utf8');
 const diagnosticsControlsDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'controls-detach-autoexport.js'), 'utf8');
@@ -63,9 +65,11 @@ try {
   new Function(diagnosticsBackground);
   new Function(diagnosticsBackgroundControls);
   new Function(diagnosticsBackgroundDetachAutoExport);
+  new Function(diagnosticsBackgroundSessionHealth);
   new Function(diagnosticsHarExtraInfo);
   new Function(diagnosticsServiceWorker);
   new Function(diagnosticsTransport);
+  new Function(diagnosticsBootstrapGuard);
   new Function(diagnosticsContent);
   new Function(diagnosticsControls);
   new Function(diagnosticsControlsDetachAutoExport);
@@ -100,8 +104,10 @@ const diagnosticsSourceFiles = [
   'background.js',
   'background-controls.js',
   'background-detach-autoexport.js',
+  'background-session-health.js',
   'har-extra-info.js',
   'transport.js',
+  'bootstrap-guard.js',
   'content.js',
   'controls.js',
   'controls-detach-autoexport.js'
@@ -111,9 +117,11 @@ await Promise.all([
   writeFile(resolve(diagnosticsDir, 'background.js'), `${diagnosticsBackground.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-controls.js'), `${diagnosticsBackgroundControls.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-detach-autoexport.js'), `${diagnosticsBackgroundDetachAutoExport.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'background-session-health.js'), `${diagnosticsBackgroundSessionHealth.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'transport.js'), `${diagnosticsTransport.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'bootstrap-guard.js'), `${diagnosticsBootstrapGuard.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls.js'), `${diagnosticsControls.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls-detach-autoexport.js'), `${diagnosticsControlsDetachAutoExport.trim()}\n`, 'utf8'),

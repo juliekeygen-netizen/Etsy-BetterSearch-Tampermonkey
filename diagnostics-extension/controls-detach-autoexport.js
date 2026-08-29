@@ -1,11 +1,12 @@
 'use strict';
 
-// Final page-side hardening for diagnostics v0.2.2. This deliberately reuses
-// the v0.2.1 Stop/Export controls instead of duplicating the proven chunked ZIP
-// path. It also owns the final collapsed-launcher geometry and active drawer
-// lock so earlier compatibility CSS cannot override the intended UX.
+// Final page-side hardening for diagnostics v0.2.3. This deliberately reuses
+// the Stop/Export controls instead of duplicating the proven chunked ZIP path.
+// It also owns the final collapsed-launcher geometry and active drawer lock so
+// earlier compatibility CSS cannot override the intended UX.
 (() => {
   const PANEL_ID = '__etsy_bettersearch_diagnostics__';
+  const ARM_KEY = 'ebsf-diagnostics:armed:v1';
   const STYLE_ID = `${PANEL_ID}-detach-autoexport-style`;
   const handledSessions = new Set();
 
@@ -38,6 +39,10 @@
     return true;
   }
 
+  function clearReloadArm() {
+    try { sessionStorage.removeItem(ARM_KEY); } catch (_) {}
+  }
+
   function installStyle() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
@@ -45,13 +50,15 @@
     style.textContent = `
       #${PANEL_ID}[data-collapsed="1"]{
         box-sizing:border-box!important;
-        width:44px!important;min-width:44px!important;
-        height:44px!important;min-height:44px!important;
+        width:42px!important;min-width:42px!important;max-width:42px!important;
+        height:42px!important;min-height:42px!important;max-height:42px!important;
+        padding:0!important;margin:0!important;overflow:hidden!important;
         border-radius:10px!important;
       }
       #${PANEL_ID}[data-collapsed="1"] header{
         box-sizing:border-box!important;
         width:42px!important;height:42px!important;
+        min-width:42px!important;min-height:42px!important;
         padding:0!important;margin:0!important;
         display:grid!important;place-items:center!important;
       }
@@ -89,7 +96,7 @@
     return null;
   }
 
-  async function waitForExportOutcome(root, activityStartLength, timeoutMs = 30000) {
+  async function waitForExportOutcome(root, activityStartLength, timeoutMs = 60000) {
     const started = Date.now();
     const activity = root?.querySelector('[data-role="activity"]');
     while (Date.now() - started < timeoutMs) {
@@ -106,9 +113,10 @@
     if (!id || handledSessions.has(id)) return;
     handledSessions.add(id);
 
-    // Stop the page-side event transport immediately. Chrome already detached
-    // CDP, so no new network events can arrive; this prevents the DOM recorder
-    // from continuing to enqueue data while the retained session is finalized.
+    // Chrome already detached CDP. Prevent any old document-start arm from
+    // resurrecting the page recorder on the next reload, and close the content
+    // transport gate immediately while the stopped session is exported.
+    clearReloadArm();
     globalThis.__EBSF_DIAG_TRANSPORT__?.setCaptureEnabled(false);
 
     const root = await waitForPanel();
@@ -169,6 +177,7 @@
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type !== 'ebsf-diagnostics-unexpected-detach') return;
+    clearReloadArm();
     void autoExportStoppedSession(message.session, message.reason || 'unexpected-detach');
   });
 
@@ -178,6 +187,7 @@
     const response = await send({ action: 'get_state' });
     const stopped = response?.stopped;
     if (stopped?.sessionId && stopped.autoExportPending) {
+      clearReloadArm();
       void autoExportStoppedSession(stopped, stopped.autoExportReason || 'pending-after-navigation');
     }
   }
