@@ -16,7 +16,7 @@ function functionBlock(source, name, nextName) {
 }
 
 function pageItems(current, total) {
-  const block = functionBlock(pagination, 'favLocalPageItems0150', 'favLocalPageButton0150');
+  const block = functionBlock(pagination, 'favLocalPageItems0150', 'favNativePagerButtonTemplate0151');
   const context = { result:null, Set, Array, Number, Math, String };
   vm.createContext(context);
   vm.runInContext(`${block}\nresult = favLocalPageItems0150(${current}, ${total});`, context);
@@ -31,7 +31,7 @@ test('local result page size is exactly Etsy-sized 20 cards', () => {
 
 test('the five-item smoke collection has one local page and therefore no duplicate local pager', () => {
   assert.equal(Math.ceil(5 / 20), 1);
-  const renderPager = functionBlock(pagination, 'favRenderPagination0150');
+  const renderPager = pagination.slice(pagination.indexOf('favRenderPagination = function favRenderPagination0150'));
   assert.match(renderPager, /if \(totalPages <= 1\) \{\s*favRemoveLocalPagination0150\(\);\s*return;/);
 });
 
@@ -60,27 +60,32 @@ test('changing dataset/filter/sort request resets local results to page one', ()
 });
 
 test('local pager clicks re-slice current records without invoking Etsy navigation or a new catalogue fetch', () => {
-  const block = functionBlock(pagination, 'favGoToLocalPage0150', 'favRenderPagination0150');
+  const block = functionBlock(pagination, 'favGoToLocalPage0150');
   assert.match(block, /favState\.localPage = target/);
   assert.match(block, /favRenderCurrent\(\)/);
   assert.doesNotMatch(block, /favReapply\(|favLoadAll\(|fetch\(|location\.|history\./);
 });
 
-test('native grid and native pager have explicit strong hide contracts during local ownership', () => {
+test('native grid and React-owned native pager have explicit strong hide contracts during local ownership', () => {
   assert.match(pagination, /\[data-ebsf-native-hidden="1"\]\{\s*display:none!important/);
   assert.match(pagination, /nav\[data-ebsf-native-pager-hidden="1"\]\{\s*display:none!important/);
   assert.ok(pagination.includes("nativeGrid.setAttribute('data-ebsf-native-hidden', '1')"));
   assert.ok(pagination.includes("pager.setAttribute('data-ebsf-native-pager-hidden', '1')"));
 });
 
-test('local pager is a distinct BetterSearch nav and never impersonates Etsy WtPagination', () => {
-  assert.match(pagination, /pager\.dataset\.ebsfLocalPagination = '1'/);
-  assert.match(pagination, /BetterSearch filtered favorites pages/);
-  const ensure = functionBlock(pagination, 'favEnsureLocalPagination0150', 'favGoToLocalPage0150');
-  assert.doesNotMatch(ensure, /Favorite Items Page Results|WtPagination/);
+test('local results use Etsy WtPagination presentation instead of bespoke BetterSearch pager styling', () => {
+  assert.match(pagination, /function favNativePagerTemplate0151/);
+  assert.match(pagination, /native\?\.cloneNode\(false\)/);
+  assert.match(pagination, /data-clg-id.*WtPagination/);
+  assert.match(pagination, /wt-action-group__item-container/);
+  assert.match(pagination, /wt-btn.*wt-action-group__item/);
+  assert.match(pagination, /wt-is-selected/);
+  assert.match(pagination, /wt-is-disabled/);
+  assert.match(pagination, /dataset\.ebsfPaginationPresentation = 'etsy-native'/);
+  assert.doesNotMatch(pagination, /ebsf-local-page-button|ebsf-local-page-ellipsis|BetterSearch filtered favorites pages/);
 });
 
-test('returning to native mode removes local pager and restores Etsy pager state', () => {
+test('returning to native mode removes local pager shell and restores Etsy React pager state', () => {
   const restore = pagination.slice(pagination.indexOf('var favRestoreNativeBefore0150'));
   assert.match(restore, /favRemoveLocalPagination0150\(\)/);
   assert.match(restore, /favRestoreNativePagers0150\(\)/);

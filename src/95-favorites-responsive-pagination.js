@@ -1,19 +1,22 @@
 'use strict';
 
-/* v0.15.0 local-result pagination + visual ownership.
+/* v0.15.1 local-result pagination + native visual parity.
  *
- * Etsy's WtPagination belongs only to Etsy's native grid. BetterSearch global
- * filters/sorts operate on the complete catalogue, so they need a separate page
- * identity and (when >20 matches exist) a separate pager. Never map Etsy page 2
- * to BetterSearch page 2 and never move/rebuild Etsy's React-owned pager.
+ * Etsy's real WtPagination remains React-owned and is never repurposed as the
+ * state owner for BetterSearch's globally filtered/sorted result pages. Local
+ * page identity therefore stays independent, but the visible local pager is
+ * rendered from Etsy's live WtPagination DOM/classes/templates so Favorites
+ * always keeps Etsy's native pagination presentation instead of a bespoke
+ * BetterSearch pager design.
  *
  * The base v0.14 renderer already slices favState.filtered by pageSize/localPage.
  * This module owns only:
  *   - the fixed 20-item local page size;
  *   - reset-to-page-1 when the dataset/filter/sort request changes;
- *   - a BetterSearch-owned pager for local results >20;
- *   - strong, reversible visual suppression of Etsy's native grid/pager while
- *     local mode is authoritative.
+ *   - a BetterSearch-owned local page state for results >20;
+ *   - an Etsy-native WtPagination presentation for that local state;
+ *   - strong, reversible visual suppression of Etsy's React-owned grid/pager
+ *     while local mode is authoritative.
  */
 var FAV_LOCAL_PAGE_SIZE0150 = 20;
 favState.localResultKey0150 = String(favState.localResultKey0150 || '');
@@ -78,6 +81,10 @@ favReapply = async function favReapply0150(...args) {
 function favNativePagers0150() {
     return Array.from(document.querySelectorAll('nav[aria-label="Favorite Items Page Results"]'))
         .filter((pager) => pager?.isConnected && !pager.matches('[data-ebsf-local-pagination]'));
+}
+
+function favNativePagerTemplate0151() {
+    return favNativePagers0150()[0] || null;
 }
 
 function favStoreNativePagerState0150(pager) {
@@ -159,35 +166,111 @@ function favLocalPageItems0150(current, total) {
     return out;
 }
 
-function favLocalPageButton0150(label, page, options = {}) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'ebsf-local-page-button';
-    button.textContent = String(label);
-    button.dataset.ebsfLocalPage = String(page);
-    if (options.label) button.setAttribute('aria-label', options.label);
-    if (options.current) {
-        button.classList.add('is-current');
-        button.setAttribute('aria-current', 'page');
+function favNativePagerButtonTemplate0151(kind) {
+    const native = favNativePagerTemplate0151();
+    if (!native) return null;
+    const buttons = Array.from(native.querySelectorAll('.wt-action-group__item-container button'));
+    if (kind === 'number') {
+        return buttons.find((button) => /^\s*\d+\s*$/.test(button.textContent || '')) || null;
     }
-    if (options.disabled) button.disabled = true;
-    return button;
+    const wanted = kind === 'previous' ? 'previous' : 'next';
+    return buttons.find((button) => {
+        const label = String(button.querySelector('.wt-screen-reader-only')?.textContent || button.getAttribute('aria-label') || '').trim().toLowerCase();
+        return label === wanted;
+    }) || (kind === 'previous' ? buttons.find((button) => button.classList.contains('wt-btn--icon')) : buttons.slice().reverse().find((button) => button.classList.contains('wt-btn--icon'))) || null;
+}
+
+function favNativeArrowMarkup0151(kind) {
+    const previousPath = 'M9.413 5.285A.5.5 0 0 1 10.12 5.285L10.228 5.393A.5.5 0 0 1 10.332 5.95L8.15 10.857 19.933 10.072A1 1 0 0 1 21 11.07V12.932A1 1 0 0 1 19.933 13.93L8.15 13.143 10.332 18.05A.5.5 0 0 1 10.228 18.607L10.118 18.717A.5.5 0 0 1 9.41 18.718L3.266 12.572A.75.75 0 0 1 3.047 12.041V11.96C3.047 11.764 3.126 11.572 3.267 11.432z';
+    const nextPath = 'M14.587 5.285A.5.5 0 0 0 13.88 5.285L13.772 5.393A.5.5 0 0 0 13.668 5.95L15.85 10.857 4.067 10.072A1 1 0 0 0 3 11.07V12.932A1 1 0 0 0 4.067 13.93L15.85 13.143 13.67 18.05A.5.5 0 0 0 13.772 18.607L13.882 18.717A.5.5 0 0 0 14.59 18.718L20.734 12.572A.75.75 0 0 0 20.953 12.041V11.96A.75.75 0 0 0 20.733 11.432z';
+    const label = kind === 'previous' ? 'Previous' : 'Next';
+    const path = kind === 'previous' ? previousPath : nextPath;
+    return `<span class="wt-screen-reader-only">${label}</span><span class="etsy-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"></path></svg></span>`;
+}
+
+function favNativeLocalPageControl0151(kind, page, options = {}) {
+    const container = document.createElement('div');
+    container.className = 'wt-action-group__item-container';
+
+    const template = favNativePagerButtonTemplate0151(kind === 'number' ? 'number' : kind);
+    const button = template?.cloneNode(true) || document.createElement('button');
+    button.type = 'button';
+    button.classList.add('wt-btn', 'wt-action-group__item');
+    button.classList.remove('wt-is-selected', 'wt-is-disabled');
+    button.removeAttribute('aria-current');
+    button.removeAttribute('aria-disabled');
+    button.removeAttribute('disabled');
+    button.disabled = false;
+    button.dataset.ebsfLocalPage = String(page);
+    if (!button.getAttribute('data-clg-id')) button.setAttribute('data-clg-id', 'WtButton');
+
+    if (kind === 'number') {
+        button.classList.remove('wt-btn--icon');
+        button.textContent = String(options.label ?? page);
+    } else {
+        button.classList.add('wt-btn--icon');
+        if (!template) button.innerHTML = favNativeArrowMarkup0151(kind);
+        const sr = button.querySelector('.wt-screen-reader-only');
+        if (sr) sr.textContent = kind === 'previous' ? 'Previous' : 'Next';
+    }
+
+    if (options.current) {
+        button.classList.add('wt-is-selected');
+        button.setAttribute('aria-current', 'true');
+    }
+    if (options.disabled) {
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+        button.classList.add('wt-is-disabled');
+    }
+    container.append(button);
+    return container;
+}
+
+function favNativeLocalEllipsis0151() {
+    const container = document.createElement('div');
+    container.className = 'wt-action-group__item-container';
+    const span = document.createElement('span');
+    span.className = 'wt-action-group__item';
+    span.textContent = '…';
+    span.setAttribute('aria-hidden', 'true');
+    container.append(span);
+    return container;
+}
+
+function favBuildNativePaginationShell0151() {
+    const native = favNativePagerTemplate0151();
+    const pager = native?.cloneNode(false) || document.createElement('nav');
+    pager.removeAttribute('hidden');
+    pager.hidden = false;
+    pager.inert = false;
+    pager.removeAttribute('aria-hidden');
+    pager.removeAttribute('data-ebsf-native-pager-hidden');
+    delete pager.dataset.ebsfNativePagerPrevHidden;
+    delete pager.dataset.ebsfNativePagerPrevInert;
+    delete pager.dataset.ebsfNativePagerPrevAria;
+    pager.dataset.ebsfLocalPagination = '1';
+    pager.dataset.ebsfPaginationPresentation = 'etsy-native';
+    pager.setAttribute('data-clg-id', native?.getAttribute('data-clg-id') || 'WtPagination');
+    pager.setAttribute('aria-label', native?.getAttribute('aria-label') || 'Favorite Items Page Results');
+
+    const nativeGroup = native?.querySelector('.wt-action-group');
+    const group = nativeGroup?.cloneNode(false) || document.createElement('div');
+    if (!nativeGroup) group.className = 'wt-action-group wt-list-inline wt-body-max-width wt-mt-xs-1 wt-mb-xs-10';
+    group.replaceChildren();
+    pager.replaceChildren(group);
+    return pager;
 }
 
 function favEnsureLocalPagination0150(localGrid) {
     let pager = favState.localPagination0150;
-    if (!pager?.isConnected) {
-        pager = document.querySelector('[data-ebsf-local-pagination]');
+    if (!pager?.isConnected) pager = document.querySelector('[data-ebsf-local-pagination]');
+    if (pager && pager.dataset.ebsfPaginationPresentation !== 'etsy-native') {
+        pager.remove();
+        pager = null;
     }
-    if (!pager) {
-        pager = document.createElement('nav');
-        pager.className = 'ebsf-local-pagination';
-        pager.dataset.ebsfLocalPagination = '1';
-        pager.setAttribute('aria-label', 'BetterSearch filtered favorites pages');
-    }
-    if (pager.parentElement !== localGrid.parentElement || pager.previousElementSibling !== localGrid) {
-        localGrid.after(pager);
-    }
+    if (!pager) pager = favBuildNativePaginationShell0151();
+    if (pager.parentElement !== localGrid.parentElement || pager.previousElementSibling !== localGrid) localGrid.after(pager);
     favState.localPagination0150 = pager;
     return pager;
 }
@@ -207,8 +290,8 @@ function favGoToLocalPage0150(page) {
     return true;
 }
 
-/* Module 94 deliberately makes favRenderPagination a no-op for native mode.
- * Local mode now owns a distinct pager without touching Etsy's pager DOM. */
+/* Local page state remains BetterSearch-owned, but the visible control uses Etsy's
+ * WtPagination presentation. The hidden native React pager itself is untouched. */
 favRenderPagination = function favRenderPagination0150(pages) {
     const localGrid = favState.localGrid0141;
     if (favState.renderMode0141 !== 'bettersearch-local' || !localGrid?.isConnected) {
@@ -228,29 +311,27 @@ favRenderPagination = function favRenderPagination0150(pages) {
     }
 
     const pager = favEnsureLocalPagination0150(localGrid);
+    const group = pager.querySelector('.wt-action-group') || pager;
     const fragment = document.createDocumentFragment();
-    fragment.append(favLocalPageButton0150('‹', favState.localPage - 1, {
-        label:'Previous BetterSearch results page',
+    fragment.append(favNativeLocalPageControl0151('previous', favState.localPage - 1, {
         disabled:favState.localPage <= 1,
     }));
 
     for (const item of favLocalPageItems0150(favState.localPage, totalPages)) {
         if (item === 'ellipsis') {
-            const ellipsis = document.createElement('span');
-            ellipsis.className = 'ebsf-local-page-ellipsis';
-            ellipsis.textContent = '…';
-            ellipsis.setAttribute('aria-hidden', 'true');
-            fragment.append(ellipsis);
+            fragment.append(favNativeLocalEllipsis0151());
             continue;
         }
-        fragment.append(favLocalPageButton0150(item, item, { current:item === favState.localPage }));
+        fragment.append(favNativeLocalPageControl0151('number', item, {
+            label:item,
+            current:item === favState.localPage,
+        }));
     }
 
-    fragment.append(favLocalPageButton0150('›', favState.localPage + 1, {
-        label:'Next BetterSearch results page',
+    fragment.append(favNativeLocalPageControl0151('next', favState.localPage + 1, {
         disabled:favState.localPage >= totalPages,
     }));
-    pager.replaceChildren(fragment);
+    group.replaceChildren(fragment);
     pager.dataset.ebsfLocalPageCount = String(totalPages);
     pager.dataset.ebsfLocalCurrentPage = String(favState.localPage);
 };
@@ -278,6 +359,8 @@ function favLocalPaginationOwnershipHealthy0150() {
     if (pages <= 1) return !localPager;
     return Boolean(
         localPager?.isConnected
+        && localPager.dataset.ebsfPaginationPresentation === 'etsy-native'
+        && localPager.getAttribute('data-clg-id') === 'WtPagination'
         && localPager.dataset.ebsfLocalPageCount === String(pages)
         && localPager.dataset.ebsfLocalCurrentPage === String(favState.localPage)
     );
@@ -293,55 +376,12 @@ favRestoreNative = function favRestoreNative0150() {
 GM_addStyle(`
   /* Etsy's utility classes may set display with !important. Local ownership is
    * therefore enforced by an equally explicit BetterSearch-owned marker, not
-   * by the HTML hidden attribute alone. */
+   * by the HTML hidden attribute alone. The visible local pager itself relies
+   * entirely on Etsy's WtPagination/WtButton classes and native layout CSS. */
   [data-ebsf-native-hidden="1"]{
     display:none!important;
   }
   nav[data-ebsf-native-pager-hidden="1"]{
     display:none!important;
-  }
-  .ebsf-local-pagination{
-    display:flex!important;
-    align-items:center!important;
-    justify-content:center!important;
-    gap:6px!important;
-    width:100%!important;
-    margin:24px 0 8px!important;
-    padding:0!important;
-  }
-  .ebsf-local-page-button{
-    appearance:none!important;
-    display:inline-flex!important;
-    align-items:center!important;
-    justify-content:center!important;
-    min-width:36px!important;
-    height:36px!important;
-    padding:0 10px!important;
-    border:1px solid transparent!important;
-    border-radius:999px!important;
-    background:transparent!important;
-    color:#222!important;
-    font:600 13px/1 Arial,sans-serif!important;
-    cursor:pointer!important;
-  }
-  .ebsf-local-page-button:hover:not(:disabled),
-  .ebsf-local-page-button:focus-visible{
-    background:#ece9e5!important;
-  }
-  .ebsf-local-page-button.is-current{
-    border-color:#222!important;
-    background:#fff!important;
-  }
-  .ebsf-local-page-button:disabled{
-    opacity:.35!important;
-    cursor:default!important;
-  }
-  .ebsf-local-page-ellipsis{
-    display:inline-flex!important;
-    align-items:center!important;
-    justify-content:center!important;
-    min-width:22px!important;
-    height:36px!important;
-    color:#666!important;
   }
 `);
