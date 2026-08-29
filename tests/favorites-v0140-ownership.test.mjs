@@ -6,13 +6,14 @@ import { readFile } from 'node:fs/promises';
 const dataSource = await readFile(new URL('../src/61-favorites-data.js', import.meta.url), 'utf8');
 const syncSource = await readFile(new URL('../src/61b-favorites-sync.js', import.meta.url), 'utf8');
 const catalogSource = syncSource;
+const deepQueueSource = await readFile(new URL('../src/61d-favorites-deep-queue.js', import.meta.url), 'utf8');
 const metadataSource = await readFile(new URL('../src/61h-favorites-metadata-coordinator.js', import.meta.url), 'utf8');
 const runtimeSource = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
 const shellSource = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const correctnessSource = await readFile(new URL('../src/99-favorites-v0131-correctness.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-function catalogueFixture(pageLengths) {
+function catalogueFixture(pages) {
   const requests = [];
   const observations = [];
   const context = vm.createContext({
@@ -34,8 +35,9 @@ function catalogueFixture(pageLengths) {
     favFetchJson: async (url) => {
       requests.push(url.offset);
       const pageIndex = url.offset / 20;
-      const length = pageLengths[pageIndex] ?? 0;
-      return { listings:Array.from({ length }, (_, index) => ({ id:`${url.offset + index}` })) };
+      const page = pages[pageIndex] ?? 0;
+      if (Array.isArray(page)) return { listings:page.map((id) => ({ id:String(id) })) };
+      return { listings:Array.from({ length:page }, (_, index) => ({ id:`${url.offset + index}` })) };
     },
     favApiListings: (payload) => payload.listings || [],
     favRecordsFromListings: (listings, offset) => listings.map((item, index) => ({ id:String(item.id), order:offset + index })),
@@ -84,13 +86,16 @@ test('there is exactly one production complete-catalogue crawler', () => {
   assert.match(compatibility, /favCatalogRefresh\(scope/);
 });
 
-test('catalogue completeness verifies a short boundary for exact page multiples and 61 items', async () => {
+test('catalogue completeness verifies every acceptance boundary including exact page multiples', async () => {
   for (const [lengths, expectedRequests, expectedRecords] of [
     [[0], [0], 0],
     [[1], [0], 1],
     [[19], [0], 19],
     [[20, 0], [0, 20], 20],
+    [[20, 1], [0, 20], 21],
+    [[20, 19], [0, 20], 39],
     [[20, 20, 0], [0, 20, 40], 40],
+    [[20, 20, 1], [0, 20, 40], 41],
     [[20, 20, 20, 0], [0, 20, 40, 60], 60],
     [[20, 20, 20, 1], [0, 20, 40, 60], 61],
   ]) {
@@ -103,11 +108,19 @@ test('catalogue completeness verifies a short boundary for exact page multiples 
 
 test('catalogue crawler rejects a repeated full page instead of marking it complete', async () => {
   const fixture = catalogueFixture([20, 20]);
-  let call = 0;
-  fixture.requests.length = 0;
-  const context = vm.createContext({});
   assert.throws(() => fixture.favCatalogRepeatedFingerprint0141('1,2', [{ id:'1' }, { id:'2' }]), /repeated a page/i);
-  void call; void context;
+});
+
+test('catalogue crawler rejects a reordered full page that contributes no new listing IDs', async () => {
+  const first = Array.from({ length:20 }, (_, index) => index);
+  const second = first.slice().reverse();
+  const fixture = catalogueFixture([first, second]);
+  const scope = fixture.favCatalogDescriptor0141({ owner:'owner', type:'items', id:'', login:'test' }, '');
+  await assert.rejects(
+    fixture.favCatalogCrawlSimple0141(scope, new AbortController(), {}),
+    /full page with no new listings/i,
+  );
+  assert.deepEqual(fixture.requests, [0, 20]);
 });
 
 test('same-dataset refresh is keyed while unrelated datasets have independent in-flight slots', () => {
@@ -118,13 +131,16 @@ test('same-dataset refresh is keyed while unrelated datasets have independent in
   assert.match(syncSource, /Promise\.all\(due\.map/);
 });
 
-test('cross-tab catalogue refresh has a dataset-scoped Web Locks path and storage-lease fallback', () => {
+test('cross-tab catalogue refresh has Web Locks plus a heartbeating storage-lease fallback', () => {
   assert.match(catalogSource, /globalThis\.navigator\?\.locks/);
   assert.match(catalogSource, /if \(locks\?\.request\)/);
   assert.match(catalogSource, /return locks\.request/);
   assert.match(catalogSource, /favCatalogLeaseStorageKey0141/);
   assert.match(catalogSource, /leaseUntil/);
   assert.match(catalogSource, /favCatalogPeerCompleted0141/);
+  assert.match(catalogSource, /const heartbeatMs = Math\.max/);
+  assert.match(catalogSource, /globalThis\.setInterval\?\.\(\(\) => favCatalogRefreshLease0141/);
+  assert.match(catalogSource, /globalThis\.clearInterval\?\.\(heartbeat\)/);
 });
 
 test('metadata requirements are capability-driven instead of one extra-info flag', () => {
@@ -149,6 +165,18 @@ test('metadata freshness distinguishes destination-sensitive shipping from polic
   assert.match(metadataSource, /normalized\.contextKey = String\(field\?\.contextKey \|\| ''\)/);
 });
 
+test('aux metadata captures scope and rejects stale responses before mutating or persisting', () => {
+  const block = metadataSource.slice(
+    metadataSource.indexOf('async function favMetadataFetchAux0141'),
+    metadataSource.indexOf('async function favMetadataIndexedById0141'),
+  );
+  assert.match(block, /const scope = favIndexCurrentScope\(\)/);
+  assert.ok((block.match(/favDatasetKey\(\) !== datasetKey/g) || []).length >= 2, 'dataset is checked before and after the awaited request');
+  assert.match(block, /const data = await favFetchJson[\s\S]*Stale metadata request[\s\S]*favMetadataApplyAux0141/);
+  assert.match(block, /favIndexObserveRecords\(batch, \{ scope, complete:false, syncState:'metadata' \}\)/);
+  assert.doesNotMatch(block, /favIndexObserveRecords\(batch, \{ scope:favIndexCurrentScope\(\)/);
+});
+
 test('plain Favorites browsing cannot trigger a whole-catalogue automatic deep scan', () => {
   const autoBlock = metadataSource.slice(metadataSource.indexOf('favDeepMaybeAutoScan ='), metadataSource.indexOf('function favMetadataScheduleReapply0141'));
   assert.match(autoBlock, /if \(!deep\.size\) return false/);
@@ -157,11 +185,24 @@ test('plain Favorites browsing cannot trigger a whole-catalogue automatic deep s
   assert.match(metadataSource, /priority:visible\.has\(String\(record\.id\)\) \? 1 : 2/);
 });
 
-test('owner-scoped deep maintenance reads exact scope membership instead of all historical listings', () => {
+test('automatic deep requirements respect terminal failed jobs while manual Update all can force retry', () => {
+  const block = metadataSource.slice(
+    metadataSource.indexOf('async function favMetadataDeepQueueById0141'),
+    metadataSource.indexOf('function favMetadataCoverage0141'),
+  );
+  assert.match(block, /queueById\.get\(String\(record\.id\)\)\?\.status === 'failed'/);
+  assert.match(block, /continue;/);
+  assert.match(deepQueueSource, /function favDeepUpdateAll\(\) \{ return favDeepStart\(\{ force:true \}\); \}/);
+  assert.match(deepQueueSource, /requeue:options\.force === true/);
+});
+
+test('owner-scoped deep maintenance only trusts a complete authoritative All scope', () => {
   const block = metadataSource.slice(metadataSource.indexOf('favIndexGetActiveListings = async function'), metadataSource.indexOf('favDeepMaybeAutoScan ='));
   const ownerBlock = block.slice(block.indexOf('const authoritativeKey'));
-  assert.match(ownerBlock, /authoritativeKey/);
+  assert.match(ownerBlock, /scope\?\.complete === true/);
+  assert.match(ownerBlock, /scope\?\.complete !== true/);
   assert.match(ownerBlock, /store\.get\(idValue\)/);
+  assert.match(ownerBlock, /objectStore\('scopes'\)\.getAll\(\)/);
   assert.doesNotMatch(ownerBlock, /store\.getAll\(\)/);
   assert.match(block, /store\.index\('isFavorite'\)\.getAll\(true\)/);
 });
