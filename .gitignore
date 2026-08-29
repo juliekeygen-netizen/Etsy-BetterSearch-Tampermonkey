@@ -5,4 +5,5 @@ dist/
 node_modules/
 .DS_Store
 Repo_AutoPull/Repo-AutoPull.config.json
+Repo_AutoPull/RepoAutoPull.config.json
 tools/repo-autopull-exe/embedded.ps1

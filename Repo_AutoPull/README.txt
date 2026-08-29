@@ -95,13 +95,51 @@ POST-UPDATE ORDER
 
 If build or a custom command fails, later post-update steps are skipped.
 
-STANDALONE EXE
---------------
+STANDALONE EXE - PORTABLE CONFIG
+--------------------------------
 RepoAutoPull.exe contains the same PowerShell logic in one Windows x64 executable.
-Its configuration is stored under:
-  %APPDATA%\RepoAutoPull\Repo-AutoPull.config.json
 
-The source launcher stores configuration beside Repo-AutoPull.ps1 instead.
+Each physical copy of RepoAutoPull.exe has its OWN configuration file beside it:
+
+  RepoAutoPull.exe
+  RepoAutoPull.config.json
+
+That means you can make separate folders/copies for different repositories, for example:
+
+  RepoAutoPull-Etsy\
+    RepoAutoPull.exe
+    RepoAutoPull.config.json
+
+  RepoAutoPull-Artemis\
+    RepoAutoPull.exe
+    RepoAutoPull.config.json
+
+Changing one copy's repository, interval, commands, pull mode, or launch settings does not change the other copy.
+
+ONE-TIME LEGACY MIGRATION
+-------------------------
+When a standalone EXE has no RepoAutoPull.config.json beside it yet, it checks for old configuration in this order:
+
+  1. Repo-AutoPull.config.json beside the EXE
+  2. %APPDATA%\RepoAutoPull\Repo-AutoPull.config.json
+
+If found, it copies that configuration beside the EXE as RepoAutoPull.config.json once. After that the local portable file is the source of truth.
+
+The EXE intentionally does NOT silently fall back to shared AppData configuration. If the folder containing RepoAutoPull.exe is not writable, it displays an error and asks you to move/copy the EXE to a writable folder.
+
+The source .cmd + .ps1 launcher continues to store Repo-AutoPull.config.json beside Repo-AutoPull.ps1.
+
+ICON
+----
+RepoAutoPull.exe has an embedded Windows application icon (repository/folder + sync/pull arrows). The source icon assets are under:
+
+  Repo_AutoPull\assets\RepoAutoPull.ico
+  Repo_AutoPull\assets\RepoAutoPull.png
+
+The EXE also carries Windows file metadata:
+  Product name      : Repo AutoPull
+  File description  : Repo AutoPull
+  Original filename : RepoAutoPull.exe
 
 SAFETY
 ------

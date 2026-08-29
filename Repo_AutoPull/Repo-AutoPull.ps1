@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Configure,
     [switch]$StartDirect,
     [switch]$TestNotification
@@ -17,7 +17,12 @@ if (-not (Test-Path -LiteralPath $ConfigRoot -PathType Container)) {
     New-Item -ItemType Directory -Path $ConfigRoot -Force | Out-Null
 }
 
-$ConfigPath = Join-Path $ConfigRoot "Repo-AutoPull.config.json"
+$ExplicitConfigPath = [string]$env:REPO_AUTOPULL_CONFIG_PATH
+$ConfigPath = if (-not [string]::IsNullOrWhiteSpace($ExplicitConfigPath)) {
+    $ExplicitConfigPath
+} else {
+    Join-Path $ConfigRoot "Repo-AutoPull.config.json"
+}
 $LegacyConfigCandidates = @(
     (Join-Path $ScriptDir "BetterSearch-AutoPull.config.json"),
     (Join-Path (Split-Path -Parent $ScriptDir) "BetterSearch_AutoPull_Notify\BetterSearch-AutoPull.config.json")
