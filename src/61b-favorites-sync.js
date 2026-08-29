@@ -160,6 +160,18 @@ function favCatalogRepeatedFingerprint0141(previous, records) {
     return fingerprint;
 }
 
+/* Catalogue-local merge semantics: keep the earliest Etsy order for duplicate
+ * listing IDs while accepting fresher fields from that earlier observation.
+ * The crawler therefore has no hidden dependency on 61-favorites-data.js. */
+function favCatalogMergeRecords0141(map, records) {
+    for (const record of records) {
+        const old = map.get(record.id);
+        if (!old || record.order < old.order) {
+            map.set(record.id, old ? { ...old, ...record, order:Math.min(old.order, record.order) } : record);
+        }
+    }
+}
+
 async function favCatalogCrawlSimple0141(scope, controller, options = {}) {
     const liveNodes = favCardMap(document);
     const recordMap = new Map();
@@ -177,7 +189,7 @@ async function favCatalogCrawlSimple0141(scope, controller, options = {}) {
         const listings = favApiListings(payload);
         const records = favRecordsFromListings(listings, offset, liveNodes);
         repeatedFingerprint = favCatalogRepeatedFingerprint0141(repeatedFingerprint, records);
-        favMergeRecords(recordMap, records);
+        favCatalogMergeRecords0141(recordMap, records);
         pagesProcessed += 1;
         options.touchLease?.();
         const state = favCatalogPublish0141(scope, {
