@@ -9,6 +9,7 @@ const catalogSource = syncSource;
 const metadataSource = await readFile(new URL('../src/61h-favorites-metadata-coordinator.js', import.meta.url), 'utf8');
 const runtimeSource = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
 const shellSource = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
+const correctnessSource = await readFile(new URL('../src/99-favorites-v0131-correctness.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
 function catalogueFixture(pageLengths) {
@@ -191,6 +192,22 @@ test('late Favorites shell cannot blank the native grid or bypass v0.14 metadata
   const legacyHelper = shellSource.match(/function favScheduleLocalRender0121\([^)]*\) \{[^}]*\}/)?.[0] || '';
   assert.match(legacyHelper, /favReapplyBefore0120\(force\)/);
   assert.doesNotMatch(legacyHelper, /favRenderCurrent/);
+});
+
+test('late route-settle paths re-enter metadata coordination before local rendering', () => {
+  const view = correctnessSource.slice(
+    correctnessSource.indexOf('favRefreshForViewChange0137 = function favRefreshForViewChange0140'),
+    correctnessSource.indexOf('favScheduleCurrentPageObservation = function favScheduleCurrentPageObservation0140')
+  );
+  assert.match(view, /void favReapply\(\)/);
+  assert.doesNotMatch(view, /favRenderCurrent\(\)/);
+
+  const observation = correctnessSource.slice(
+    correctnessSource.indexOf('favScheduleCurrentPageObservation = function favScheduleCurrentPageObservation0140'),
+    correctnessSource.indexOf('function favMutationContainsRail0140')
+  );
+  assert.match(observation, /void favReapply\(\)/);
+  assert.doesNotMatch(observation, /favRenderCurrent\(\)/);
 });
 
 test('dependency-aware render stays native while required deep work is pending and final shell exposes unresolved coverage', () => {
