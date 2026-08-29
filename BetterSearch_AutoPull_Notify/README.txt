@@ -1,101 +1,97 @@
-BetterSearch AutoPull + Windows Notifications v1.2
+BetterSearch AutoPull + Windows Notifications v1.3
 ======================================================
 
-WHY v1.2
+v1.3 FIX
 --------
-The original monitor could detect a local Git HEAD change, but that alone did not
-prove autogitpull itself had pulled it. A manual "git pull" could trigger the old
-v1.0 detector too.
+The autogitpull.exe integration has been removed from the actual update path.
 
-v1.2 makes the autogitpull side much more deterministic:
+Your tests showed that:
+- the watcher loop itself was running every 30 seconds;
+- autogitpull kept reporting the local commit it already saw;
+- it did not move the local worktree to the new GitHub commit;
+- a normal manual "git pull" DID work immediately.
 
-  --single-run
-      One real scan cycle, then exit.
+So v1.3 uses the same normal Git CLI that already works on your PC.
 
-  --no-hash-check
-      autogitpull attempts the pull operation on EVERY scheduled scan instead of
-      relying on its preliminary hash comparison.
+Every cycle is now:
 
-  --include-private
-      Allows GitHub remotes that require authentication too (including setups
-      where the repo is accessed through authenticated Git credentials / SSH).
-
-  --show-skipped
-      If autogitpull skips the repository, the reason is visible in the console.
-
-The dangerous options --force-pull / --discard-dirty are NOT enabled.
-
-CONTINUOUS LOOP
----------------
-The wrapper owns the recurrence:
-
-    CHECK #1
+  git fetch <remote>
        |
        v
-    autogitpull performs one pull scan
+  compare local HEAD with the tracked remote branch
        |
-       +--> update -> Windows notification
+       +-- same ---------> Up to date
        |
-       v
-    countdown
+       +-- remote ahead -> git pull --ff-only
+       |                        |
+       |                        +--> Windows notification
        |
-       v
-    CHECK #2
-       |
-       v
-    ... forever
+       +-- dirty/diverged -> do NOT overwrite anything; show a warning
 
-IMPORTANT: an UPDATE DETECTED event does NOT stop the monitor.
-After the notification it prints:
+autogitpull.exe is no longer required.
 
-    Update handled successfully. Monitoring will continue.
+SAFETY
+------
+The helper never uses reset --hard, force-pull, or any command intended to
+discard local work.
 
-Then it starts the normal countdown and the next check.
+If the worktree contains local changes and an update is available, it reports
+"Update waiting" and skips the pull.
 
-NORMAL OUTPUT
+If local and remote history have diverged, it also stops and asks for manual Git
+resolution instead of attempting an unsafe merge.
+
+DISPLAY
+-------
+The console is now a single refreshed status screen instead of an ever-growing
+wall of checks.
+
+It shows:
+- repo
+- current branch/upstream
+- current HEAD + commit title
+- last check time
+- next check time
+- current status
+- recent successful pulls and the commits included in them
+
+Example:
+
+  ========================================================
+   BetterSearch AutoPull + Notifications v1.3
+  ========================================================
+  Repo   : C:\...\Etsy-BetterSearch-Tampermonkey
+  Branch : main -> origin/main
+  Every  : 30s
+  HEAD   : 220995e  test: add AutoPull verification file
+
+  Status : Up to date
+  Checked: 15:22:30
+  Next   : 15:23:00
+
+  Recent pulls:
+    15:20:31  71d27e4 -> 220995e  (1 commit)
+             220995e  test: add AutoPull verification file
+
+NOTIFICATIONS
 -------------
-When nothing changed you should see something like:
+After a successful automatic pull, Windows shows:
 
-    [14:30:00] CHECK #1 - contacting Git remote...
-    ...
-    [14:30:02] CHECK #1 finished - pull attempted; HEAD unchanged.
-    Next GitHub check in 30s...
+  BetterSearch updated
+  Pulled <commit> - <commit title>
 
-When an update is actually pulled:
+If several commits arrived together, the notification says how many were
+pulled and shows the newest commit.
 
-    [14:31:04] UPDATE DETECTED:
-    Pulled 5f35da9 - v0.14.2: fix ...
-    Update handled successfully. Monitoring will continue.
-    Next GitHub check in 30s...
+EXISTING CONFIG
+---------------
+Your existing BetterSearch-AutoPull.config.json still works.
 
-UPGRADE FROM v1.0/v1.1
-----------------------
-1. Close the old AutoPull window.
-2. Extract this ZIP.
-3. Replace these files in your existing BetterSearch_AutoPull_Notify folder:
-     BetterSearch-AutoPull.ps1
-     Start BetterSearch AutoPull.cmd
-     Reset setup.cmd
-     Test notification.cmd
-     README.txt
-4. KEEP your existing:
-     BetterSearch-AutoPull.config.json
-5. KEEP your:
-     autogitpull.exe
-6. Double-click:
-     Start BetterSearch AutoPull.cmd
+The old autogitpullExe field may remain in it; v1.3 simply ignores it.
 
-You do not need to redo setup.
-
-WHY MANUAL GIT PULL WAS MISLEADING
-----------------------------------
-v1.0 watched the local Git HEAD continuously. Therefore ANY process that changed
-HEAD -- including you manually running "git pull" -- could cause its
-"UPDATE DETECTED" notification.
-
-v1.1/v1.2 compare HEAD immediately before and immediately after each autogitpull
-single-run scan. That makes the notification much more tightly associated with
-the autogitpull scan itself.
+If you run Reset setup.cmd, the new setup only asks for:
+- local repository folder
+- check interval
 
 TEST NOTIFICATION
 -----------------
@@ -110,5 +106,13 @@ Double-click:
 STOP
 ----
 Close the window or press Ctrl+C.
+
+IMPORTANT FOR THIS v1.3 UPGRADE
+-------------------------------
+Because v1.2 is the broken version that cannot pull this fix automatically, you
+need to do ONE FINAL manual "git pull" to receive v1.3.
+
+After v1.3 is running, normal future repository updates should be pulled by this
+helper itself.
 
 Chrome extension rebuild/reload is intentionally NOT included yet.
