@@ -1,5 +1,0 @@
-BetterSearch AutoPull test
-
-If this file appeared automatically in your local BetterSearch_AutoPull_Notify folder, the GitHub -> autogitpull -> local repo update path worked.
-
-Created by ChatGPT on 2026-08-29 for the auto-pull test.
