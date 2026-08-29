@@ -13,8 +13,8 @@ const controlsDetach = await readFile(new URL('../diagnostics-extension/controls
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2.3 loads stale-arm, controls and detach hardening in safe order', () => {
-  assert.equal(manifest.version, '0.2.3');
+test('diagnostics v0.2.4 loads passive-startup, controls and detach hardening in safe order', () => {
+  assert.equal(manifest.version, '0.2.4');
   assert.deepEqual(manifest.content_scripts[0].js, [
     'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'controls-detach-autoexport.js'
   ]);
@@ -84,7 +84,7 @@ test('active recording or pause state forces the diagnostics drawer open and blo
 });
 
 
-test('Record & Reload remains document-start armed and Start button is repurposed as Pause\/Resume', () => {
+test('Record & Reload still arms its current document and Start button is repurposed as Pause\/Resume', () => {
   assert.match(controls, /startAndReload/);
   assert.match(controls, /start_recording/);
   assert.match(controls, /sessionStorage\.setItem\(ARM_KEY/);
@@ -95,12 +95,12 @@ test('Record & Reload remains document-start armed and Start button is repurpose
 });
 
 
-test('document-start arm is freshness stamped and stale arms are removed before content.js', () => {
-  assert.match(bootstrapGuard, /MAX_ARM_AGE_MS = 45 \* 1000/);
-  assert.match(bootstrapGuard, /armedAt/);
-  assert.match(bootstrapGuard, /Storage\.prototype\.setItem/);
+test('new documents consume any arm before content.js and require background debugger confirmation', () => {
+  assert.match(bootstrapGuard, /__EBSF_DIAG_CONSUMED_ARM__/);
+  assert.match(bootstrapGuard, /__EBSF_DIAG_BACKGROUND_CONFIRMATION_REQUIRED__/);
   assert.match(bootstrapGuard, /sessionStorage\.removeItem\(ARM_KEY\)/);
-  assert.match(bootstrapGuard, /one-shot/);
+  assert.doesNotMatch(bootstrapGuard, /Storage\.prototype\.setItem/);
+  assert.doesNotMatch(bootstrapGuard, /setTimeout\(/);
 });
 
 
@@ -181,25 +181,29 @@ test('unexpected debugger detach remains recoverable as a stopped exportable ses
 });
 
 
-test('Chrome debugger Cancel turns unexpected detach into stop plus automatic retained export', () => {
+test('Chrome debugger banner Cancel turns canceled_by_user detach into stop plus automatic retained export', () => {
   assert.match(backgroundDetach, /chrome\.debugger\.onDetach\.addListener/);
+  assert.match(backgroundDetach, /canceled_by_user/);
   assert.match(backgroundDetach, /recoverableAfterDetach/);
   assert.match(backgroundDetach, /autoExportPending = true/);
-  assert.match(backgroundDetach, /ebsf-diagnostics-unexpected-detach/);
+  assert.match(backgroundDetach, /bannerCancel: true/);
   assert.match(backgroundDetach, /clear_auto_export/);
   assert.match(controlsDetach, /__EBSF_DIAG_TRANSPORT__/);
   assert.match(controlsDetach, /setCaptureEnabled\(false\)/);
   assert.match(controlsDetach, /clearReloadArm\(\)/);
   assert.match(controlsDetach, /stop\.click\(\)/);
   assert.match(controlsDetach, /ZIP download requested:/);
-  assert.match(controlsDetach, /get_state/);
-  assert.match(controlsDetach, /stopped\.autoExportPending/);
 });
 
 
-test('failed or interrupted automatic export keeps pending stopped data for retry after navigation', () => {
+test('failed or interrupted automatic export is retained without navigation-time auto-retry', () => {
   assert.match(controlsDetach, /Export failed safely:/);
-  assert.match(controlsDetach, /Keep autoExportPending for a retry after refresh/);
-  assert.match(controlsDetach, /handledSessions\.delete\(id\)/);
+  assert.match(controlsDetach, /surfacePendingAutoExport/);
+  assert.match(controlsDetach, /Use Export ZIP to retry/);
+  const pendingBody = controlsDetach.slice(
+    controlsDetach.indexOf('async function surfacePendingAutoExport'),
+    controlsDetach.indexOf('installPanelGuard();')
+  );
+  assert.doesNotMatch(pendingBody, /autoExportStoppedSession\(/);
   assert.match(backgroundDetach, /autoExportPending = false/);
 });
