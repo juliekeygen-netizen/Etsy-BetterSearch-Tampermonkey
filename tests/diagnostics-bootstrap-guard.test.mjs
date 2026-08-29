@@ -15,55 +15,39 @@ function makeStorage(initial = {}) {
   };
 }
 
-function run(initialArm, now = 1_000_000) {
-  class Storage {}
-  Storage.prototype.setItem = function setItem(key, value) { this._store.setItem(key, value); };
-  const sessionBacking = makeStorage(initialArm ? { 'ebsf-diagnostics:armed:v1': JSON.stringify(initialArm) } : {});
-  const sessionStorage = Object.assign(new Storage(), {
-    _store: sessionBacking,
-    getItem: sessionBacking.getItem.bind(sessionBacking),
-    removeItem: sessionBacking.removeItem.bind(sessionBacking)
-  });
-  const timers = [];
-  const context = {
-    Storage,
-    sessionStorage,
-    Date: class extends Date { static now() { return now; } },
-    JSON,
-    globalThis: null,
-    setTimeout(fn) { timers.push(fn); return timers.length; }
-  };
+function run(initialArm) {
+  const sessionStorage = makeStorage(initialArm ? { 'ebsf-diagnostics:armed:v1': JSON.stringify(initialArm) } : {});
+  const context = { sessionStorage, JSON, globalThis: null };
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(source, context);
-  return { context, sessionBacking, timers };
+  return { context, sessionStorage };
 }
 
-test('stale or legacy arm is removed before the recorder can consume it', () => {
+test('every document-start arm is consumed synchronously before content.js can read it', () => {
   for (const arm of [
     { sessionId: 'legacy-no-time' },
+    { sessionId: 'fresh', startedAt: 999_990 },
     { sessionId: 'old', armedAt: 900_000 },
     { sessionId: 'future', armedAt: 1_000_100 }
   ]) {
     const result = run(arm);
-    assert.equal(result.sessionBacking.dump('ebsf-diagnostics:armed:v1'), null);
+    assert.equal(result.sessionStorage.dump('ebsf-diagnostics:armed:v1'), null);
+    assert.equal(result.context.__EBSF_DIAG_CONSUMED_ARM__.sessionId, arm.sessionId);
+    assert.equal(result.context.__EBSF_DIAG_BACKGROUND_CONFIRMATION_REQUIRED__, true);
   }
 });
 
-test('fresh arm survives synchronously for content.js then is removed one-shot', () => {
-  const result = run({ sessionId: 'fresh', armedAt: 999_990 });
-  assert.ok(result.sessionBacking.dump('ebsf-diagnostics:armed:v1'));
-  assert.equal(result.context.__EBSF_DIAG_FRESH_ARM__.sessionId, 'fresh');
-  assert.equal(result.timers.length, 1);
-  result.timers[0]();
-  assert.equal(result.sessionBacking.dump('ebsf-diagnostics:armed:v1'), null);
+test('passive bootstrap does not monkeypatch Storage or schedule delayed arm cleanup', () => {
+  assert.doesNotMatch(source, /Storage\.prototype\.setItem/);
+  assert.doesNotMatch(source, /setTimeout\(/);
+  assert.match(source, /sessionStorage\.removeItem\(ARM_KEY\)/);
+  assert.match(source, /BACKGROUND_CONFIRMATION_REQUIRED/);
 });
 
-test('future arm writes are freshness-stamped at the storage boundary', () => {
-  const result = run(null, 2_000_000);
-  result.context.sessionStorage.setItem('ebsf-diagnostics:armed:v1', JSON.stringify({ sessionId: 'new' }));
-  const stored = JSON.parse(result.sessionBacking.dump('ebsf-diagnostics:armed:v1'));
-  assert.equal(stored.sessionId, 'new');
-  assert.equal(stored.armedAt, 2_000_000);
-  assert.equal(stored.armVersion, 2);
+test('missing arm remains passive and still requires background confirmation', () => {
+  const result = run(null);
+  assert.equal(result.sessionStorage.dump('ebsf-diagnostics:armed:v1'), null);
+  assert.equal(result.context.__EBSF_DIAG_CONSUMED_ARM__, undefined);
+  assert.equal(result.context.__EBSF_DIAG_BACKGROUND_CONFIRMATION_REQUIRED__, true);
 });
