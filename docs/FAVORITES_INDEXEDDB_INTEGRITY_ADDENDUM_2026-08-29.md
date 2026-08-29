@@ -250,3 +250,88 @@ not necessarily:
 > the exact immutable 107-item result returned by the last complete crawl.
 
 The important correctness finding remains: this cached membership is stale relative to current Etsy state, and the live HAR contains at least one current unfiltered Favorites listing absent from it. The data model now explains why the word `complete` alone is not sufficient evidence of snapshot identity.
+
+---
+
+## 9. A failed replacement crawl can mutate the previous complete snapshot — PROVEN CURRENT SOURCE BUG
+
+The continuation audit found a more serious path than ordinary later partial observations.
+
+`src/61b-favorites-sync.js` persists every successfully fetched catalogue page as:
+
+```text
+favIndexObserveRecords(pageRecords, complete:false, syncState:'running')
+```
+
+before the crawler knows that the new full refresh will complete. Only after the short-page/completeness boundary does it write the final deduplicated records with `complete:true`.
+
+Combined with section 1's persistence semantics, this means:
+
+```text
+old complete generation [A,B]
+-> new refresh page observes [A,C]
+-> partial page write unions C into old scope listingIds
+-> old complete flag/timestamp remain
+-> refresh fails or is cancelled
+```
+
+The database is left with no newly committed complete generation, but the previous complete row's membership has already changed.
+
+The correct invariant is stronger than "partial observations must be distinguishable":
+
+> In-progress pages of a replacement complete crawl must not mutate the membership of the previous authoritative complete generation at all.
+
+Per-page writes may update listing metadata and a separate partial overlay. The authoritative membership switch must occur once, atomically, only when the replacement generation is verified complete.
+
+### Additional regression cases
+
+- old complete `[A,B]`; page 1 sees `[A,C]`; network error -> old complete is still exactly `[A,B]`;
+- old complete `[A,B]`; pages 1-3 add several IDs; user cancels -> old complete unchanged;
+- another tab reads cache during the in-progress crawl -> it sees the old immutable generation, never the partial union;
+- successful replacement -> one generation commit replaces old membership and rebases/clears partial overlay.
+
+## 10. Cache-first startup currently turns this persistence flaw into live truth
+
+`src/61e-favorites-cache-bootstrap.js` trusts `scopeRecord.complete` and materializes the row's current `listingIds`. It then marks the live dataset complete and sets `favState.total` from the materialized record count.
+
+No generation identifier ties those IDs to `lastCompleteSyncAt`.
+
+Therefore the failed-refresh mutation in section 9 is not merely an internal bookkeeping inconsistency. It can be served as the next page visit's complete cache.
+
+Cross-tab completion/freshness checks need the same immutable generation identity. `complete:true` plus a timestamp is insufficient if membership is mutable independently of that completion.
+
+## 11. Empty owner must not mean a valid scope or global maintenance target
+
+The exported database contains an ownerless scope. Current source still accepts an empty owner in the low-level scope-key/storage layer, and the consolidated catalogue service can be reached by interactive load paths that do not necessarily pass through the higher-level `favSyncScope()` owner guard.
+
+Separately, the current owner-scoped deep-maintenance helper intentionally treats `owner=''` as "all active indexed listings". Manual deep-scan/update callers derive owner from current page state and can therefore broaden unexpectedly if identity is unresolved.
+
+Required rule:
+
+```text
+production owner-scoped operation + empty owner = invalid / no-op with diagnostic reason
+```
+
+If an all-owner developer/maintenance operation is ever needed, expose it as a separate explicit API instead of overloading an empty string.
+
+Owner validation/latching belongs at the canonical descriptor, network-service and persistence boundaries, not only in a UI/controller wrapper.
+
+## 12. Snapshot freshness must include integrity, not just age
+
+Auto-sync currently decides staleness primarily from `lastCompleteSyncAt`. A recent timestamp can therefore make a structurally invalid/mixed snapshot look fresh.
+
+Freshness should be the conjunction of at least:
+
+```text
+valid owner/scope identity
+valid immutable complete generation
+membership/listing integrity checks pass
+presentation/cache schema readable
+age within configured interval
+```
+
+A mismatch between current trusted native/server count and cached complete-generation count should at minimum trigger an integrity/freshness review rather than being silently overridden by cache age.
+
+Diagnostics should record why auto-sync did or did not start (`disabled`, `not-own-profile`, `owner-unresolved`, `throttled`, `fresh`, `integrity-invalid`, `due`, etc.) so future captures can distinguish policy decisions from bugs.
+
+See `FAVORITES_AUDIT_CONTINUATION_2026-08-30.md` for the broader second-pass writer/lifecycle/query/pagination findings.
