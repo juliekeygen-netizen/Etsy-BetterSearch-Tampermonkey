@@ -1,0 +1,61 @@
+name: Audit Repo AutoPull multi-command build
+
+on:
+  push:
+    branches:
+      - repo-autopull-multicommand
+    paths:
+      - .github/workflows/repo-autopull-audit-temp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell source
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('Repo_AutoPull/Repo-AutoPull.ps1', [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host 'PowerShell parser: OK'
+
+      - name: Audit command-list behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'configVersion  = 4' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F 'customCommands = @()' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F '1. Add new command' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F '2. Edit command' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F '3. Delete command' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F '4. Move command' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F 'Push-Location $RepoPath' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F '$raw = @(& $commandProcessor /d /s /c $Command 2>&1)' Repo_AutoPull/Repo-AutoPull.ps1
+          grep -F 'for ($commandIndex = 0; $postSuccess -and $commandIndex -lt $commands.Count; $commandIndex++)' Repo_AutoPull/Repo-AutoPull.ps1
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+
+      - name: Rebuild and compare standalone EXE
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp Repo_AutoPull/Repo-AutoPull.ps1 tools/repo-autopull-exe/embedded.ps1
+          pushd tools/repo-autopull-exe
+          go vet ./...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/RepoAutoPull.exe .
+          popd
+          rm -f tools/repo-autopull-exe/embedded.ps1
+          file Repo_AutoPull/RepoAutoPull.exe
+          cmp /tmp/RepoAutoPull.exe Repo_AutoPull/RepoAutoPull.exe
+          echo 'Standalone EXE reproducibility: OK'
