@@ -4,6 +4,7 @@
   const PANEL_ID = '__etsy_bettersearch_diagnostics__';
   const ARM_KEY = 'ebsf-diagnostics:armed:v1';
   const STOPPED_KEY = 'ebsf-diagnostics:stopped:v1';
+  const PANEL_OPEN_KEY = 'ebsf-diagnostics:panel-open:v1';
   const CONTROL_STYLE_ID = `${PANEL_ID}-controls-style`;
   const encoder = new TextEncoder();
 
@@ -11,9 +12,10 @@
     mode: 'idle',
     session: null,
     stopped: null,
-    stoppedExportData: null,
     panel: null,
-    syncQueued: false
+    syncQueued: false,
+    busy: false,
+    elapsedTimer: 0
   };
 
   function send(message) {
@@ -42,7 +44,9 @@
   function writeStopped(session) {
     const value = session?.sessionId ? {
       sessionId: session.sessionId,
+      startedAt: Number(session.startedAt || 0),
       startedIso: session.startedIso || '',
+      stoppedAt: Number(session.stoppedAt || Date.now()),
       stoppedIso: session.stoppedIso || new Date().toISOString()
     } : null;
     try {
@@ -65,6 +69,15 @@
 
   function disarmSession() {
     try { sessionStorage.removeItem(ARM_KEY); } catch (_) {}
+  }
+
+  function readPanelOpen() {
+    try { return sessionStorage.getItem(PANEL_OPEN_KEY) === '1'; }
+    catch (_) { return false; }
+  }
+
+  function writePanelOpen(open) {
+    try { sessionStorage.setItem(PANEL_OPEN_KEY, open ? '1' : '0'); } catch (_) {}
   }
 
   function readOptions(panel) {
@@ -96,25 +109,47 @@
     if (!pre) return;
     const line = `[${new Date().toLocaleTimeString()}] ${message}`;
     const existing = pre.textContent ? `${pre.textContent.trimEnd()}\n` : '';
-    pre.textContent = `${existing}${line}`.split('\n').slice(-60).join('\n');
+    pre.textContent = `${existing}${line}`.split('\n').slice(-80).join('\n');
     pre.scrollTop = pre.scrollHeight;
   }
 
-  function forceOpenWhileActive() {
+  function applyPanelOpen(open, remember = true) {
     const panel = ui.panel;
     if (!panel) return;
-    const active = ui.mode === 'recording' || ui.mode === 'paused';
+    panel.dataset.collapsed = open ? '0' : '1';
     const collapse = panel.querySelector('[data-role="collapse"]');
-    if (active) {
-      if (panel.dataset.collapsed !== '0') panel.dataset.collapsed = '0';
-      setText(collapse, '—');
-      collapse?.setAttribute('aria-label', 'Drawer stays open while recording');
-      collapse?.setAttribute('title', 'Drawer stays open while recording');
-      setDisabled(collapse, true);
-    } else {
-      collapse?.removeAttribute('title');
-      setDisabled(collapse, false);
-    }
+    setText(collapse, open ? '—' : '+');
+    collapse?.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
+    if (remember) writePanelOpen(open);
+  }
+
+  function setStatus(text) {
+    setText(ui.panel?.querySelector('[data-role="status-v2"]'), text);
+  }
+
+  function formatDuration(ms) {
+    const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function currentElapsedMs() {
+    const session = ui.session || ui.stopped;
+    const startedAt = Number(session?.startedAt || 0);
+    if (!startedAt) return 0;
+    if (ui.mode === 'paused') return Math.max(0, Number(ui.session?.pausedAt || Date.now()) - startedAt);
+    if (ui.mode === 'stopped') return Math.max(0, Number(ui.stopped?.stoppedAt || Date.now()) - startedAt);
+    return Math.max(0, Date.now() - startedAt);
+  }
+
+  function updateElapsed() {
+    setText(ui.panel?.querySelector('[data-role="elapsed-v2"]'), formatDuration(currentElapsedMs()));
+  }
+
+  function ensureElapsedTimer() {
+    if (ui.elapsedTimer) return;
+    ui.elapsedTimer = window.setInterval(updateElapsed, 200);
   }
 
   function syncUi() {
@@ -126,7 +161,19 @@
     const pause = panel.querySelector('[data-start="start"]');
     const marker = panel.querySelector('[data-role="marker"]');
     const stopExport = panel.querySelector('[data-role="stop"]');
-    const status = panel.querySelector('[data-role="status"]');
+    const active = ui.mode === 'recording' || ui.mode === 'paused';
+
+    panel.dataset.recording = active ? '1' : '0';
+    for (const input of panel.querySelectorAll('[data-option]')) input.disabled = active || ui.busy;
+
+    if (ui.busy) {
+      setDisabled(reload, true);
+      setDisabled(pause, true);
+      setDisabled(marker, true);
+      setDisabled(stopExport, true);
+      updateElapsed();
+      return;
+    }
 
     if (ui.mode === 'recording') {
       setText(reload, 'Stop recording');
@@ -136,7 +183,7 @@
       setDisabled(marker, false);
       setText(stopExport, 'Stop & Export ZIP');
       setDisabled(stopExport, false);
-      setText(status, '● Recording');
+      setStatus('● Recording');
     } else if (ui.mode === 'paused') {
       setText(reload, 'Stop recording');
       setDisabled(reload, false);
@@ -145,7 +192,7 @@
       setDisabled(marker, true);
       setText(stopExport, 'Stop & Export ZIP');
       setDisabled(stopExport, false);
-      setText(status, 'Paused');
+      setStatus('Paused');
     } else if (ui.mode === 'stopped') {
       setText(reload, 'Record & Reload');
       setDisabled(reload, false);
@@ -154,7 +201,7 @@
       setDisabled(marker, true);
       setText(stopExport, 'Export ZIP');
       setDisabled(stopExport, false);
-      setText(status, 'Stopped · ready to export');
+      setStatus('Stopped · ready to export');
     } else {
       setText(reload, 'Record & Reload');
       setDisabled(reload, false);
@@ -163,10 +210,9 @@
       setDisabled(marker, true);
       setText(stopExport, 'Stop & Export ZIP');
       setDisabled(stopExport, true);
-      setText(status, 'Ready');
+      setStatus('Ready');
     }
-
-    forceOpenWhileActive();
+    updateElapsed();
   }
 
   function queueSync() {
@@ -178,30 +224,43 @@
   async function refreshMode() {
     const response = await send({ action: 'get_state' });
     const active = response?.session || null;
+    const recoveredStopped = response?.stopped || null;
     ui.session = active;
     ui.stopped = readStopped();
+    if (recoveredStopped?.sessionId) writeStopped(recoveredStopped);
+
     if (active?.paused) ui.mode = 'paused';
     else if (active?.recording) ui.mode = 'recording';
     else if (ui.stopped?.sessionId) ui.mode = 'stopped';
     else ui.mode = 'idle';
+
+    // Normal reload/hard reload remembers the user's drawer preference. An
+    // actively recording/paused reload opens the panel once so recording state
+    // is obvious, without overwriting the user's saved preference.
+    applyPanelOpen(active?.recording || active?.paused ? true : readPanelOpen(), false);
     syncUi();
   }
 
   async function discardStoppedIfNeeded() {
     if (!ui.stopped?.sessionId) return true;
-    const okay = confirm('A stopped diagnostics recording has not been exported yet. Start a new recording and discard it?');
+    const okay = confirm('A stopped diagnostics recording is still saved. Start a new recording and discard it?');
     if (!okay) return false;
-    await send({ action: 'finalize_export', sessionId: ui.stopped.sessionId });
+    const response = await send({ action: 'finalize_export', sessionId: ui.stopped.sessionId });
+    if (!response?.ok) {
+      appendActivity(response?.error || 'Could not discard the previous stopped recording.');
+      return false;
+    }
     writeStopped(null);
-    ui.stoppedExportData = null;
     return true;
   }
 
   async function startAndReload() {
-    if (!(await discardStoppedIfNeeded())) return;
-    const panel = ui.panel;
-    setText(panel?.querySelector('[data-role="status"]'), 'Attaching Chrome debugger…');
-    const response = await send({ action: 'start_recording', options: readOptions(panel) });
+    if (ui.busy || !(await discardStoppedIfNeeded())) return;
+    ui.busy = true;
+    setStatus('Attaching Chrome debugger…');
+    syncUi();
+    const response = await send({ action: 'start_recording', options: readOptions(ui.panel) });
+    ui.busy = false;
     if (!response?.ok) {
       ui.mode = 'idle';
       syncUi();
@@ -218,6 +277,7 @@
   }
 
   async function pauseRecording() {
+    if (ui.busy) return;
     const response = await send({ action: 'pause_recording' });
     if (!response?.ok) {
       appendActivity(response?.error || 'Could not pause recording.');
@@ -226,11 +286,11 @@
     ui.session = response.session;
     ui.mode = 'paused';
     syncUi();
-    appendActivity('Recording paused. Chrome debugger remains attached so Resume is instant.');
+    appendActivity('Recording paused.');
   }
 
   async function resumeRecording() {
-    const localRecorderRunning = ui.panel?.dataset.recording === '1';
+    if (ui.busy) return;
     const response = await send({ action: 'resume_recording' });
     if (!response?.ok) {
       appendActivity(response?.error || 'Could not resume recording.');
@@ -241,31 +301,31 @@
     armSession(response.session);
     syncUi();
     appendActivity('Recording resumed.');
-    if (!localRecorderRunning) {
-      appendActivity('Reloading to restore document-start DOM instrumentation after a paused-page reload.');
-      window.setTimeout(() => location.reload(), 100);
-    }
   }
 
   async function stopRecordingOnly() {
-    if (ui.mode !== 'recording' && ui.mode !== 'paused') return null;
-    setText(ui.panel?.querySelector('[data-role="status"]'), 'Stopping recording…');
-    // Give the existing content recorder one flush interval to persist its final
-    // DOM/timing batch before the background session is detached.
+    if (ui.busy || (ui.mode !== 'recording' && ui.mode !== 'paused')) return null;
+    ui.busy = true;
+    setStatus('Stopping recording…');
+    syncUi();
+
+    // Let the document recorder's normal 350 ms flush window persist its final
+    // DOM/timing batch before the background debugger session is detached.
     await new Promise((resolve) => setTimeout(resolve, 420));
     const response = await send({ action: 'stop_recording' });
+    ui.busy = false;
     if (!response?.ok) {
       appendActivity(response?.error || 'Could not stop recording.');
       await refreshMode();
       return null;
     }
-    ui.stoppedExportData = response;
+
     ui.session = null;
     ui.mode = 'stopped';
     disarmSession();
     writeStopped(response.session);
     syncUi();
-    appendActivity('Recording stopped. Chrome debugger detached; captured data is kept until export or a new recording.');
+    appendActivity('Recording stopped. Captured data is retained until you explicitly start a new recording.');
     return response;
   }
 
@@ -431,31 +491,44 @@
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
-  async function exportStopped() {
-    let data = ui.stoppedExportData;
-    const sessionId = data?.session?.sessionId || ui.stopped?.sessionId;
-    if (!sessionId) return;
-    setText(ui.panel?.querySelector('[data-role="status"]'), 'Packing diagnostic ZIP…');
-    if (!data) data = await send({ action: 'export_stopped', sessionId });
-    if (!data?.ok) {
-      appendActivity(data?.error || 'Could not retrieve stopped recording.');
-      syncUi();
-      return;
+  async function readPreparedExport(sessionId, chunkCount) {
+    const parts = [];
+    for (let index = 0; index < chunkCount; index++) {
+      setStatus(`Reading export data · ${index + 1}/${chunkCount}`);
+      const response = await send({ action: 'export_chunk', sessionId, index });
+      if (!response?.ok) throw new Error(response?.error || `Could not read export chunk ${index}.`);
+      parts.push(String(response.text || ''));
+      // Yield occasionally so a large export cannot make the Etsy tab appear hung.
+      if (index % 8 === 7) await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    return JSON.parse(parts.join(''));
+  }
+
+  async function exportStopped() {
+    const sessionId = ui.stopped?.sessionId;
+    if (!sessionId || ui.busy) return;
+    ui.busy = true;
+    setStatus('Preparing diagnostic export…');
+    syncUi();
+
     try {
+      const prepared = await send({ action: 'prepare_export', sessionId });
+      if (!prepared?.ok) throw new Error(prepared?.error || 'Could not prepare the stopped recording.');
+      const data = await readPreparedExport(sessionId, Number(prepared.chunkCount || 0));
+      setStatus('Packing diagnostic ZIP…');
       const blob = buildZip(data);
-      const started = data.session?.startedIso || new Date().toISOString();
+      const started = data.session?.startedIso || ui.stopped?.startedIso || new Date().toISOString();
       const filename = `etsy-bettersearch-diagnostic-${started.replace(/[:.]/g, '-').replace(/Z$/, 'Z')}.zip`;
       downloadBlob(blob, filename);
-      await send({ action: 'finalize_export', sessionId });
-      appendActivity(`Exported ${filename} (${Math.round(blob.size / 1024)} KiB).`);
-      ui.stoppedExportData = null;
-      writeStopped(null);
-      ui.mode = 'idle';
-      syncUi();
-    } catch (error) {
-      appendActivity(`Could not build diagnostic ZIP: ${error?.message || error}`);
+      appendActivity(`ZIP download requested: ${filename} (${Math.round(blob.size / 1024)} KiB). The stopped data is still retained so you can export again if Chrome blocks or loses the download.`);
+      setStatus('Export requested · data retained');
       ui.mode = 'stopped';
+    } catch (error) {
+      appendActivity(`Export failed safely: ${error?.message || error}. The stopped recording is still retained and can be retried after refresh.`);
+      setStatus('Export failed · data retained');
+      ui.mode = 'stopped';
+    } finally {
+      ui.busy = false;
       syncUi();
     }
   }
@@ -477,8 +550,8 @@
     modal.dataset.markerId = '';
     const request = { action: 'cancel_marker', markerId, sessionId };
     const first = await send(request);
-    // Run a second cleanup after the content recorder's normal batching window in
-    // case its local marker event was still queued when Cancel was pressed.
+    // Run a second cleanup after the document recorder's normal batching window
+    // in case its local marker event was still queued when Cancel was pressed.
     setTimeout(() => void send(request), 650);
     appendActivity(first?.ok ? `Cancelled marker ${markerId}.` : `Marker cancel warning: ${first?.error || 'unknown error'}`);
   }
@@ -488,14 +561,33 @@
     const style = document.createElement('style');
     style.id = CONTROL_STYLE_ID;
     style.textContent = `
-      #${PANEL_ID}[data-collapsed="1"]{width:42px!important;min-width:42px!important;border-radius:10px!important}
-      #${PANEL_ID}[data-collapsed="1"] header{width:42px!important;height:42px!important;padding:0!important;display:block!important;background:#202224!important}
+      #${PANEL_ID}[data-collapsed="1"]{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important;border-radius:10px!important}
+      #${PANEL_ID}[data-collapsed="1"] header{position:relative!important;width:36px!important;height:36px!important;padding:0!important;display:block!important;background:#202224!important}
       #${PANEL_ID}[data-collapsed="1"] header>span{display:none!important}
-      #${PANEL_ID}[data-collapsed="1"] header>button{width:42px!important;height:42px!important;border-radius:0!important;display:grid!important;place-items:center!important}
+      #${PANEL_ID}[data-collapsed="1"] header>button{position:absolute!important;right:0!important;bottom:0!important;width:42px!important;height:42px!important;border-radius:0!important;display:grid!important;place-items:center!important}
       #${PANEL_ID}[data-collapsed="1"] .ebd-body{display:none!important}
       #${PANEL_ID} [data-role="marker-cancel"]{margin-right:auto}
+      #${PANEL_ID} [data-role="status-core"],#${PANEL_ID} [data-role="elapsed-core"]{display:none!important}
+      #${PANEL_ID}[data-recording="1"] [data-role="status-v2"]{color:#ff9d8f;font-weight:800}
     `;
     (document.head || document.documentElement).appendChild(style);
+  }
+
+  function ensureOwnedStatus(panel) {
+    const row = panel.querySelector('.ebd-status');
+    if (!row || row.querySelector('[data-role="status-v2"]')) return;
+    const oldStatus = row.querySelector('[data-role="status"]');
+    const oldElapsed = row.querySelector('[data-role="elapsed"]');
+    if (oldStatus) oldStatus.dataset.role = 'status-core';
+    if (oldElapsed) oldElapsed.dataset.role = 'elapsed-core';
+    const status = document.createElement('span');
+    status.dataset.role = 'status-v2';
+    status.textContent = 'Ready';
+    const elapsed = document.createElement('span');
+    elapsed.dataset.role = 'elapsed-v2';
+    elapsed.textContent = '0:00';
+    row.prepend(status);
+    row.append(elapsed);
   }
 
   function ensureCancelButton(panel) {
@@ -512,6 +604,13 @@
   function handlePanelClick(event) {
     const target = event.target instanceof Element ? event.target.closest('button') : null;
     if (!target || !ui.panel?.contains(target)) return;
+
+    if (target.matches('[data-role="collapse"]')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      applyPanelOpen(ui.panel.dataset.collapsed === '1', true);
+      return;
+    }
 
     if (target.matches('[data-start="reload"]')) {
       event.preventDefault();
@@ -540,13 +639,6 @@
       event.preventDefault();
       event.stopImmediatePropagation();
       void cancelMarker();
-      return;
-    }
-
-    if (target.matches('[data-role="collapse"]') && (ui.mode === 'recording' || ui.mode === 'paused')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      forceOpenWhileActive();
     }
   }
 
@@ -554,13 +646,22 @@
     if (ui.panel) return;
     ui.panel = panel;
     injectControlStyle();
+    ensureOwnedStatus(panel);
     ensureCancelButton(panel);
+    applyPanelOpen(readPanelOpen(), false);
     panel.addEventListener('click', handlePanelClick, true);
     new MutationObserver(() => {
+      ensureOwnedStatus(panel);
       ensureCancelButton(panel);
       queueSync();
-    }).observe(panel, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'data-recording', 'data-collapsed', 'hidden'] });
+    }).observe(panel, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'data-recording', 'data-collapsed', 'hidden']
+    });
     ui.stopped = readStopped();
+    ensureElapsedTimer();
     void refreshMode();
   }
 
