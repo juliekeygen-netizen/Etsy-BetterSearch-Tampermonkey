@@ -1,27 +1,29 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
-$Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot = Resolve-Path (Join-Path $Here "..\..")
-$CanonicalScript = Join-Path $RepoRoot "Repo_AutoPull\Repo-AutoPull.ps1"
-$EmbeddedScript = Join-Path $Here "embedded.ps1"
-$OutputDir = Join-Path $RepoRoot "Repo_AutoPull\Standalone"
-$OutputExe = Join-Path $OutputDir "RepoAutoPull.exe"
+$ToolDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoRoot = Resolve-Path (Join-Path $ToolDir '..\..')
+$ScriptSource = Join-Path $RepoRoot 'Repo_AutoPull\Repo-AutoPull.ps1'
+$EmbeddedScript = Join-Path $ToolDir 'embedded.ps1'
+$Output = Join-Path $RepoRoot 'Repo_AutoPull\RepoAutoPull.exe'
 
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
-    throw "Go is not installed or not available on PATH."
+    throw 'Go was not found on PATH.'
+}
+if (-not (Test-Path -LiteralPath $ScriptSource -PathType Leaf)) {
+    throw "Repo AutoPull script not found: $ScriptSource"
 }
 
-New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-Copy-Item -LiteralPath $CanonicalScript -Destination $EmbeddedScript -Force
-
+Copy-Item -LiteralPath $ScriptSource -Destination $EmbeddedScript -Force
 try {
-    Push-Location $Here
+    Push-Location $ToolDir
     try {
-        $env:GOOS = "windows"
-        $env:GOARCH = "amd64"
-        $env:CGO_ENABLED = "0"
-        & go build -trimpath -ldflags "-s -w" -o $OutputExe .
-        if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
+        $env:GOOS = 'windows'
+        $env:GOARCH = 'amd64'
+        $env:CGO_ENABLED = '0'
+        & go vet ./...
+        if ($LASTEXITCODE -ne 0) { throw 'go vet failed.' }
+        & go build -trimpath -ldflags '-s -w' -o $Output .
+        if ($LASTEXITCODE -ne 0) { throw 'go build failed.' }
     }
     finally { Pop-Location }
 }
@@ -29,4 +31,4 @@ finally {
     Remove-Item -LiteralPath $EmbeddedScript -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Built: $OutputExe" -ForegroundColor Green
+Write-Host "Built: $Output" -ForegroundColor Green
