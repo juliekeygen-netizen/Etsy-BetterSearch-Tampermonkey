@@ -42,12 +42,14 @@ const diagnosticsBackground = await readFile(resolve(diagnosticsRoot, 'backgroun
 const diagnosticsBackgroundControls = await readFile(resolve(diagnosticsRoot, 'background-controls.js'), 'utf8');
 const diagnosticsBackgroundDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'background-detach-autoexport.js'), 'utf8');
 const diagnosticsBackgroundSessionHealth = await readFile(resolve(diagnosticsRoot, 'background-session-health.js'), 'utf8');
+const diagnosticsBackgroundStreamingExport = await readFile(resolve(diagnosticsRoot, 'background-streaming-export.js'), 'utf8');
 const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
 const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
 const diagnosticsTransport = await readFile(resolve(diagnosticsRoot, 'transport.js'), 'utf8');
 const diagnosticsBootstrapGuard = await readFile(resolve(diagnosticsRoot, 'bootstrap-guard.js'), 'utf8');
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 const diagnosticsControls = await readFile(resolve(diagnosticsRoot, 'controls.js'), 'utf8');
+const diagnosticsExportStreaming = await readFile(resolve(diagnosticsRoot, 'export-streaming.js'), 'utf8');
 const diagnosticsControlsDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'controls-detach-autoexport.js'), 'utf8');
 
 if (!diagnosticsManifest.version) throw new Error('Diagnostics manifest version is missing.');
@@ -66,12 +68,14 @@ try {
   new Function(diagnosticsBackgroundControls);
   new Function(diagnosticsBackgroundDetachAutoExport);
   new Function(diagnosticsBackgroundSessionHealth);
+  new Function(diagnosticsBackgroundStreamingExport);
   new Function(diagnosticsHarExtraInfo);
   new Function(diagnosticsServiceWorker);
   new Function(diagnosticsTransport);
   new Function(diagnosticsBootstrapGuard);
   new Function(diagnosticsContent);
   new Function(diagnosticsControls);
+  new Function(diagnosticsExportStreaming);
   new Function(diagnosticsControlsDetachAutoExport);
 } catch (error) {
   throw new Error(`Generated extension bundle has invalid syntax: ${error.message}`, { cause: error });
@@ -105,11 +109,13 @@ const diagnosticsSourceFiles = [
   'background-controls.js',
   'background-detach-autoexport.js',
   'background-session-health.js',
+  'background-streaming-export.js',
   'har-extra-info.js',
   'transport.js',
   'bootstrap-guard.js',
   'content.js',
   'controls.js',
+  'export-streaming.js',
   'controls-detach-autoexport.js'
 ];
 await Promise.all([
@@ -118,17 +124,20 @@ await Promise.all([
   writeFile(resolve(diagnosticsDir, 'background-controls.js'), `${diagnosticsBackgroundControls.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-detach-autoexport.js'), `${diagnosticsBackgroundDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-session-health.js'), `${diagnosticsBackgroundSessionHealth.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'background-streaming-export.js'), `${diagnosticsBackgroundStreamingExport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'transport.js'), `${diagnosticsTransport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'bootstrap-guard.js'), `${diagnosticsBootstrapGuard.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls.js'), `${diagnosticsControls.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'export-streaming.js'), `${diagnosticsExportStreaming.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls-detach-autoexport.js'), `${diagnosticsControlsDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(
     resolve(diagnosticsDir, 'BUILD_INFO.json'),
     `${JSON.stringify({
       version: diagnosticsManifest.version,
+      versionName: diagnosticsManifest.version_name || diagnosticsManifest.version,
       target: 'chrome',
       source: 'diagnostics-extension',
       sourceFiles: diagnosticsSourceFiles,
@@ -140,4 +149,4 @@ await Promise.all([
 
 console.log(`Built Etsy BetterSearch ${version} for Chrome and Firefox.`);
 console.log(`Shared modules bundled: ${modules.length}`);
-console.log(`Built Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} for Chrome.`);
+console.log(`Built Etsy BetterSearch Diagnostics ${diagnosticsManifest.version_name || diagnosticsManifest.version} for Chrome.`);
