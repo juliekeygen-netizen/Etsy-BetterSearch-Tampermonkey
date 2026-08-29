@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Etsy BetterSearch Diagnostics",
   "version": "0.2.5",
+  "version_name": "0.2.6",
   "description": "Records Etsy BetterSearch network, DOM lifecycle, timing, errors, interactions and problem markers into one diagnostic ZIP.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -25,6 +26,7 @@
         "bootstrap-guard.js",
         "content.js",
         "controls.js",
+        "export-streaming.js",
         "controls-detach-autoexport.js"
       ],
       "run_at": "document_start"
