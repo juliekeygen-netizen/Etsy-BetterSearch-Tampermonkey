@@ -114,16 +114,19 @@ test('only native Etsy pagination remains and local results no longer create a p
   assert.equal((shell.match(/scrollIntoView/g) || []).length, 0);
 });
 
-test('local filters reuse the hydrated catalogue and async loads show one stale-safe placeholder', async () => {
+test('local filters reuse the hydrated catalogue while async loads preserve Etsy native cards', async () => {
   const filter = await readFile(resolve(ROOT, 'src/85-favorites-filter-revamp.js'), 'utf8');
   const shell = await readFile(resolve(ROOT, 'src/86-favorites-page-shell.js'), 'utf8');
   assert.match(filter, /favState\.loadComplete&&favState\.loadKey===favDatasetKey\(\)/);
   assert.match(filter, /favScheduleLocalRender0121\(\)/);
   assert.doesNotMatch(filter, /favReapply\(true\)/);
-  assert.match(shell, /dataset\.ebsfResultsLoading/);
+  assert.match(shell, /Never replace Etsy's hydrated product children with a temporary Loading row/);
+  assert.match(shell, /function favShowResultsLoading0120\(\) \{favState\.loadingPlaceholder0120=null;\}/);
+  assert.doesNotMatch(shell, /dataset\.ebsfResultsLoading/);
   assert.match(shell, /requestKey!==favDatasetKey\(\)/);
   const loadWrapper = shell.slice(shell.indexOf('favLoadAll=function favLoadAll0120'));
-  assert.ok(loadWrapper.indexOf('favLoadAllBefore0120(force)') < loadWrapper.indexOf('favShowResultsLoading0120()'), 'native cards are captured before replacement');
+  assert.match(loadWrapper, /favLoadAllBefore0120\(force\)/);
+  assert.doesNotMatch(loadWrapper, /favShowResultsLoading0120\(\)/);
 });
 
 test('removed controls are absent from normalized configuration and the v2 registry', async () => {
@@ -228,12 +231,14 @@ test('country and seller choices use current facet records and custom country bi
   assert.match(filter, /favScheduleFacetAvailability0121/);
 });
 
-test('rapid local changes coalesce rendering and stale route completions cannot rebuild an old scope', async () => {
+test('rapid local changes re-enter metadata coordination and stale route completions cannot rebuild an old scope', async () => {
   const runtime = await readFile(resolve(ROOT, 'src/63-favorites-runtime.js'), 'utf8');
   const shell = await readFile(resolve(ROOT, 'src/86-favorites-page-shell.js'), 'utf8');
   const audit = await readFile(resolve(ROOT, 'src/71-favorites-phase5-audit-fixes.js'), 'utf8');
   assert.match(shell, /function favScheduleLocalRender0121/);
-  assert.match(shell, /localRenderPromise0121/);
+  assert.match(shell, /function favScheduleLocalRender0121\(force=false\) \{return favReapplyBefore0120\(force\);\}/);
+  assert.match(shell, /favReapply=async function favReapply0120\(force=false\)\{return favReapplyBefore0120\(force\);\}/);
+  assert.doesNotMatch(shell, /localRenderPromise0121/);
   assert.match(shell, /requestKey!==favDatasetKey\(\)/);
   assert.match(runtime, /requestKey!==favDatasetKey\(\)/);
   assert.match(audit, /records!==favState\.records/);
