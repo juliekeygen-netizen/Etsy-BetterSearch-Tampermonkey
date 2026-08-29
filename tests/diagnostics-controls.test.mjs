@@ -5,17 +5,26 @@ import { readFile } from 'node:fs/promises';
 const manifest = JSON.parse(await readFile(new URL('../diagnostics-extension/manifest.json', import.meta.url), 'utf8'));
 const serviceWorker = await readFile(new URL('../diagnostics-extension/service-worker.js', import.meta.url), 'utf8');
 const backgroundControls = await readFile(new URL('../diagnostics-extension/background-controls.js', import.meta.url), 'utf8');
+const backgroundStability = await readFile(new URL('../diagnostics-extension/background-stability.js', import.meta.url), 'utf8');
+const bootstrapGuard = await readFile(new URL('../diagnostics-extension/bootstrap-guard.js', import.meta.url), 'utf8');
 const controls = await readFile(new URL('../diagnostics-extension/controls.js', import.meta.url), 'utf8');
+const stability = await readFile(new URL('../diagnostics-extension/stability.js', import.meta.url), 'utf8');
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2.1 loads transport, content and control layers in safe order', () => {
-  assert.equal(manifest.version, '0.2.1');
-  assert.deepEqual(manifest.content_scripts[0].js, ['transport.js', 'content.js', 'controls.js']);
-  assert.match(serviceWorker, /importScripts\('background\.js', 'har-extra-info\.js', 'background-controls\.js'\)/);
-  assert.match(build, /background-controls\.js/);
-  assert.match(build, /transport\.js/);
-  assert.match(build, /controls\.js/);
+test('diagnostics v0.2.2 loads stale-arm guard, recorder and stability layers in safe order', () => {
+  assert.equal(manifest.version, '0.2.2');
+  assert.deepEqual(manifest.content_scripts[0].js, [
+    'transport.js',
+    'bootstrap-guard.js',
+    'content.js',
+    'controls.js',
+    'stability.js'
+  ]);
+  assert.match(serviceWorker, /importScripts\('background\.js', 'har-extra-info\.js', 'background-controls\.js', 'background-stability\.js'\)/);
+  for (const name of ['background-controls.js', 'background-stability.js', 'transport.js', 'bootstrap-guard.js', 'controls.js', 'stability.js']) {
+    assert.match(build, new RegExp(name.replaceAll('.', '\\.')));
+  }
 });
 
 
@@ -59,15 +68,15 @@ test('drawer remembers open\/closed preference across reload while active reload
 });
 
 
-test('collapsed launcher trims top\/left box while preserving the existing 42px plus-button geometry', () => {
-  assert.match(controls, /width:36px!important/);
-  assert.match(controls, /height:36px!important/);
-  assert.match(controls, /header>span\{display:none!important\}/);
-  assert.match(controls, /header>button\{position:absolute!important;right:0!important;bottom:0!important;width:42px!important;height:42px!important/);
+test('collapsed launcher shell exactly matches the existing 42px plus button', () => {
+  assert.match(stability, /width:42px!important/);
+  assert.match(stability, /height:42px!important/);
+  assert.match(stability, /header>span\{display:none!important\}/);
+  assert.match(stability, /header>button\{position:absolute!important;inset:0!important;width:42px!important;height:42px!important/);
 });
 
 
-test('Record & Reload remains document-start armed and Start button is repurposed as Pause\/Resume', () => {
+test('Record & Reload stays document-start armed and Start button is Pause\/Resume', () => {
   assert.match(controls, /startAndReload/);
   assert.match(controls, /start_recording/);
   assert.match(controls, /sessionStorage\.setItem\(ARM_KEY/);
@@ -75,6 +84,44 @@ test('Record & Reload remains document-start armed and Start button is repurpose
   assert.match(controls, /target\.matches\('\[data-start="start"\]'\)/);
   assert.match(controls, /pauseRecording/);
   assert.match(controls, /resumeRecording/);
+});
+
+
+test('stale document-start arm cannot resurrect the heavy recorder indefinitely', () => {
+  assert.match(bootstrapGuard, /MAX_ARM_AGE_MS = 45 \* 1000/);
+  assert.match(bootstrapGuard, /armedAt/);
+  assert.match(bootstrapGuard, /Storage\.prototype\.setItem/);
+  assert.match(bootstrapGuard, /sessionStorage\.removeItem\(ARM_KEY\)/);
+  assert.match(bootstrapGuard, /setTimeout\(\(\) =>/);
+  assert.match(bootstrapGuard, /one-shot/);
+});
+
+
+test('background get_state validates that a supposedly active debugger is really attached', () => {
+  assert.match(backgroundStability, /chrome\.debugger\.getTargets\(\)/);
+  assert.match(backgroundStability, /stale-active-session-without-debugger/);
+  assert.match(backgroundStability, /recoverAsStopped/);
+  assert.match(backgroundStability, /message\?\.action === 'get_state'/);
+  assert.match(backgroundStability, /chrome\.storage\.session\.remove\(activeKey\(tabId\)\)/);
+});
+
+
+test('Chrome debugger Cancel becomes a recoverable stopped session and requests automatic export', () => {
+  assert.match(backgroundStability, /canceled_by_user/);
+  assert.match(backgroundStability, /debugger-cancel-auto-export-requested/);
+  assert.match(backgroundStability, /ebsf_diag_debugger_cancelled/);
+  assert.match(backgroundStability, /chrome\.tabs\.sendMessage/);
+  assert.match(stability, /triggerCancelExport/);
+  assert.match(stability, /stop\.click\(\)/);
+  assert.match(stability, /captured session is retained/);
+});
+
+
+test('drawer cannot collapse while recording and remains visibly open', () => {
+  assert.match(stability, /forceOpenWhileActive/);
+  assert.match(stability, /host\?\.dataset\.recording !== '1'/);
+  assert.match(stability, /event\.stopImmediatePropagation\(\)/);
+  assert.match(stability, /attributeFilter: \['data-recording', 'data-collapsed'\]/);
 });
 
 
