@@ -56,12 +56,14 @@ test('loading status remains out of flow on the metadata baseline', () => {
   assert.doesNotMatch(finalProgress, /section\.prepend\(node\)/);
 });
 
-test('native pagination ownership stays frozen while local pagination remains deferred', () => {
-  assert.match(pagination, /function favPageRouteKey0129/);
-  assert.match(pagination, /function favRequestedPage0129/);
-  assert.doesNotMatch(pagination, /FAV_LOCAL_PAGE_SIZE0129/);
-  assert.doesNotMatch(pagination, /favState\.pageSize\s*=/);
-  assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
-  assert.doesNotMatch(pagination, /createElement\(['"]nav['"]\)|replaceChildren\(|\.after\(nav\)|append\(nav\)/);
+test('pagination has an explicit native/local ownership split', () => {
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0144 = 20/);
+  assert.match(pagination, /data-ebsf-local-pagination/);
+  assert.match(pagination, /BetterSearch filtered favorites pages/);
+  assert.match(pagination, /favRenderPagination = favRenderPagination0144/);
+  assert.match(pagination, /body\.ebsf-results-active nav\[aria-label="Favorite Items Page Results"\]/);
+  assert.match(pagination, /\[data-ebsf-native-hidden="1"\]/);
+  assert.match(pagination, /display:none!important/);
+  assert.doesNotMatch(pagination, /setAttribute\('aria-label', 'Favorite Items Page Results'\)/);
+  assert.doesNotMatch(pagination, /location\.(?:assign|replace)|history\.(?:pushState|replaceState)/);
 });
