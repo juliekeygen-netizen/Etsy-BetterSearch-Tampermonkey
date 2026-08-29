@@ -1,118 +1,226 @@
-BetterSearch AutoPull + Windows Notifications v1.3
-======================================================
+Repo AutoPull + Windows Notifications
+====================================
 
-v1.3 FIX
---------
-The autogitpull.exe integration has been removed from the actual update path.
+WHAT IT DOES
+------------
+Repo AutoPull watches a local Git repository and uses your normal installed Git
+CLI to keep its current branch fast-forwarded with its tracked remote branch.
 
-Your tests showed that:
-- the watcher loop itself was running every 30 seconds;
-- autogitpull kept reporting the local commit it already saw;
-- it did not move the local worktree to the new GitHub commit;
-- a normal manual "git pull" DID work immediately.
+It is no longer tied to the Etsy BetterSearch repository. During setup you can
+pick ANY local Git repository.
 
-So v1.3 uses the same normal Git CLI that already works on your PC.
+Normal cycle:
 
-Every cycle is now:
+  git fetch
+      |
+      v
+  remote is ahead?
+      |
+     yes
+      |
+      v
+  git pull --ff-only --autostash
+      |
+      v
+  optional post-pull actions
+      |
+      v
+  Windows notification
 
-  git fetch <remote>
-       |
-       v
-  compare local HEAD with the tracked remote branch
-       |
-       +-- same ---------> Up to date
-       |
-       +-- remote ahead -> git pull --ff-only
-       |                        |
-       |                        +--> Windows notification
-       |
-       +-- dirty/diverged -> do NOT overwrite anything; show a warning
+The terminal stays on one refreshed dashboard instead of printing an endless log
+of every check.
 
-autogitpull.exe is no longer required.
+POST-PULL ACTIONS
+-----------------
+Setup now supports three optional actions. They run only after an update was
+successfully pulled.
 
-SAFETY
-------
-The helper never uses reset --hard, force-pull, or any command intended to
-discard local work.
+Order:
 
-If the worktree contains local changes and an update is available, it reports
-"Update waiting" and skips the pull.
+  1. npm run build                (optional toggle)
+  2. custom terminal command      (optional)
+  3. open/run selected file       (optional)
+  4. Windows notification
 
-If local and remote history have diverged, it also stops and asks for manual Git
-resolution instead of attempting an unsafe merge.
+1) npm run build
+----------------
+Enable this in setup to automatically run:
 
-DISPLAY
--------
-The console is now a single refreshed status screen instead of an ever-growing
-wall of checks.
+  npm run build
 
-It shows:
-- repo
-- current branch/upstream
-- current HEAD + commit title
-- last check time
-- next check time
-- current status
-- recent successful pulls and the commits included in them
+inside the watched repository after each successful pull.
 
+The final update notification is delayed until the build has finished. If the
+build fails, the dashboard and notification report that failure and later
+post-pull actions are skipped.
+
+2) Custom terminal command
+--------------------------
+You can enter one custom Windows command. It runs from the watched repository
+folder after the optional npm build.
+
+Examples:
+
+  npm test
+  npm run ci
+  python tools/update.py
+  echo updated && npm test
+
+Because it is executed through cmd.exe, normal Windows command syntax including
+&& can be used.
+
+If the custom command fails (non-zero exit code), the selected file launch is
+skipped and the dashboard/notification reports the failure.
+
+3) Open/run a selected file
+---------------------------
+Setup can show a normal Windows file picker. You can select any file type.
+
+After the build/custom command stages finish successfully, Repo AutoPull asks
+Windows to open/run that file using Start-Process. Executables/scripts may run;
+normal documents open with their configured Windows application.
+
+Examples:
+
+  .exe
+  .cmd / .bat
+  .ps1
+  .py
+  .txt
+  project files
+  shortcuts
+
+The launcher is started and Repo AutoPull immediately continues; it does not wait
+for the opened program to close.
+
+SETUP / CONFIGURE
+-----------------
+Recommended:
+
+  Configure AutoPull.cmd
+
+This keeps your current choices as defaults and lets you change:
+
+  - watched repository
+  - polling interval
+  - npm run build on/off
+  - custom command
+  - selected file to open/run
+
+The repository picker validates that the selected folder is actually a Git
+working tree.
+
+For the custom command:
+
+  - Enter keeps the current command when one already exists
+  - type NONE to remove an existing command
+
+For the file launcher, a standard Windows file picker is used.
+
+FRESH RESET
+-----------
+
+  Reset setup.cmd
+
+This deletes the saved configuration and runs setup from scratch.
+
+START
+-----
+Preferred generic launcher:
+
+  Start Repo AutoPull.cmd
+
+The older launcher still works too:
+
+  Start BetterSearch AutoPull.cmd
+
+Both start the same PowerShell helper.
+
+DASHBOARD
+---------
 Example:
 
   ========================================================
-   BetterSearch AutoPull + Notifications v1.3
+   Repo AutoPull
   ========================================================
-  Repo   : C:\...\Etsy-BetterSearch-Tampermonkey
-  Branch : main -> origin/main
-  Every  : 30s
-  HEAD   : 220995e  test: add AutoPull verification file
+  Repo   : C:\Projects\MyExtension
+  Branch : main -> origin/main   |   every 30s
+  HEAD   : abc1234  latest commit title
+  After  : build -> command -> launch
 
   Status : Up to date
-  Checked: 15:22:30
-  Next   : 15:23:00
+  Last   : 17:25:30   |   Next: 17:26:00
 
   Recent pulls:
-    15:20:31  71d27e4 -> 220995e  (1 commit)
-             220995e  test: add AutoPull verification file
+    17:20:02  1234567 -> abc1234  (2 commits)
+             2345678  first new commit
+             abc1234  second new commit
+             actions: build OK; command OK; launched helper.cmd
+
+The Recent pulls list is kept in memory for the current run only.
 
 NOTIFICATIONS
 -------------
-After a successful automatic pull, Windows shows:
+Notifications happen AFTER configured post-pull work finishes.
 
-  BetterSearch updated
-  Pulled <commit> - <commit title>
+Examples:
 
-If several commits arrived together, the notification says how many were
-pulled and shows the newest commit.
+  MyExtension updated
+  Pulled abc1234 - fix build. build OK.
 
-EXISTING CONFIG
----------------
-Your existing BetterSearch-AutoPull.config.json still works.
+or:
 
-The old autogitpullExe field may remain in it; v1.3 simply ignores it.
+  MyExtension updated - action failed
+  Pulled abc1234 - fix build. npm run build failed: <last output line>
 
-If you run Reset setup.cmd, the new setup only asks for:
-- local repository folder
-- check interval
+If Git pulls successfully but reapplying autostashed local changes causes a
+conflict, post-pull actions are skipped and a warning notification is shown.
+
+LOCAL CHANGES / SAFETY
+----------------------
+Repo AutoPull never uses reset --hard or force-pull.
+
+For a normal remote-ahead update it uses:
+
+  git pull --ff-only --autostash
+
+So tracked local edits are temporarily preserved while Git fast-forwards, then
+Git reapplies them. Untracked files are left alone.
+
+If autostash reapply creates conflicts, Repo AutoPull does NOT run the build,
+custom command, or file launcher. It reports the affected files instead.
+
+If local and remote history have diverged, Repo AutoPull does not merge or reset
+anything automatically; it shows a warning for manual resolution.
+
+OLD CONFIG COMPATIBILITY
+------------------------
+Existing BetterSearch-AutoPull.config.json files still work.
+
+If the old config does not contain the new settings, Repo AutoPull defaults to:
+
+  npm build     OFF
+  custom command none
+  launch file    none
+
+Run Configure AutoPull.cmd once to set the new options.
+
+The config filename is kept for compatibility even though the watcher is now
+generic.
 
 TEST NOTIFICATION
 -----------------
 Double-click:
-  Test notification.cmd
 
-CHANGE SETUP
-------------
-Double-click:
-  Reset setup.cmd
+  Test notification.cmd
 
 STOP
 ----
-Close the window or press Ctrl+C.
+Close the Repo AutoPull window or press Ctrl+C.
 
-IMPORTANT FOR THIS v1.3 UPGRADE
--------------------------------
-Because v1.2 is the broken version that cannot pull this fix automatically, you
-need to do ONE FINAL manual "git pull" to receive v1.3.
-
-After v1.3 is running, normal future repository updates should be pulled by this
-helper itself.
-
-Chrome extension rebuild/reload is intentionally NOT included yet.
+NOTE ABOUT SELF-UPDATES
+-----------------------
+Repo AutoPull can pull updates to its own PowerShell file while it is running,
+but the already-running PowerShell process continues using the version that was
+loaded when it started. After an AutoPull feature update, close and restart the
+launcher once to start using the new code.
