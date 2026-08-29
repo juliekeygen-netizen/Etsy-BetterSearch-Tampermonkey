@@ -19,10 +19,14 @@ Every event includes an ISO/wall-clock timestamp and monotonic timing relative t
 2. In Chrome, load `dist/diagnostics-chrome` as an unpacked extension.
 3. Keep Chrome DevTools closed for the Etsy tab; DevTools and `chrome.debugger` cannot own the same target simultaneously.
 4. Open Etsy Favorites and expand the floating diagnostics panel.
-5. Press **Record & Reload** to attach CDP before reloading and capture startup/hydration from `document_start`.
+5. Press **Record & Reload** to attach CDP before reloading and capture startup/hydration from the beginning of the new document. The page-side heavy recorder only starts after the background confirms that Chrome still has the debugger attached.
 6. Reproduce the problem. Press **Mark problem** whenever something visually wrong happens; the description is optional.
-7. Press **Stop & Export ZIP**.
+7. Finish in either of these ways:
+   - press **Stop & Export ZIP** in the Diagnostics panel; or
+   - press Chrome's debugger-banner **Cancel** control. Diagnostics treats Chrome's `canceled_by_user` detach as Stop + Export and requests the same retained ZIP export automatically.
 8. Upload the resulting ZIP for analysis. It contains `network/network.har` plus the richer raw timeline/DOM/marker data, so a separate DevTools HAR should normally not be necessary.
+
+If a banner-Cancel export is interrupted or fails, the stopped recording remains available through **Export ZIP**. It is not automatically rebuilt on later Etsy page loads, so merely enabling Diagnostics or reopening Etsy stays passive.
 
 ## Build output
 
