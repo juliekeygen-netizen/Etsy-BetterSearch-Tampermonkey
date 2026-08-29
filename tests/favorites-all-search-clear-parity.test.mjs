@@ -5,9 +5,9 @@ import { readFile } from 'node:fs/promises';
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 const parity = await readFile(new URL('../src/100-favorites-all-search-clear-parity.js', import.meta.url), 'utf8');
 
-test('v0.13.2 clear-button parity layer remains after correctness and cache-busted across v0.14 patch releases', () => {
+test('v0.13.2 clear-button parity layer remains after correctness and cache-busted across current releases', () => {
   const version = userscript.match(/^\/\/ @version\s+(\S+)/m)?.[1] || '';
-  assert.match(version, /^0\.14\.\d+$/);
+  assert.match(version, /^\d+\.\d+\.\d+$/);
   const p99 = userscript.indexOf(`/src/99-favorites-v0131-correctness.js?v=${version}`);
   const p100 = userscript.indexOf(`/src/100-favorites-all-search-clear-parity.js?v=${version}`);
   assert.ok(p99 >= 0 && p100 > p99);

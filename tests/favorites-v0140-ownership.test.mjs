@@ -66,8 +66,8 @@ async function crawlLengths(lengths) {
   return { fixture, result };
 }
 
-test('v0.14 wires the consolidated catalogue/sync owner before metadata and Favorites runtime across patch releases', () => {
-  assert.match(userscript, /^\/\/ @version\s+0\.14\.\d+$/m);
+test('v0.14 wires the consolidated catalogue/sync owner before metadata and Favorites runtime across current releases', () => {
+  assert.match(userscript, /^\/\/ @version\s+\d+\.\d+\.\d+$/m);
   const catalog = userscript.indexOf('/src/61b-favorites-sync.js');
   const metadata = userscript.indexOf('/src/61h-favorites-metadata-coordinator.js');
   const runtime = userscript.indexOf('/src/63-favorites-runtime.js');
