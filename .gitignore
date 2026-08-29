@@ -1,6 +1,7 @@
 dist/
 *.zip
 *.exe
+!Repo_AutoPull/RepoAutoPull.exe
 node_modules/
 .DS_Store
 Repo_AutoPull/Repo-AutoPull.config.json
