@@ -18,10 +18,14 @@
 favState.renderIntegrityTimer0142 = Number(favState.renderIntegrityTimer0142) || 0;
 
 function favLocalGridAuthoritative0142() {
+    /* Prefer the grid selected from the current Etsy tree. favState.nativeGrid
+     * can legitimately still reference the previous connected island for a
+     * short time during a soft-route reconciliation. */
+    const currentNative = favNativeMainGrid0141?.();
+    const nativeGrid = currentNative?.isConnected
+        ? currentNative
+        : favState.nativeGrid?.isConnected ? favState.nativeGrid : null;
     const local = favState.localGrid0141;
-    const nativeGrid = favState.nativeGrid?.isConnected
-        ? favState.nativeGrid
-        : favNativeMainGrid0141?.();
     return Boolean(
         favState.renderMode0141 === 'bettersearch-local'
         && local?.isConnected
@@ -105,14 +109,28 @@ function favRenderIntegrityReady0142(datasetKey) {
     return Boolean(favNativeMainGrid0141?.());
 }
 
+function favRepairLocalOwnership0142(datasetKey) {
+    if (!favRenderIntegrityReady0142(datasetKey)) return;
+    if (favLocalGridAuthoritative0142()) {
+        favUpdateScopeHeader0120?.();
+        favEnsurePermanentRail0142();
+        return;
+    }
+
+    /* Never bypass the v0.14 metadata coordinator from a late module. Re-enter
+     * favReapply(), which owns catalogue readiness, metadata requirements, and
+     * the final native-vs-local decision. If Etsy reconciled our sibling grid
+     * away, this is the safe path that rebuilds it. */
+    void Promise.resolve(favReapply()).catch((error) => {
+        console.debug?.('[EBSF] local Favorites render repair deferred', error);
+    });
+}
+
 function favScheduleRenderIntegrity0142(delay = 0, datasetKey = favDatasetKey()) {
     clearTimeout(favState.renderIntegrityTimer0142);
     favState.renderIntegrityTimer0142 = setTimeout(() => {
         favState.renderIntegrityTimer0142 = 0;
-        if (!favRenderIntegrityReady0142(datasetKey)) return;
-        if (!favLocalGridAuthoritative0142()) favRenderCurrent();
-        favUpdateScopeHeader0120?.();
-        favEnsurePermanentRail0142();
+        favRepairLocalOwnership0142(datasetKey);
     }, Math.max(0, Number(delay) || 0));
 }
 
