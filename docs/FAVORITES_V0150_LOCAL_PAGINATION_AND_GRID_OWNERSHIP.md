@@ -83,7 +83,7 @@ BetterSearch local grid: visible, 20 records per page
 BetterSearch local pager: visible, BetterSearch-owned
 ```
 
-The BetterSearch pager never uses Etsy's `Favorite Items Page Results` label and never moves/recreates Etsy's WtPagination DOM.
+The **v0.15.0 design contract** was that the BetterSearch pager would remain semantically distinct from Etsy's `Favorite Items Page Results` native pager and would never become eligible for native page-state discovery. The v0.15.1 native-presentation change currently violates that semantic boundary by copying the native aria label; see the post-v0.15.1 findings below.
 
 ### Return to native mode
 
@@ -107,16 +107,20 @@ Now owns deliberate local-result pagination without replacing `favRenderCurrent(
 - a changed dataset/filter/sort resets the local result page to 1;
 - local page clicks re-slice the already-loaded filtered result set and do not fetch Etsy, change the URL, or rerun catalogue loading;
 - local result count <=20 creates no local pager;
-- local result count >20 creates a distinct BetterSearch pager;
+- local result count >20 creates a distinct BetterSearch-owned pager;
 - Etsy native pager state is preserved before local hiding and restored afterward;
 - `[data-ebsf-native-hidden="1"]` and `nav[data-ebsf-native-pager-hidden="1"]` receive explicit `display:none!important` ownership rules so Etsy utility CSS cannot make both result owners visible simultaneously.
+
+The current v0.15.1 implementation intentionally clones Etsy's WtPagination classes/presentation for visual parity. Visual cloning must not imply native semantic identity; the selector regression documented below is a violation of this ownership rule.
 
 ### `src/95a-favorites-native-page-state.js`
 
 - Etsy WtPagination continues to define native view identity;
 - native pager clicks seed only transient native page intent;
-- native page clicks no longer mutate `favState.localPage`;
+- native page clicks no longer intentionally mutate `favState.localPage`;
 - native page reconciliation can continue observing/caching Etsy's current page while BetterSearch local results use their own page identity.
+
+The current v0.15.1 selector implementation still needs a local-pager exclusion to make those statements true in the presence of the cloned local pager.
 
 ### `src/101-favorites-v0141-smoke-fixes.js`
 
@@ -127,6 +131,8 @@ The integrity check now verifies browser-visible ownership, not only attributes:
 - native pager must also be visually suppressed;
 - if local pagination requires multiple pages, the BetterSearch pager must describe the current page/page count;
 - a soft Etsy reconciliation first reasserts visual ownership; only a genuinely stale result signature re-enters the full `favReapply()` pipeline.
+
+The full Diagnostics audit later showed that the final point is not sufficient: semantic render generation must be validated before local visual ownership is reasserted.
 
 ## Pagination semantics
 
@@ -140,23 +146,25 @@ BetterSearch page 2 -> matches 21–40
 BetterSearch page 3 -> matches 41–44
 ```
 
-Clicking the BetterSearch pager does not trigger Etsy's native `landing-listings?offset=...` navigation and does not redownload the complete catalogue.
+Clicking the BetterSearch pager is intended to re-render only a local slice. It must not seed Etsy native page intent, trigger native `landing-listings?offset=...` navigation, or redownload the complete catalogue.
 
 Changing the active dataset/filter/sort resets BetterSearch local pagination to page 1.
 
 ## Regression coverage added/updated
 
-Tests now assert:
+Tests for the v0.15.0 architecture assert:
 
 - module 86 cannot force `pageSize = records.length`;
 - module 95 owns a 20-item local pager without replacing the renderer chain;
-- native Etsy page clicks cannot mutate BetterSearch local-page state;
+- native Etsy page clicks cannot intentionally mutate BetterSearch local-page state;
 - five local results have one page and no local pager;
 - 44 matches divide into 20 / 20 / 4;
 - local page clicks re-render only the current local slice and do not fetch/navigate;
 - native grid and native pager have explicit strong hide contracts in local mode;
 - returning to native mode removes the BetterSearch pager and restores Etsy pager state;
 - the final integrity layer checks computed visibility and local-pagination ownership.
+
+The post-v0.15.1 audit shows that selector/event interaction coverage must be stronger than source-string/isolated-state tests: a retained real native pager and a visible cloned local pager must coexist in the same fixture.
 
 ## Scope intentionally unchanged
 
@@ -184,9 +192,9 @@ The remaining lifecycle/patch-chain consolidation work is still valuable, but v0
 
 ---
 
-## Post-v0.15.1 browser evidence — 2026-08-29
+## Post-v0.15.1 browser/source evidence — 2026-08-29/30
 
-The long Diagnostics session analyzed in `FAVORITES_DIAGNOSTICS_AND_INDEXEDDB_AUDIT_2026-08-29.md` exposed two additional ownership failures that must be treated as part of the next grid/pager hardening phase.
+The long Diagnostics session analyzed in `FAVORITES_DIAGNOSTICS_AND_INDEXEDDB_AUDIT_2026-08-29.md` exposed two additional ownership failures. The second source audit in `FAVORITES_AUDIT_CONTINUATION_2026-08-30.md` then proved a third current-production selector/event bug.
 
 ### Local empty result can win after Etsy has already restored valid native cards
 
@@ -202,9 +210,14 @@ committed native-query generation
 catalogue generation/completeness
 filter/sort config hash
 metadata requirement generation
+result generation / ID signature
 ```
 
 If any component changes while local work is in flight, the result is stale and native ownership must remain visible.
+
+Current module 101 does not provide this full token. Its requested render signature is approximately dataset key + normalized BetterSearch config, so materially different catalogue/query/result generations can still compare equal.
+
+The integrity repair also currently reasserts local visual ownership before it has finished proving semantic authority. The correct order is the reverse: verify generation, then atomically change visible grid+pager ownership.
 
 ### Native pager can remain visible while local grid owns an empty result
 
@@ -219,24 +232,74 @@ local pager: absent
 
 Grid owner and pager owner must therefore transition atomically. It is an invariant failure for local results to be authoritative while the native pager is still visibly actionable.
 
-### Known v0.15.1 native/local pager selector alias remains a separate source issue
+### v0.15.1 local/native pager selector alias is source-proven
 
-The recording's marked page-3 transition was genuinely native and did not reproduce the selector alias. However current source must still ensure every native-pager lookup excludes `[data-ebsf-local-pagination]`; a BetterSearch local pager must never be eligible to seed native page intent or native view identity.
+This is no longer merely a precautionary source issue.
 
-Add a dual-pager regression fixture containing a retained/hidden native page-1 pager and a visible BetterSearch local page-2 pager. Assertions should prove:
+Current module 95 constructs the BetterSearch local pager as a `<nav>` with:
+
+```text
+data-ebsf-local-pagination="1"
+data-clg-id="WtPagination"
+aria-label = native aria-label or "Favorite Items Page Results"
+```
+
+Module 95's own `favNativePagers0150()` correctly excludes `[data-ebsf-local-pagination]`.
+
+Current module 95a does **not** use that exclusion. Native page discovery uses:
+
+```text
+nav[aria-label="Favorite Items Page Results"]
+```
+
+and its document capture click listener uses:
+
+```text
+nav[aria-label="Favorite Items Page Results"] button
+```
+
+without excluding BetterSearch local ownership.
+
+The local pager listener runs on `document` capture and calls `stopPropagation()`, not `stopImmediatePropagation()`. The later module-95a listener is also on the same `document` capture target, so ordinary propagation stopping does not prevent that same-target listener from running.
+
+Therefore a BetterSearch local page click can be interpreted by module 95a as an Etsy native pager click and seed `favState.nativePageIntent0139`, followed by native page reconciliation scheduling.
+
+Required bounded fix:
+
+- every native-pager discovery selector excludes `[data-ebsf-local-pagination]`;
+- the click handler has the same exclusion;
+- prefer one shared native-pager helper as the sole native identity source;
+- consider a distinct local pager aria label while preserving Etsy visual classes;
+- keep native and local semantic identity separate even when presentation is cloned.
+
+### Required dual-pager regression fixture
+
+Create one DOM fixture containing simultaneously:
+
+```text
+real Etsy native pager, retained/hidden, selected page 1
+BetterSearch local pager, visible, selected page 2
+```
+
+Assertions:
 
 - native current page remains 1;
 - local current page remains 2;
-- clicking local pagination does not set native page intent;
-- unrelated DOM mutations do not reinterpret the local pager as an Etsy native view transition;
+- `favNativePager0139()` never returns the local pager;
+- clicking local previous/next/numeric buttons does not set `nativePageIntent0139`;
+- local clicks do not schedule native-page reconcile;
+- clicking the real native pager still seeds native intent normally;
+- unrelated DOM mutations do not reinterpret local pager state as native view identity;
 - entering/leaving local mode changes both grid and pager ownership as one operation.
 
-### Acceptance criteria added after the full capture
+### Acceptance criteria added after the full audit
 
 A correct next release must also prove:
 
 1. clearing native search cannot leave a stale local empty state over a restored native grid;
-2. a local render prepared for an old dataset/query generation is discarded;
+2. a local render prepared for an old catalogue/query/metadata generation is discarded;
 3. native pager visible + local owner is detected as an invariant violation;
 4. local pager nodes are excluded from every native pager discovery path;
-5. repeated ownership reconcile with unchanged state does not rewrite hidden/ARIA/style state unnecessarily.
+5. repeated ownership reconcile with unchanged state does not rewrite hidden/ARIA/style state unnecessarily;
+6. visual parity with Etsy's WtPagination does not require semantic aria-label/selector identity;
+7. local page clicks never affect native page intent in the real combined listener order.
