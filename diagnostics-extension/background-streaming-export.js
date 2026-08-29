@@ -1,24 +1,47 @@
 'use strict';
 
-// v0.2.6 export backend. The older exporter chunked only *after* constructing
-// one enormous JSON string containing the HAR, every event, response bodies and
-// marker snapshots. V8 can reject that with "Invalid string length" before the
-// first chunk is ever written. This layer prepares the final ZIP files as
-// independently bounded text/base64 chunks instead, so no whole-recording string
-// is ever required.
+// v0.2.7 bounded export backend.
+//
+// The capture is serialized file-by-file and token-by-token. No export path is
+// allowed to create one whole-recording JavaScript string. JSON strings are also
+// emitted incrementally, so very long notes/URLs/text values and unusual Unicode
+// cannot trip V8's maximum-string-length limit or be corrupted at chunk edges.
 (() => {
   const previousHandleMessage = handleMessage;
   const STREAM_DB_NAME = 'etsy-bettersearch-diagnostics-stream-export-v1';
   const STREAM_DB_VERSION = 1;
   const STREAM_STORE = 'chunks';
-  const CHUNK_CHARS = 256 * 1024; // divisible by four for base64 chunk decoding
+  const CHUNK_CHARS = 256 * 1024; // divisible by 4 for independently decodable base64 chunks
+  const JSON_STRING_BUFFER = 16 * 1024;
   let streamDbPromise = null;
 
   function safeFilePart(value) {
-    return String(value || 'item')
-      .replace(/[^a-z0-9._-]+/gi, '-')
+    const raw = String(value ?? 'item').normalize?.('NFC') || String(value ?? 'item');
+    return raw
+      .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/[^\p{L}\p{N}._-]+/gu, '-')
       .replace(/^-+|-+$/g, '')
-      .slice(0, 100) || 'item';
+      .slice(0, 120) || 'item';
+  }
+
+  function uniquePath(used, requested) {
+    const clean = String(requested || 'item').replace(/^\/+/, '').replace(/\\/g, '/');
+    if (!used.has(clean)) {
+      used.add(clean);
+      return clean;
+    }
+    const slash = clean.lastIndexOf('/');
+    const dir = slash >= 0 ? clean.slice(0, slash + 1) : '';
+    const leaf = slash >= 0 ? clean.slice(slash + 1) : clean;
+    const dot = leaf.lastIndexOf('.');
+    const stem = dot > 0 ? leaf.slice(0, dot) : leaf;
+    const ext = dot > 0 ? leaf.slice(dot) : '';
+    let index = 2;
+    while (used.has(`${dir}${stem}-${index}${ext}`)) index++;
+    const result = `${dir}${stem}-${index}${ext}`;
+    used.add(result);
+    return result;
   }
 
   function chunkKey(sessionId, path, index) {
@@ -62,6 +85,19 @@
     });
   }
 
+  // Split by UTF-16 code units without ever cutting a valid surrogate pair in
+  // half. TextEncoder is then free to encode every returned chunk independently
+  // without replacing half of an emoji/non-BMP character with U+FFFD.
+  function safeCutIndex(text, wanted) {
+    let cut = Math.min(Math.max(1, wanted), text.length);
+    if (cut < text.length) {
+      const left = text.charCodeAt(cut - 1);
+      const right = text.charCodeAt(cut);
+      if (left >= 0xd800 && left <= 0xdbff && right >= 0xdc00 && right <= 0xdfff) cut--;
+    }
+    return Math.max(1, cut);
+  }
+
   function* boundedPieces(pieces) {
     let buffer = '';
     for (const raw of pieces) {
@@ -71,11 +107,19 @@
         if (piece.length <= room) {
           buffer += piece;
           piece = '';
-        } else {
-          buffer += piece.slice(0, room);
-          piece = piece.slice(room);
+          continue;
+        }
+
+        if (buffer.length) {
+          const take = safeCutIndex(piece, room);
+          buffer += piece.slice(0, take);
+          piece = piece.slice(take);
           yield buffer;
           buffer = '';
+        } else {
+          const take = safeCutIndex(piece, CHUNK_CHARS);
+          yield piece.slice(0, take);
+          piece = piece.slice(take);
         }
       }
     }
@@ -124,11 +168,125 @@
     });
   }
 
+  function hex4(value) {
+    return value.toString(16).padStart(4, '0');
+  }
+
+  // Incremental JSON string writer. It never runs JSON.stringify() on the entire
+  // string, and it makes lone surrogates explicit escapes while preserving valid
+  // surrogate pairs. This keeps arbitrary user notes/URLs valid JSON.
+  function* jsonStringPieces(value) {
+    const text = String(value ?? '');
+    yield '"';
+    let buffer = '';
+    const flush = function* () {
+      if (buffer) {
+        yield buffer;
+        buffer = '';
+      }
+    };
+    for (let index = 0; index < text.length; index++) {
+      const code = text.charCodeAt(index);
+      let out = '';
+      if (code === 0x22) out = '\\"';
+      else if (code === 0x5c) out = '\\\\';
+      else if (code === 0x08) out = '\\b';
+      else if (code === 0x09) out = '\\t';
+      else if (code === 0x0a) out = '\\n';
+      else if (code === 0x0c) out = '\\f';
+      else if (code === 0x0d) out = '\\r';
+      else if (code < 0x20 || code === 0x2028 || code === 0x2029) out = `\\u${hex4(code)}`;
+      else if (code >= 0xd800 && code <= 0xdbff) {
+        const next = index + 1 < text.length ? text.charCodeAt(index + 1) : -1;
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          out = text[index] + text[index + 1];
+          index++;
+        } else out = `\\u${hex4(code)}`;
+      } else if (code >= 0xdc00 && code <= 0xdfff) out = `\\u${hex4(code)}`;
+      else out = text[index];
+
+      buffer += out;
+      if (buffer.length >= JSON_STRING_BUFFER) yield* flush();
+    }
+    yield* flush();
+    yield '"';
+  }
+
+  function jsonObjectEntries(value) {
+    try { return Object.entries(value); }
+    catch (_) { return []; }
+  }
+
+  function* jsonValuePieces(value, ancestors = new WeakSet(), inArray = false) {
+    if (value === null) { yield 'null'; return; }
+    const type = typeof value;
+    if (type === 'string') { yield* jsonStringPieces(value); return; }
+    if (type === 'number') { yield Number.isFinite(value) ? String(value) : 'null'; return; }
+    if (type === 'boolean') { yield value ? 'true' : 'false'; return; }
+    if (type === 'bigint') { yield* jsonStringPieces(`${value}n`); return; }
+    if (type === 'undefined' || type === 'function' || type === 'symbol') {
+      if (inArray) yield 'null';
+      return;
+    }
+
+    if (value instanceof Date) { yield* jsonStringPieces(value.toISOString()); return; }
+    if (value instanceof RegExp) { yield* jsonStringPieces(String(value)); return; }
+    if (value instanceof Error) {
+      value = { name: value.name, message: value.message, stack: value.stack || '' };
+    } else if (value instanceof Map) {
+      value = Object.fromEntries(value);
+    } else if (value instanceof Set) {
+      value = Array.from(value);
+    } else if (ArrayBuffer.isView(value)) {
+      value = Array.from(value);
+    } else if (value instanceof ArrayBuffer) {
+      value = Array.from(new Uint8Array(value));
+    }
+
+    if (ancestors.has(value)) {
+      yield* jsonStringPieces('[Circular]');
+      return;
+    }
+    ancestors.add(value);
+    try {
+      if (Array.isArray(value)) {
+        yield '[';
+        for (let index = 0; index < value.length; index++) {
+          if (index) yield ',';
+          yield* jsonValuePieces(value[index], ancestors, true);
+        }
+        yield ']';
+        return;
+      }
+
+      yield '{';
+      let first = true;
+      for (const [key, item] of jsonObjectEntries(value)) {
+        const itemType = typeof item;
+        if (itemType === 'undefined' || itemType === 'function' || itemType === 'symbol') continue;
+        if (!first) yield ',';
+        first = false;
+        yield* jsonStringPieces(key);
+        yield ':';
+        yield* jsonValuePieces(item, ancestors, false);
+      }
+      yield '}';
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+
+  function* jsonDocumentPieces(value) {
+    yield* jsonValuePieces(value);
+    yield '\n';
+  }
+
   function* ndjsonPieces(events, stream, transform = null) {
     for (const event of events) {
       if (event.stream !== stream) continue;
       const value = transform ? transform(event) : event;
-      yield `${JSON.stringify(value)}\n`;
+      yield* jsonValuePieces(value);
+      yield '\n';
     }
   }
 
@@ -138,7 +296,7 @@
     for (const value of values) {
       if (!first) yield ',';
       first = false;
-      yield JSON.stringify(value);
+      yield* jsonValuePieces(value);
     }
     yield ']\n';
   }
@@ -147,11 +305,21 @@
     const log = har?.log || { version: '1.2', creator: {}, pages: [], entries: [] };
     const entries = Array.isArray(log.entries) ? log.entries : [];
     const { entries: _entries, ...head } = log;
-    const headJson = JSON.stringify(head);
-    yield `{"log":${headJson.slice(0, -1)},"entries":[`;
+    yield '{"log":';
+    yield '{';
+    let first = true;
+    for (const [key, value] of Object.entries(head)) {
+      if (!first) yield ',';
+      first = false;
+      yield* jsonStringPieces(key);
+      yield ':';
+      yield* jsonValuePieces(value);
+    }
+    if (!first) yield ',';
+    yield '"entries":[';
     for (let index = 0; index < entries.length; index++) {
       if (index) yield ',';
-      yield JSON.stringify(entries[index]);
+      yield* jsonValuePieces(entries[index]);
     }
     yield ']}}\n';
   }
@@ -164,8 +332,9 @@
 
     await clearPreparedSession(id);
 
-    // Objects are kept as objects; importantly, they are never wrapped in one
-    // JSON.stringify({ har, events, ... }) call.
+    // readEvents still returns structured objects, but every serialization step
+    // below is bounded. There is no aggregate JSON string and no per-record
+    // JSON.stringify requirement.
     const events = await readEvents(id);
     const har = buildHar(session, events);
     const summary = buildSummary(session, events, har);
@@ -187,11 +356,16 @@
       generatedAt: new Date().toISOString(),
       session,
       files: fileMap,
-      exporter: { mode: 'bounded-file-stream', chunkChars: CHUNK_CHARS }
+      exporter: {
+        mode: 'bounded-token-stream',
+        chunkChars: CHUNK_CHARS,
+        unicodeSafeChunking: true,
+        circularValueRecovery: true
+      }
     };
 
-    await add('manifest.json', 'utf8', [`${JSON.stringify(manifest, null, 2)}\n`]);
-    await add('summary.json', 'utf8', [`${JSON.stringify(summary, null, 2)}\n`]);
+    await add('manifest.json', 'utf8', jsonDocumentPieces(manifest));
+    await add('summary.json', 'utf8', jsonDocumentPieces(summary));
     await add('network/network.har', 'utf8', harPieces(har));
     await add('network/cdp-events.ndjson', 'utf8', ndjsonPieces(events, 'cdp'));
     await add('network/body-events.ndjson', 'utf8', ndjsonPieces(events, 'network-body', (event) => ({
@@ -213,27 +387,21 @@
     for (const event of events) {
       if (event.stream === 'network-body' && event.type === 'response-body' && event.data?.body) {
         const requestId = safeFilePart(event.data.requestId);
-        const path = `network/response-bodies/${requestId}.${event.data.base64Encoded ? 'base64.txt' : 'txt'}`;
-        if (!usedPaths.has(path)) {
-          usedPaths.add(path);
-          await add(path, 'utf8', [event.data.base64Encoded ? `${event.data.body}\n` : event.data.body]);
-        }
+        const requested = `network/response-bodies/${requestId}.${event.data.base64Encoded ? 'base64.txt' : 'txt'}`;
+        const path = uniquePath(usedPaths, requested);
+        await add(path, 'utf8', event.data.base64Encoded ? [event.data.body, '\n'] : [event.data.body]);
       }
       if (event.stream === 'marker-screenshot' && event.type === 'screenshot' && event.data?.data) {
-        const path = `markers/${safeFilePart(event.data.markerId)}/screenshot.png`;
-        if (!usedPaths.has(path)) {
-          usedPaths.add(path);
-          // CHUNK_CHARS is divisible by four, so every non-final base64 chunk can
-          // be decoded independently by the page without concatenating it first.
-          await add(path, 'base64', [event.data.data]);
-        }
+        const requested = `markers/${safeFilePart(event.data.markerId)}/screenshot.png`;
+        const path = uniquePath(usedPaths, requested);
+        // CHUNK_CHARS is divisible by four, so every non-final base64 chunk can
+        // be decoded independently by the page without concatenating it first.
+        await add(path, 'base64', [event.data.data]);
       }
       if (event.stream === 'marker-dom' && event.type === 'dom-snapshot' && event.data?.snapshot) {
-        const path = `markers/${safeFilePart(event.data.markerId)}/dom-snapshot.json`;
-        if (!usedPaths.has(path)) {
-          usedPaths.add(path);
-          await add(path, 'utf8', [`${JSON.stringify(event.data.snapshot, null, 2)}\n`]);
-        }
+        const requested = `markers/${safeFilePart(event.data.markerId)}/dom-snapshot.json`;
+        const path = uniquePath(usedPaths, requested);
+        await add(path, 'utf8', jsonDocumentPieces(event.data.snapshot));
       }
     }
 
@@ -263,6 +431,47 @@
     };
   }
 
+  async function finalizeAndVerify(message, sender) {
+    const id = String(message.sessionId || '');
+    if (!id) return { ok: false, error: 'Session ID is missing.' };
+    const result = await previousHandleMessage({ action: 'finalize_export', sessionId: id }, sender);
+    await clearPreparedSession(id);
+    if (!result?.ok) return result;
+
+    let remaining = await getSession(id);
+    if (remaining) {
+      // One retry makes cleanup resilient to a transient IndexedDB transaction
+      // abort; never claim the UI is reset while the raw capture still exists.
+      await deleteSessionData(id);
+      remaining = await getSession(id);
+    }
+    if (remaining) return { ok: false, error: 'The ZIP was created, but the exported recording could not be cleared from diagnostics storage.' };
+    return { ok: true, sessionId: id };
+  }
+
+  async function discardAndVerify(message, sender) {
+    const id = String(message.sessionId || '');
+    const result = await previousHandleMessage({ action: 'discard_recording', sessionId: id }, sender);
+    await clearPreparedSession(id);
+    if (!result?.ok) return result;
+    if (id) {
+      let remaining = await getSession(id);
+      if (remaining) {
+        await deleteSessionData(id);
+        remaining = await getSession(id);
+      }
+      if (remaining) return { ok: false, error: 'Could not completely discard the cancelled diagnostic recording.' };
+    }
+    return { ok: true, sessionId: id };
+  }
+
+  globalThis.__EBSF_DIAG_STREAM_TEST__ = Object.freeze({
+    chunkChars: CHUNK_CHARS,
+    boundedPiecesForTest: (pieces) => Array.from(boundedPieces(pieces)),
+    jsonForTest: (value) => Array.from(jsonValuePieces(value)).join(''),
+    safeFilePart
+  });
+
   handleMessage = async function handleMessageWithStreamingExport(message, sender) {
     switch (message?.action) {
       case 'prepare_stream_export':
@@ -273,6 +482,10 @@
         await clearPreparedSession(String(message.sessionId || ''));
         return { ok: true };
       }
+      case 'finalize_stream_export':
+        return finalizeAndVerify(message, sender);
+      case 'discard_stream_recording':
+        return discardAndVerify(message, sender);
       case 'finalize_export':
       case 'discard_recording': {
         const id = String(message.sessionId || '');

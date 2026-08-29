@@ -1,9 +1,9 @@
 'use strict';
 
-// Final page-side hardening for diagnostics v0.2.4. Chrome's own debugger
-// banner Cancel is handled as an immediate Stop+Export request, but a failed
-// export is never auto-retried on every future Etsy navigation. Retained data
-// stays available through the normal Export ZIP control instead.
+// Chrome owns the visible debugger banner. Its Cancel action is still interpreted
+// as Stop + Export. v0.2.7 waits for the exporter's verified "Export complete"
+// outcome instead of treating the initial download click as completion, avoiding
+// a race that could write a finalized session back into storage.
 (() => {
   const PANEL_ID = '__etsy_bettersearch_diagnostics__';
   const ARM_KEY = 'ebsf-diagnostics:armed:v1';
@@ -96,12 +96,12 @@
     return null;
   }
 
-  async function waitForExportOutcome(root, activityStartLength, timeoutMs = 60000) {
+  async function waitForExportOutcome(root, activityStartLength, timeoutMs = 120000) {
     const started = Date.now();
     const activity = root?.querySelector('[data-role="activity"]');
     while (Date.now() - started < timeoutMs) {
       const newText = String(activity?.textContent || '').slice(activityStartLength);
-      if (/ZIP download requested:/i.test(newText)) return 'success';
+      if (/Export complete\./i.test(newText)) return 'success';
       if (/Export failed safely:/i.test(newText)) return 'failed';
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -113,9 +113,6 @@
     if (!id || reason !== 'canceled_by_user' || handledSessions.has(id)) return;
     handledSessions.add(id);
 
-    // Chrome already detached CDP. Prevent any old document-start arm from
-    // resurrecting the page recorder and close the content transport gate before
-    // invoking the existing retained Stop/Export workflow.
     clearReloadArm();
     globalThis.__EBSF_DIAG_TRANSPORT__?.setCaptureEnabled(false);
 
@@ -134,10 +131,6 @@
       return;
     }
 
-    // The controls layer was installed before this file. Its current UI mode may
-    // still say recording for a moment after Chrome detached; clicking the same
-    // Stop/Export control is intentional. background-controls.js treats the
-    // already-stopped retained session idempotently, then exports it.
     await new Promise((resolve) => setTimeout(resolve, 180));
     if (stop.disabled) {
       const deadline = Date.now() + 5000;
@@ -153,13 +146,16 @@
     stop.click();
     const outcome = await waitForExportOutcome(root, activityStartLength);
     if (outcome === 'success') {
-      await send({ action: 'clear_auto_export', sessionId: id });
-    } else if (outcome !== 'failed') {
-      // Keep the stopped data and pending marker, but do not auto-run another
-      // heavyweight export on a later Etsy navigation. The normal Export ZIP
-      // button remains the explicit retry path.
+      // v0.2.7's exporter finalizes and deletes the session itself. Do not call
+      // clear_auto_export here: a late putSession() could race the deletion and
+      // resurrect the already-exported capture.
+      return;
+    }
+    if (outcome === 'unknown') {
       handledSessions.delete(id);
     }
+    // A failed export remains retained. It is intentionally not auto-retried on
+    // later Etsy navigations; the explicit Export ZIP button is the retry path.
   }
 
   function installPanelGuard() {
@@ -192,9 +188,6 @@
     const stopped = response?.stopped;
     if (!stopped?.sessionId || !stopped.autoExportPending) return;
 
-    // A previous immediate auto-export was interrupted or failed. Keep startup
-    // passive: clear any reload arm and retain the stopped data, but do not build
-    // a ZIP automatically just because Etsy was opened/refreshed again.
     clearReloadArm();
     globalThis.__EBSF_DIAG_TRANSPORT__?.setCaptureEnabled(false);
     const activity = root.querySelector('[data-role="activity"]');
