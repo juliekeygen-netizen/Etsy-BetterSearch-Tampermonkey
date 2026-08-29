@@ -80,6 +80,7 @@ async function favFetchJson(url, signal, attempts = 3, onRetry = null) {
             const response = await fetch(url.href || url, { credentials: 'include', signal, headers });
             if (!response.ok) {
                 const error = new Error(`Favorites endpoint returned HTTP ${response.status}`);
+                error.status = response.status;
                 error.retryAfterMs = favRetryAfterMs(response.headers.get('Retry-After'));
                 throw error;
             }
@@ -89,7 +90,13 @@ async function favFetchJson(url, signal, attempts = 3, onRetry = null) {
             lastError = error;
             onRetry?.(attempt + 1, error);
             await favWaitUntilVisible(signal);
-            await sleep(Math.min(8000, Math.max(400 * (attempt + 1), Number(error?.retryAfterMs) || 0)), signal);
+            const retryAfterMs = Math.max(0, Number(error?.retryAfterMs) || 0);
+            const clientBackoffMs = Math.min(8000, 400 * (2 ** attempt));
+            /* A server Retry-After is authoritative and must not be truncated to
+             * the old 8s client-backoff cap. Repeatedly retrying a 429 too early
+             * can extend Etsy's throttling window during rapid reload testing. */
+            const delayMs = retryAfterMs > 0 ? Math.min(120000, retryAfterMs) : clientBackoffMs;
+            await sleep(delayMs, signal);
         }
     }
     throw lastError || new Error('Favorites request failed');
