@@ -9,8 +9,8 @@ const controls = await readFile(new URL('../diagnostics-extension/controls.js', 
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2 loads transport, content and control layers in safe order', () => {
-  assert.equal(manifest.version, '0.2.0');
+test('diagnostics v0.2.1 loads transport, content and control layers in safe order', () => {
+  assert.equal(manifest.version, '0.2.1');
   assert.deepEqual(manifest.content_scripts[0].js, ['transport.js', 'content.js', 'controls.js']);
   assert.match(serviceWorker, /importScripts\('background\.js', 'har-extra-info\.js', 'background-controls\.js'\)/);
   assert.match(build, /background-controls\.js/);
@@ -75,6 +75,20 @@ test('Record & Reload remains document-start armed and Start button is repurpose
   assert.match(controls, /target\.matches\('\[data-start="start"\]'\)/);
   assert.match(controls, /pauseRecording/);
   assert.match(controls, /resumeRecording/);
+});
+
+
+test('resume after a page refresh while paused restores document-start DOM capture', () => {
+  assert.match(controls, /function hasArmedSession\(/);
+  assert.match(controls, /const needsDocumentReload = !hasArmedSession\(\)/);
+  assert.match(controls, /restore document-start DOM capture/);
+  const resumeBody = controls.slice(
+    controls.indexOf('async function resumeRecording'),
+    controls.indexOf('async function stopRecordingOnly')
+  );
+  assert.match(resumeBody, /armSession\(response\.session\)/);
+  assert.match(resumeBody, /if \(needsDocumentReload\)/);
+  assert.match(resumeBody, /location\.reload\(\)/);
 });
 
 
