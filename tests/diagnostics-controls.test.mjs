@@ -13,13 +13,16 @@ const controlsDetach = await readFile(new URL('../diagnostics-extension/controls
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2.4 loads passive-startup, controls and detach hardening in safe order', () => {
-  assert.equal(manifest.version, '0.2.4');
+test('diagnostics v0.2.5 loads passive-startup, observer-loop, controls and detach hardening in safe order', () => {
+  assert.equal(manifest.version, '0.2.5');
   assert.deepEqual(manifest.content_scripts[0].js, [
     'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'controls-detach-autoexport.js'
   ]);
   assert.match(serviceWorker, /background-detach-autoexport\.js/);
   assert.match(serviceWorker, /background-session-health\.js/);
+  assert.match(bootstrapGuard, /__EBSF_DIAG_PANEL_OBSERVER_GUARD__/);
+  assert.match(bootstrapGuard, /attributeOldValue: true/);
+  assert.match(bootstrapGuard, /isNoopAttributeMutation/);
   for (const file of ['background-detach-autoexport.js', 'background-session-health.js', 'bootstrap-guard.js', 'controls-detach-autoexport.js', 'transport.js', 'controls.js']) {
     assert.match(build, new RegExp(file.replaceAll('.', '\\.')));
   }
@@ -101,6 +104,16 @@ test('new documents consume any arm before content.js and require background deb
   assert.match(bootstrapGuard, /sessionStorage\.removeItem\(ARM_KEY\)/);
   assert.doesNotMatch(bootstrapGuard, /Storage\.prototype\.setItem/);
   assert.doesNotMatch(bootstrapGuard, /setTimeout\(/);
+});
+
+
+test('panel MutationObserver guard prevents same-value UI writes from feeding syncUi forever', () => {
+  assert.match(controls, /new MutationObserver/);
+  assert.match(controls, /attributeFilter: \['disabled', 'data-recording', 'data-collapsed', 'hidden'\]/);
+  assert.match(controls, /panel\.dataset\.recording = active \? '1' : '0'/);
+  assert.match(bootstrapGuard, /target\.id === PANEL_ID/);
+  assert.match(bootstrapGuard, /record\.oldValue === target\.getAttribute\(record\.attributeName\)/);
+  assert.match(bootstrapGuard, /records\.filter\(\(record\) => !isNoopAttributeMutation\(record\)\)/);
 });
 
 
