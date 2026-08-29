@@ -40,3 +40,46 @@ This diagnostics extension is built separately into:
 - `dist/diagnostics-chrome`
 
 It is intentionally not bundled into the production BetterSearch extension because the `debugger` permission is powerful and only needed during diagnostics.
+
+## Evidence gaps exposed by the 2026-08-29 full Favorites capture
+
+The first large end-to-end capture was successful enough to reconstruct several production failures, but it also showed that DOM/network evidence alone still leaves too much BetterSearch-internal state to infer after the fact. See `docs/FAVORITES_DIAGNOSTICS_AND_INDEXEDDB_AUDIT_2026-08-29.md` for the sanitized analysis.
+
+Future important-state snapshots should include a compact, privacy-safe BetterSearch state block with:
+
+```text
+scope/dataset/view identity
+dataset generation
+committed + pending native query
+query commit reason/source
+catalogue source + complete generation
+scope lastCompleteSyncAt
+records / filtered / current-server-total counts
+render owner + ownership generation/reason
+native/local grid connectivity, visibility and card counts
+native/local page + pager identity
+rail generation + shell reconcile reason
+metadata requirement generation + pending/unresolved counts
+availability mode + availability-model generation
+server/cache/index count authorities
+auto-sync enabled + interval + due/suppressed reason
+reconcile DOM writes performed vs skipped-as-unchanged
+```
+
+The capture also justifies new automatic markers for:
+
+- local empty result while the hidden native grid already contains cards;
+- local grid ownership while Etsy's native pager remains visible;
+- server/cache/index Favorites totals disagreeing;
+- more than one BetterSearch rail generation in one document;
+- excessive reconcile/no-op mutation bursts;
+- attempted ownerless Favorites scope creation/persistence;
+- implausibly long native query being committed as durable dataset identity.
+
+These fields should be sanitized in Diagnostics output. Do not embed account IDs, raw cookie/session data, full IndexedDB dumps, or private marker-note text in routine summary fields.
+
+### Performance interpretation
+
+The 2026-08-29 recording captured 274k+ DOM mutations and therefore adds meaningful observer/export overhead itself. Use its mutation structure and invariant failures as evidence, but do not treat absolute long-task duration as a clean BetterSearch benchmark.
+
+A later lightweight mode should be able to record only lifecycle counters/state transitions and skip full DOM-mutation payloads when the goal is measuring performance rather than reconstructing exact DOM history.
