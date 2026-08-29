@@ -1,4 +1,0 @@
-BetterSearch AutoPull clean test #3.
-
-If this file appears locally without a manual git pull, the native Git + --autostash AutoPull flow is working.
-Created for the 2026-08-29 live test.
