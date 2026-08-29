@@ -57,12 +57,19 @@ test('v0.14.1 neutralizes the legacy 20-item local-pagination override', () => {
   assert.match(hotfix, /classList\.remove\('ebsf-local-single-page0129'\)/);
 });
 
-test('ready enhanced results are repaired if Etsy reconciles away the sibling local grid', () => {
+test('ready enhanced results repair through metadata coordination if Etsy reconciles away the local grid', () => {
   assert.match(hotfix, /function favRenderIntegrityReady0142/);
   assert.match(hotfix, /favState\.loadComplete/);
   assert.match(hotfix, /favState\.loadKey !== datasetKey/);
   assert.match(hotfix, /Number\(favState\.metadataCoverage0141\?\.pending\) > 0/);
-  assert.match(hotfix, /if \(!favLocalGridAuthoritative0142\(\)\) favRenderCurrent\(\)/);
+
+  const repair = hotfix.slice(
+    hotfix.indexOf('function favRepairLocalOwnership0142'),
+    hotfix.indexOf('function favScheduleRenderIntegrity0142'),
+  );
+  assert.match(repair, /favLocalGridAuthoritative0142\(\)/);
+  assert.match(repair, /Promise\.resolve\(favReapply\(\)\)/);
+  assert.doesNotMatch(repair, /favRenderCurrent\(\)/);
 
   const reapply = hotfix.slice(hotfix.indexOf('var favReapplyBefore0142'), hotfix.indexOf('var favScheduleSyncBefore0142'));
   assert.match(reapply, /await favReapplyBefore0142\(\.\.\.args\)/);
@@ -73,6 +80,12 @@ test('ready enhanced results are repaired if Etsy reconciles away the sibling lo
   assert.doesNotMatch(hotfix, /new MutationObserver/);
   assert.match(hotfix, /favScheduleSync = function favScheduleSync0142/);
   assert.match(hotfix, /favState\.renderMode0141 === 'bettersearch-local'/);
+});
+
+test('grid-authority checks prefer Etsy current tree over a stale connected native-grid reference', () => {
+  assert.match(hotfix, /const currentNative = favNativeMainGrid0141\?\.\(\)/);
+  assert.match(hotfix, /currentNative\?\.isConnected/);
+  assert.match(hotfix, /favState\.nativeGrid\?\.isConnected \? favState\.nativeGrid : null/);
 });
 
 test('native restoration schedules a truthful header refresh', () => {
