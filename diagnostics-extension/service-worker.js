@@ -8,5 +8,6 @@ importScripts(
   'har-extra-info.js',
   'background-controls.js',
   'background-detach-autoexport.js',
-  'background-session-health.js'
+  'background-session-health.js',
+  'background-streaming-export.js'
 );
