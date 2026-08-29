@@ -56,13 +56,17 @@ test('loading status remains out of flow on the metadata baseline', () => {
   assert.doesNotMatch(finalProgress, /section\.prepend\(node\)/);
 });
 
-test('native pagination stays Etsy-owned while v0.15 local pagination stays separate', () => {
+test('native pagination visual contract stays Etsy-native while local page state stays separate', () => {
   assert.match(pagination, /function favPageRouteKey0129/);
   assert.match(pagination, /function favRequestedPage0129/);
   assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0150 = 20/);
   assert.match(pagination, /favRenderPagination\s*=\s*function favRenderPagination0150/);
   assert.match(pagination, /pager\.dataset\.ebsfLocalPagination = '1'/);
-  assert.match(pagination, /BetterSearch filtered favorites pages/);
+  assert.match(pagination, /function favNativePagerTemplate0151/);
+  assert.match(pagination, /data-clg-id.*WtPagination/);
+  assert.match(pagination, /wt-action-group__item-container/);
+  assert.match(pagination, /wt-btn.*wt-action-group__item/);
+  assert.match(pagination, /dataset\.ebsfPaginationPresentation = 'etsy-native'/);
+  assert.doesNotMatch(pagination, /BetterSearch filtered favorites pages|ebsf-local-page-button|ebsf-local-page-ellipsis/);
   assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(pagination, /data-clg-id="WtPagination"|wt-action-group__item-container/);
 });
