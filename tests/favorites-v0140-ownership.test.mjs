@@ -117,7 +117,9 @@ test('same-dataset refresh is keyed while unrelated datasets have independent in
 });
 
 test('cross-tab catalogue refresh has a dataset-scoped Web Locks path and storage-lease fallback', () => {
-  assert.match(catalogSource, /navigator\?\.locks\?\.request/);
+  assert.match(catalogSource, /globalThis\.navigator\?\.locks/);
+  assert.match(catalogSource, /if \(locks\?\.request\)/);
+  assert.match(catalogSource, /return locks\.request/);
   assert.match(catalogSource, /favCatalogLeaseStorageKey0141/);
   assert.match(catalogSource, /leaseUntil/);
   assert.match(catalogSource, /favCatalogPeerCompleted0141/);
@@ -142,7 +144,7 @@ test('metadata freshness distinguishes destination-sensitive shipping from polic
   assert.match(metadataSource, /carts:\s*15 \* 60 \* 1000/);
   assert.match(metadataSource, /meta\.contextKey === destination\.contextKey/);
   assert.match(metadataSource, /contextSensitive = key === 'shipping' \|\| key === 'estimatedDelivery'/);
-  assert.match(metadataSource, /contextKey:String\(field\?\.contextKey \|\| ''\)/);
+  assert.match(metadataSource, /normalized\.contextKey = String\(field\?\.contextKey \|\| ''\)/);
 });
 
 test('plain Favorites browsing cannot trigger a whole-catalogue automatic deep scan', () => {
@@ -155,9 +157,11 @@ test('plain Favorites browsing cannot trigger a whole-catalogue automatic deep s
 
 test('owner-scoped deep maintenance reads exact scope membership instead of all historical listings', () => {
   const block = metadataSource.slice(metadataSource.indexOf('favIndexGetActiveListings = async function'), metadataSource.indexOf('favDeepMaybeAutoScan ='));
-  assert.match(block, /authoritativeKey/);
-  assert.match(block, /store\.get\(idValue\)/);
-  assert.doesNotMatch(block, /transaction\('listings'.*getAll\(\)/s);
+  const ownerBlock = block.slice(block.indexOf('const authoritativeKey'));
+  assert.match(ownerBlock, /authoritativeKey/);
+  assert.match(ownerBlock, /store\.get\(idValue\)/);
+  assert.doesNotMatch(ownerBlock, /store\.getAll\(\)/);
+  assert.match(block, /store\.index\('isFavorite'\)\.getAll\(true\)/);
 });
 
 test('local mode owns a sibling grid and never reparents/replaces Etsy native card children', () => {
