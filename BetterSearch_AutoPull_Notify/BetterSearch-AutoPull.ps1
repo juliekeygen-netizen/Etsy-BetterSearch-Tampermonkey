@@ -26,7 +26,7 @@ function Show-DesktopNotification {
         [System.Media.SystemSounds]::Asterisk.Play()
         $notify.ShowBalloonTip(6000)
 
-        # Keep NotifyIcon alive long enough for Windows to display the balloon.
+        # Keep the NotifyIcon alive long enough for Windows to display it.
         Start-Sleep -Seconds 5
         $notify.Dispose()
     }
@@ -195,40 +195,16 @@ function Test-IsAncestor {
     return ($result.ExitCode -eq 0)
 }
 
-function Get-BlockingLocalChanges {
+function Get-TrackedLocalChangeCount {
     param([string]$RepoPath)
 
-    # Ignore untracked files entirely. This allows harmless local-only files such
-    # as the old downloaded autogitpull.exe to live beside the helper.
+    # Untracked files are deliberately ignored. For tracked edits, Git's
+    # --autostash will preserve them while a fast-forward is applied.
     $result = Invoke-Git -RepoPath $RepoPath -GitArgs @(
         "status", "--porcelain", "--untracked-files=no"
     )
-
-    if ($result.ExitCode -ne 0) {
-        return @("Could not inspect local changes")
-    }
-
-    # These two files are legacy/local runtime artifacts. They were accidentally
-    # committed earlier and must not make the whole repository permanently dirty.
-    $ignoredPaths = @(
-        ".autogitpull.lock",
-        "BetterSearch_AutoPull_Notify/BetterSearch-AutoPull.config.json"
-    )
-
-    $blocking = @()
-    foreach ($line in @(Get-NonEmptyLines $result)) {
-        $normalized = $line.Replace("\", "/")
-        $ignore = $false
-        foreach ($ignoredPath in $ignoredPaths) {
-            if ($normalized.EndsWith($ignoredPath) -or $normalized.Contains(" -> $ignoredPath")) {
-                $ignore = $true
-                break
-            }
-        }
-        if (-not $ignore) { $blocking += $line }
-    }
-
-    return @($blocking)
+    if ($result.ExitCode -ne 0) { return 0 }
+    return @(Get-NonEmptyLines $result).Count
 }
 
 function Run-Setup {
@@ -313,7 +289,7 @@ function Render-Dashboard {
         "checking" { "Cyan" }
         "warning"  { "Yellow" }
         "error"    { "Red" }
-        default    { "Gray" }
+        default     { "Gray" }
     }
 
     Write-Host "Status : $Status" -ForegroundColor $statusColor
@@ -408,7 +384,6 @@ while ($true) {
         -Status "Checking GitHub..." -StatusKind "checking" -Detail "" `
         -LastCheck $lastCheck -NextCheck $null -PullHistory $pullHistory
 
-    $blockingChanges = @(Get-BlockingLocalChanges -RepoPath $repoPath)
     $fetchResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
         "fetch", "--quiet", $upstreamInfo.Remote
     )
@@ -444,83 +419,93 @@ while ($true) {
                 $availableCount = if ($countResult.ExitCode -eq 0) {
                     [int](Get-FirstLine $countResult)
                 }
+                else { 1 }
+
+                $localChangeCount = Get-TrackedLocalChangeCount -RepoPath $repoPath
+
+                # --autostash is the key safety behavior here: tracked local edits
+                # are temporarily stashed, the fast-forward is applied, and then
+                # those edits are restored. Untracked files are never touched.
+                $pullArgs = if ($upstreamInfo.TrackingConfigured) {
+                    @("pull", "--ff-only", "--autostash", "--quiet")
+                }
                 else {
-                    1
+                    @(
+                        "pull", "--ff-only", "--autostash", "--quiet",
+                        $upstreamInfo.Remote, $upstreamInfo.RemoteBranch
+                    )
                 }
 
-                if ($blockingChanges.Count -gt 0) {
-                    $status = "Update waiting"
-                    $statusKind = "warning"
-                    $firstChange = $blockingChanges[0].Trim()
-                    $detail = "$availableCount remote commit(s) available; tracked local change blocks auto-pull: $firstChange"
+                $pullResult = Invoke-Git -RepoPath $repoPath -GitArgs $pullArgs
+
+                if ($pullResult.ExitCode -ne 0) {
+                    $status = "Pull failed"
+                    $statusKind = "error"
+                    $detail = Get-LastLine $pullResult
+                    if ([string]::IsNullOrWhiteSpace($detail)) {
+                        $detail = "Git could not safely apply the update. Your local changes were not intentionally discarded."
+                    }
                 }
                 else {
-                    $pullArgs = if ($upstreamInfo.TrackingConfigured) {
-                        @("pull", "--ff-only", "--quiet")
-                    }
-                    else {
-                        @("pull", "--ff-only", "--quiet", $upstreamInfo.Remote, $upstreamInfo.RemoteBranch)
-                    }
+                    $afterHash = Get-HeadHash -RepoPath $repoPath
 
-                    $pullResult = Invoke-Git -RepoPath $repoPath -GitArgs $pullArgs
-                    if ($pullResult.ExitCode -ne 0) {
-                        $status = "Pull failed"
-                        $statusKind = "error"
-                        $detail = Get-LastLine $pullResult
-                    }
-                    else {
-                        $afterHash = Get-HeadHash -RepoPath $repoPath
-                        if ($afterHash -and $afterHash -ne $localHash) {
-                            $logResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
-                                "log", "--reverse", "--format=%h%x09%s", "$localHash..$afterHash"
-                            )
-                            $commits = @(Get-NonEmptyLines $logResult)
-                            $commitCount = $commits.Count
-                            if ($commitCount -eq 0) { $commitCount = 1 }
+                    if ($afterHash -and $afterHash -ne $localHash) {
+                        $logResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
+                            "log", "--reverse", "--format=%h%x09%s", "$localHash..$afterHash"
+                        )
+                        $commits = @($logResult.Lines | Where-Object {
+                            -not [string]::IsNullOrWhiteSpace($_)
+                        })
+                        $commitCount = $commits.Count
+                        if ($commitCount -eq 0) { $commitCount = $availableCount }
+                        if ($commitCount -eq 0) { $commitCount = 1 }
 
-                            $entry = [pscustomobject]@{
-                                Time = (Get-Date).ToString("HH:mm:ss")
-                                Before = Short-Hash $localHash
-                                After = Short-Hash $afterHash
-                                CommitCount = $commitCount
-                                Commits = $commits
-                            }
+                        $entry = [pscustomobject]@{
+                            Time = (Get-Date).ToString("HH:mm:ss")
+                            Before = Short-Hash $localHash
+                            After = Short-Hash $afterHash
+                            CommitCount = $commitCount
+                            Commits = $commits
+                        }
+                        $pullHistory = @($entry) + @($pullHistory)
+                        if ($pullHistory.Count -gt 6) {
+                            $pullHistory = @($pullHistory | Select-Object -First 6)
+                        }
 
-                            $pullHistory = @($entry) + @($pullHistory)
-                            if ($pullHistory.Count -gt 5) {
-                                $pullHistory = @($pullHistory | Select-Object -First 5)
-                            }
-
-                            $latestSubject = Get-CommitSubject -RepoPath $repoPath -Hash $afterHash
-                            if ($commitCount -eq 1) {
-                                $notificationMessage = "Pulled $(Short-Hash $afterHash) - $latestSubject"
-                            }
-                            else {
-                                $notificationMessage = "Pulled $commitCount commits. Latest: $(Short-Hash $afterHash) - $latestSubject"
-                            }
-
-                            Show-DesktopNotification -Title "BetterSearch updated" -Message $notificationMessage
-                            $status = "Updated"
-                            $statusKind = "updated"
-                            $detail = $notificationMessage
+                        $latestSubject = Get-CommitSubject -RepoPath $repoPath -Hash $afterHash
+                        if ($commitCount -eq 1) {
+                            $notificationMessage = "Pulled $(Short-Hash $afterHash) - $latestSubject"
                         }
                         else {
-                            $status = "Up to date"
-                            $statusKind = "ok"
-                            $detail = ""
+                            $notificationMessage = "Pulled $commitCount commits. Latest: $(Short-Hash $afterHash) - $latestSubject"
                         }
+
+                        Show-DesktopNotification -Title "BetterSearch updated" -Message $notificationMessage
+                        $status = "Updated"
+                        $statusKind = "updated"
+                        if ($localChangeCount -gt 0) {
+                            $detail = "$notificationMessage  Preserved $localChangeCount tracked local change(s) with Git autostash."
+                        }
+                        else {
+                            $detail = $notificationMessage
+                        }
+                    }
+                    else {
+                        $status = "Up to date"
+                        $statusKind = "ok"
+                        $detail = ""
                     }
                 }
             }
             elseif (Test-IsAncestor -RepoPath $repoPath -Older $remoteHash -Newer $localHash) {
-                $status = "Local branch ahead"
+                $status = "Local branch is ahead"
                 $statusKind = "warning"
-                $detail = "No pull needed; local HEAD contains commit(s) not on $($upstreamInfo.Upstream)."
+                $detail = "Nothing was pulled because your local branch contains commits not on $($upstreamInfo.Upstream)."
             }
             else {
                 $status = "Local and remote diverged"
                 $statusKind = "warning"
-                $detail = "Auto-pull skipped for safety. Resolve Git history manually."
+                $detail = "Auto-pull stopped for safety. Resolve the Git history manually."
             }
         }
     }
