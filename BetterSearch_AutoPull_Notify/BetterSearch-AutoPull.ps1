@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Host.UI.RawUI.WindowTitle = "BetterSearch AutoPull + Notifications v1.3"
+try { $Host.UI.RawUI.WindowTitle = "BetterSearch AutoPull" } catch {}
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $ScriptDir "BetterSearch-AutoPull.config.json"
@@ -12,9 +12,11 @@ $script:GitExe = $null
 
 function Show-DesktopNotification {
     param([string]$Title, [string]$Message)
+
     try {
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
+
         $notify = New-Object System.Windows.Forms.NotifyIcon
         $notify.Icon = [System.Drawing.SystemIcons]::Information
         $notify.Visible = $true
@@ -23,6 +25,8 @@ function Show-DesktopNotification {
         $notify.BalloonTipText = $Message
         [System.Media.SystemSounds]::Asterisk.Play()
         $notify.ShowBalloonTip(6000)
+
+        # Keep NotifyIcon alive long enough for Windows to display the balloon.
         Start-Sleep -Seconds 5
         $notify.Dispose()
     }
@@ -45,14 +49,19 @@ function Read-Configuration {
 
 function Save-Configuration {
     param([string]$RepoPath, [string]$Interval)
-    [pscustomobject]@{ repoPath = $RepoPath; interval = $Interval } |
-        ConvertTo-Json | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
+
+    [pscustomobject]@{
+        repoPath = $RepoPath
+        interval = $Interval
+    } | ConvertTo-Json | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
 }
 
 function Convert-IntervalToSeconds {
     param([string]$Interval)
+
     $value = if ($null -eq $Interval) { "" } else { $Interval.Trim() }
     if ($value -match "^\d+$") { return [Math]::Max(1, [int]$value) }
+
     if ($value -match "^(\d+)\s*(ms|s|m|h|d|w)$") {
         $amount = [int]$Matches[1]
         switch ($Matches[2]) {
@@ -64,6 +73,7 @@ function Convert-IntervalToSeconds {
             "w"  { return [Math]::Max(1, $amount * 604800) }
         }
     }
+
     throw "Unsupported interval '$Interval'. Use 30, 30s, 1m, etc."
 }
 
@@ -74,27 +84,42 @@ function Find-Git {
 
 function Invoke-Git {
     param([string]$RepoPath, [string[]]$GitArgs)
+
     $oldPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
         $raw = @(& $script:GitExe -C $RepoPath @GitArgs 2>&1)
         $exitCode = $LASTEXITCODE
     }
-    finally { $ErrorActionPreference = $oldPreference }
-    $lines = @($raw | ForEach-Object { if ($null -ne $_) { $_.ToString() } })
-    return [pscustomobject]@{ ExitCode = $exitCode; Lines = $lines }
+    finally {
+        $ErrorActionPreference = $oldPreference
+    }
+
+    $lines = @($raw | ForEach-Object {
+        if ($null -ne $_) { $_.ToString() }
+    })
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Lines = $lines
+    }
+}
+
+function Get-NonEmptyLines {
+    param($Result)
+    return @($Result.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
 function Get-FirstLine {
     param($Result)
-    $lines = @($Result.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $lines = @(Get-NonEmptyLines $Result)
     if ($lines.Count -eq 0) { return "" }
     return $lines[0]
 }
 
 function Get-LastLine {
     param($Result)
-    $lines = @($Result.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $lines = @(Get-NonEmptyLines $Result)
     if ($lines.Count -eq 0) { return "" }
     return $lines[$lines.Count - 1]
 }
@@ -108,37 +133,50 @@ function Short-Hash {
 
 function Get-HeadHash {
     param([string]$RepoPath)
-    $r = Invoke-Git -RepoPath $RepoPath -GitArgs @("rev-parse", "HEAD")
-    if ($r.ExitCode -ne 0) { return $null }
-    return (Get-FirstLine $r).Trim().ToLowerInvariant()
+    $result = Invoke-Git -RepoPath $RepoPath -GitArgs @("rev-parse", "HEAD")
+    if ($result.ExitCode -ne 0) { return $null }
+    return (Get-FirstLine $result).Trim().ToLowerInvariant()
 }
 
 function Get-CommitSubject {
     param([string]$RepoPath, [string]$Hash)
     if ([string]::IsNullOrWhiteSpace($Hash)) { return "" }
-    $r = Invoke-Git -RepoPath $RepoPath -GitArgs @("show", "-s", "--format=%s", $Hash)
-    if ($r.ExitCode -ne 0) { return "" }
-    return (Get-FirstLine $r).Trim()
+
+    $result = Invoke-Git -RepoPath $RepoPath -GitArgs @("show", "-s", "--format=%s", $Hash)
+    if ($result.ExitCode -ne 0) { return "" }
+    return (Get-FirstLine $result).Trim()
 }
 
 function Get-UpstreamInfo {
     param([string]$RepoPath)
-    $tracking = Invoke-Git -RepoPath $RepoPath -GitArgs @("rev-parse", "--abbrev-ref", "--symbolic-full-name", '@{u}')
-    $trackingConfigured = $false
-    $upstream = ""
-    if ($tracking.ExitCode -eq 0) {
-        $upstream = (Get-FirstLine $tracking).Trim()
-        $trackingConfigured = -not [string]::IsNullOrWhiteSpace($upstream)
-    }
 
     $branchResult = Invoke-Git -RepoPath $RepoPath -GitArgs @("branch", "--show-current")
     if ($branchResult.ExitCode -ne 0) { throw "Could not determine the current Git branch." }
+
     $localBranch = (Get-FirstLine $branchResult).Trim()
-    if ([string]::IsNullOrWhiteSpace($localBranch)) { throw "Detached HEAD detected. Auto-pull is disabled." }
-    if (-not $trackingConfigured) { $upstream = "origin/$localBranch" }
+    if ([string]::IsNullOrWhiteSpace($localBranch)) {
+        throw "Detached HEAD detected. Auto-pull is disabled."
+    }
+
+    $trackingResult = Invoke-Git -RepoPath $RepoPath -GitArgs @(
+        "rev-parse", "--abbrev-ref", "--symbolic-full-name", '@{u}'
+    )
+
+    $trackingConfigured = $false
+    $upstream = ""
+    if ($trackingResult.ExitCode -eq 0) {
+        $upstream = (Get-FirstLine $trackingResult).Trim()
+        $trackingConfigured = -not [string]::IsNullOrWhiteSpace($upstream)
+    }
+
+    if (-not $trackingConfigured) {
+        $upstream = "origin/$localBranch"
+    }
 
     $slash = $upstream.IndexOf("/")
-    if ($slash -lt 1 -or $slash -ge ($upstream.Length - 1)) { throw "Could not understand upstream '$upstream'." }
+    if ($slash -lt 1 -or $slash -ge ($upstream.Length - 1)) {
+        throw "Could not understand upstream '$upstream'."
+    }
 
     return [pscustomobject]@{
         LocalBranch = $localBranch
@@ -151,17 +189,55 @@ function Get-UpstreamInfo {
 
 function Test-IsAncestor {
     param([string]$RepoPath, [string]$Older, [string]$Newer)
-    $r = Invoke-Git -RepoPath $RepoPath -GitArgs @("merge-base", "--is-ancestor", $Older, $Newer)
-    return ($r.ExitCode -eq 0)
+    $result = Invoke-Git -RepoPath $RepoPath -GitArgs @(
+        "merge-base", "--is-ancestor", $Older, $Newer
+    )
+    return ($result.ExitCode -eq 0)
+}
+
+function Get-BlockingLocalChanges {
+    param([string]$RepoPath)
+
+    # Ignore untracked files entirely. This allows harmless local-only files such
+    # as the old downloaded autogitpull.exe to live beside the helper.
+    $result = Invoke-Git -RepoPath $RepoPath -GitArgs @(
+        "status", "--porcelain", "--untracked-files=no"
+    )
+
+    if ($result.ExitCode -ne 0) {
+        return @("Could not inspect local changes")
+    }
+
+    # These two files are legacy/local runtime artifacts. They were accidentally
+    # committed earlier and must not make the whole repository permanently dirty.
+    $ignoredPaths = @(
+        ".autogitpull.lock",
+        "BetterSearch_AutoPull_Notify/BetterSearch-AutoPull.config.json"
+    )
+
+    $blocking = @()
+    foreach ($line in @(Get-NonEmptyLines $result)) {
+        $normalized = $line.Replace("\", "/")
+        $ignore = $false
+        foreach ($ignoredPath in $ignoredPaths) {
+            if ($normalized.EndsWith($ignoredPath) -or $normalized.Contains(" -> $ignoredPath")) {
+                $ignore = $true
+                break
+            }
+        }
+        if (-not $ignore) { $blocking += $line }
+    }
+
+    return @($blocking)
 }
 
 function Run-Setup {
     Write-Host ""
     Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host " BetterSearch AutoPull + Notifications v1.3 - setup"
+    Write-Host " BetterSearch AutoPull - setup"
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "v1.3 uses your normal Git installation directly."
+    Write-Host "This version uses your normal Git installation directly."
     Write-Host "autogitpull.exe is no longer needed." -ForegroundColor Green
 
     $repoPath = ""
@@ -170,11 +246,14 @@ function Run-Setup {
         Write-Host "Enter the LOCAL BetterSearch repository folder." -ForegroundColor Yellow
         Write-Host "Tip: drag the folder from Explorer into this window."
         $repoPath = Normalize-EnteredPath (Read-Host "Repo folder")
-        if ([string]::IsNullOrWhiteSpace($repoPath) -or -not (Test-Path -LiteralPath $repoPath -PathType Container)) {
+
+        if ([string]::IsNullOrWhiteSpace($repoPath) -or
+            -not (Test-Path -LiteralPath $repoPath -PathType Container)) {
             Write-Host "That folder does not exist." -ForegroundColor Red
             $repoPath = ""
             continue
         }
+
         $probe = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-parse", "--is-inside-work-tree")
         if ($probe.ExitCode -ne 0 -or (Get-FirstLine $probe).Trim() -ne "true") {
             Write-Host "That folder is not a Git repository." -ForegroundColor Red
@@ -186,8 +265,14 @@ function Run-Setup {
         Write-Host ""
         $interval = Normalize-EnteredPath (Read-Host "How often should it check? [default: 30s]")
         if ([string]::IsNullOrWhiteSpace($interval)) { $interval = "30s" }
-        try { [void](Convert-IntervalToSeconds $interval); break }
-        catch { Write-Host $_.Exception.Message -ForegroundColor Red }
+
+        try {
+            [void](Convert-IntervalToSeconds $interval)
+            break
+        }
+        catch {
+            Write-Host $_.Exception.Message -ForegroundColor Red
+        }
     }
 
     Save-Configuration -RepoPath $repoPath -Interval $interval
@@ -214,27 +299,31 @@ function Render-Dashboard {
 
     Clear-Host
     Write-Host "========================================================" -ForegroundColor Cyan
-    Write-Host " BetterSearch AutoPull + Notifications v1.3"
+    Write-Host " BetterSearch AutoPull"
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host "Repo   : $RepoPath"
-    Write-Host "Branch : $($UpstreamInfo.LocalBranch) -> $($UpstreamInfo.Upstream)"
-    Write-Host "Every  : ${IntervalSeconds}s"
+    Write-Host ("Branch : {0} -> {1}   |   every {2}s" -f `
+        $UpstreamInfo.LocalBranch, $UpstreamInfo.Upstream, $IntervalSeconds)
     Write-Host ("HEAD   : {0}  {1}" -f (Short-Hash $HeadHash), $HeadSubject)
     Write-Host ""
 
     $statusColor = switch ($StatusKind) {
-        "ok" { "Green" }
-        "updated" { "Green" }
+        "ok"       { "Green" }
+        "updated"  { "Green" }
         "checking" { "Cyan" }
-        "warning" { "Yellow" }
-        "error" { "Red" }
-        default { "Gray" }
+        "warning"  { "Yellow" }
+        "error"    { "Red" }
+        default    { "Gray" }
     }
 
     Write-Host "Status : $Status" -ForegroundColor $statusColor
-    if (-not [string]::IsNullOrWhiteSpace($Detail)) { Write-Host "         $Detail" -ForegroundColor DarkGray }
-    if ($LastCheck.HasValue) { Write-Host ("Checked: {0}" -f $LastCheck.Value.ToString("HH:mm:ss")) } else { Write-Host "Checked: not yet" }
-    if ($NextCheck.HasValue) { Write-Host ("Next   : {0}" -f $NextCheck.Value.ToString("HH:mm:ss")) } else { Write-Host "Next   : after this check" }
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) {
+        Write-Host "         $Detail" -ForegroundColor DarkGray
+    }
+
+    $lastText = if ($LastCheck.HasValue) { $LastCheck.Value.ToString("HH:mm:ss") } else { "not yet" }
+    $nextText = if ($NextCheck.HasValue) { $NextCheck.Value.ToString("HH:mm:ss") } else { "checking now" }
+    Write-Host ("Last   : {0}   |   Next: {1}" -f $lastText, $nextText)
 
     Write-Host ""
     Write-Host "Recent pulls:" -ForegroundColor Cyan
@@ -244,7 +333,8 @@ function Render-Dashboard {
     else {
         foreach ($entry in $PullHistory) {
             $suffix = if ($entry.CommitCount -eq 1) { "" } else { "s" }
-            Write-Host ("  {0}  {1} -> {2}  ({3} commit{4})" -f $entry.Time, $entry.Before, $entry.After, $entry.CommitCount, $suffix) -ForegroundColor Green
+            Write-Host ("  {0}  {1} -> {2}  ({3} commit{4})" -f `
+                $entry.Time, $entry.Before, $entry.After, $entry.CommitCount, $suffix) -ForegroundColor Green
             foreach ($commit in $entry.Commits) {
                 Write-Host ("           {0}" -f ($commit -replace "`t", "  ")) -ForegroundColor DarkGray
             }
@@ -263,13 +353,18 @@ if ($TestNotification) {
 }
 
 $config = Read-Configuration
-if ($Setup -or $null -eq $config -or [string]::IsNullOrWhiteSpace([string]$config.repoPath)) { $config = Run-Setup }
+if ($Setup -or $null -eq $config -or
+    [string]::IsNullOrWhiteSpace([string]$config.repoPath)) {
+    $config = Run-Setup
+}
 
 $repoPath = [string]$config.repoPath
 $interval = [string]$config.interval
 if ([string]::IsNullOrWhiteSpace($interval)) { $interval = "30s" }
 
-try { $intervalSeconds = Convert-IntervalToSeconds $interval }
+try {
+    $intervalSeconds = Convert-IntervalToSeconds $interval
+}
 catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-Host "Run 'Reset setup.cmd' to change the interval."
@@ -292,7 +387,9 @@ if ($probe.ExitCode -ne 0) {
     exit 1
 }
 
-try { $upstreamInfo = Get-UpstreamInfo -RepoPath $repoPath }
+try {
+    $upstreamInfo = Get-UpstreamInfo -RepoPath $repoPath
+}
 catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
     Read-Host "Press Enter to close"
@@ -306,14 +403,15 @@ while ($true) {
     $beforeHash = Get-HeadHash -RepoPath $repoPath
     $beforeSubject = Get-CommitSubject -RepoPath $repoPath -Hash $beforeHash
 
-    Render-Dashboard -RepoPath $repoPath -IntervalSeconds $intervalSeconds -UpstreamInfo $upstreamInfo `
-        -HeadHash $beforeHash -HeadSubject $beforeSubject -Status "Checking GitHub..." -StatusKind "checking" `
-        -Detail "" -LastCheck $lastCheck -NextCheck $null -PullHistory $pullHistory
+    Render-Dashboard -RepoPath $repoPath -IntervalSeconds $intervalSeconds `
+        -UpstreamInfo $upstreamInfo -HeadHash $beforeHash -HeadSubject $beforeSubject `
+        -Status "Checking GitHub..." -StatusKind "checking" -Detail "" `
+        -LastCheck $lastCheck -NextCheck $null -PullHistory $pullHistory
 
-    $dirtyResult = Invoke-Git -RepoPath $repoPath -GitArgs @("status", "--porcelain")
-    $isDirty = ($dirtyResult.ExitCode -eq 0 -and @($dirtyResult.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0)
-
-    $fetchResult = Invoke-Git -RepoPath $repoPath -GitArgs @("fetch", "--quiet", $upstreamInfo.Remote)
+    $blockingChanges = @(Get-BlockingLocalChanges -RepoPath $repoPath)
+    $fetchResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
+        "fetch", "--quiet", $upstreamInfo.Remote
+    )
 
     if ($fetchResult.ExitCode -ne 0) {
         $status = "Fetch failed"
@@ -321,7 +419,10 @@ while ($true) {
         $detail = Get-LastLine $fetchResult
     }
     else {
-        $remoteResult = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-parse", $upstreamInfo.Upstream)
+        $remoteResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
+            "rev-parse", $upstreamInfo.Upstream
+        )
+
         if ($remoteResult.ExitCode -ne 0) {
             $status = "Remote branch not found"
             $statusKind = "error"
@@ -337,13 +438,21 @@ while ($true) {
                 $detail = ""
             }
             elseif (Test-IsAncestor -RepoPath $repoPath -Older $localHash -Newer $remoteHash) {
-                $countResult = Invoke-Git -RepoPath $repoPath -GitArgs @("rev-list", "--count", "$localHash..$remoteHash")
-                $availableCount = if ($countResult.ExitCode -eq 0) { [int](Get-FirstLine $countResult) } else { 1 }
+                $countResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
+                    "rev-list", "--count", "$localHash..$remoteHash"
+                )
+                $availableCount = if ($countResult.ExitCode -eq 0) {
+                    [int](Get-FirstLine $countResult)
+                }
+                else {
+                    1
+                }
 
-                if ($isDirty) {
+                if ($blockingChanges.Count -gt 0) {
                     $status = "Update waiting"
                     $statusKind = "warning"
-                    $detail = "$availableCount remote commit(s) available, but local changes are present. Auto-pull skipped."
+                    $firstChange = $blockingChanges[0].Trim()
+                    $detail = "$availableCount remote commit(s) available; tracked local change blocks auto-pull: $firstChange"
                 }
                 else {
                     $pullArgs = if ($upstreamInfo.TrackingConfigured) {
@@ -362,8 +471,10 @@ while ($true) {
                     else {
                         $afterHash = Get-HeadHash -RepoPath $repoPath
                         if ($afterHash -and $afterHash -ne $localHash) {
-                            $logResult = Invoke-Git -RepoPath $repoPath -GitArgs @("log", "--reverse", "--format=%h%x09%s", "$localHash..$afterHash")
-                            $commits = @($logResult.Lines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                            $logResult = Invoke-Git -RepoPath $repoPath -GitArgs @(
+                                "log", "--reverse", "--format=%h%x09%s", "$localHash..$afterHash"
+                            )
+                            $commits = @(Get-NonEmptyLines $logResult)
                             $commitCount = $commits.Count
                             if ($commitCount -eq 0) { $commitCount = 1 }
 
@@ -374,8 +485,11 @@ while ($true) {
                                 CommitCount = $commitCount
                                 Commits = $commits
                             }
+
                             $pullHistory = @($entry) + @($pullHistory)
-                            if ($pullHistory.Count -gt 6) { $pullHistory = @($pullHistory | Select-Object -First 6) }
+                            if ($pullHistory.Count -gt 5) {
+                                $pullHistory = @($pullHistory | Select-Object -First 5)
+                            }
 
                             $latestSubject = Get-CommitSubject -RepoPath $repoPath -Hash $afterHash
                             if ($commitCount -eq 1) {
@@ -384,6 +498,7 @@ while ($true) {
                             else {
                                 $notificationMessage = "Pulled $commitCount commits. Latest: $(Short-Hash $afterHash) - $latestSubject"
                             }
+
                             Show-DesktopNotification -Title "BetterSearch updated" -Message $notificationMessage
                             $status = "Updated"
                             $statusKind = "updated"
@@ -398,14 +513,14 @@ while ($true) {
                 }
             }
             elseif (Test-IsAncestor -RepoPath $repoPath -Older $remoteHash -Newer $localHash) {
-                $status = "Local branch is ahead"
+                $status = "Local branch ahead"
                 $statusKind = "warning"
-                $detail = "Nothing was pulled because your local branch contains commits not on $($upstreamInfo.Upstream)."
+                $detail = "No pull needed; local HEAD contains commit(s) not on $($upstreamInfo.Upstream)."
             }
             else {
                 $status = "Local and remote diverged"
                 $statusKind = "warning"
-                $detail = "Auto-pull stopped for safety. Resolve the Git history manually."
+                $detail = "Auto-pull skipped for safety. Resolve Git history manually."
             }
         }
     }
@@ -415,9 +530,10 @@ while ($true) {
     $headHash = Get-HeadHash -RepoPath $repoPath
     $headSubject = Get-CommitSubject -RepoPath $repoPath -Hash $headHash
 
-    Render-Dashboard -RepoPath $repoPath -IntervalSeconds $intervalSeconds -UpstreamInfo $upstreamInfo `
-        -HeadHash $headHash -HeadSubject $headSubject -Status $status -StatusKind $statusKind `
-        -Detail $detail -LastCheck $lastCheck -NextCheck $nextCheck -PullHistory $pullHistory
+    Render-Dashboard -RepoPath $repoPath -IntervalSeconds $intervalSeconds `
+        -UpstreamInfo $upstreamInfo -HeadHash $headHash -HeadSubject $headSubject `
+        -Status $status -StatusKind $statusKind -Detail $detail `
+        -LastCheck $lastCheck -NextCheck $nextCheck -PullHistory $pullHistory
 
     Start-Sleep -Seconds $intervalSeconds
 }
