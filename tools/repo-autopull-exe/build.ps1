@@ -22,7 +22,9 @@ try {
         $env:CGO_ENABLED = '0'
         & go vet ./...
         if ($LASTEXITCODE -ne 0) { throw 'go vet failed.' }
-        & go build -trimpath -ldflags '-s -w' -o $Output .
+        # -buildvcs=false keeps the single-file EXE reproducible across commits
+        # when the actual wrapper/script inputs have not changed.
+        & go build -buildvcs=false -trimpath -ldflags '-s -w' -o $Output .
         if ($LASTEXITCODE -ne 0) { throw 'go build failed.' }
     }
     finally { Pop-Location }
