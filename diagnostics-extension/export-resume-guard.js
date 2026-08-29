@@ -13,11 +13,14 @@
   const OVERLAY_ID = '__ebsf_diagnostics_exporting_overlay__';
   const STYLE_ID = `${OVERLAY_ID}-style`;
   const BYPASS_ATTR = 'data-ebsf-export-resume-bypass';
+  const STOPPED_KEY = 'ebsf-diagnostics:stopped:v1';
   const HEARTBEAT_MS = 3500;
+  const RESUME_RETRY_MS = 2500;
   let launching = false;
   let protectedSessionId = '';
   let heartbeatTimer = 0;
   let statusTimer = 0;
+  let resumeRetryTimer = 0;
   let lastDetail = '';
   let baselineSuccessCount = 0;
   let baselineFailureCount = 0;
@@ -49,6 +52,18 @@
   function setStatus(text) {
     const node = panel()?.querySelector('[data-role="status-v2"], [data-role="status"]');
     if (node) node.textContent = text;
+  }
+
+  function seedStoppedHint(session) {
+    if (!session?.sessionId || !session.stoppedAt) return;
+    const value = {
+      sessionId: String(session.sessionId),
+      startedAt: Number(session.startedAt || 0),
+      startedIso: String(session.startedIso || ''),
+      stoppedAt: Number(session.stoppedAt || Date.now()),
+      stoppedIso: String(session.stoppedIso || new Date(Number(session.stoppedAt || Date.now())).toISOString())
+    };
+    try { sessionStorage.setItem(STOPPED_KEY, JSON.stringify(value)); } catch (_) {}
   }
 
   function installStyle() {
@@ -157,6 +172,11 @@
     return '';
   }
 
+  function clearResumeRetry() {
+    if (resumeRetryTimer) clearTimeout(resumeRetryTimer);
+    resumeRetryTimer = 0;
+  }
+
   function stopTimers() {
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     if (statusTimer) clearInterval(statusTimer);
@@ -167,6 +187,8 @@
   function stopProtection() {
     protectedSessionId = '';
     stopTimers();
+    clearResumeRetry();
+    activityObserver?.disconnect();
     window.removeEventListener('beforeunload', beforeUnload, true);
     hideOverlay();
   }
@@ -203,6 +225,7 @@
     window.addEventListener('beforeunload', beforeUnload, true);
     watchActivityOutcome();
     stopTimers();
+    clearResumeRetry();
 
     const heartbeat = () => {
       if (!protectedSessionId) return;
@@ -235,6 +258,7 @@
   async function claimAndReplay(button, sessionId = '', resume = false) {
     if (launching) return;
     launching = true;
+    clearResumeRetry();
     showOverlay(resume ? 'Resuming interrupted ZIP export…' : 'Securing export job…');
     window.addEventListener('beforeunload', beforeUnload, true);
     try {
@@ -246,6 +270,13 @@
       if (!response?.ok || !response.session?.sessionId) {
         throw new Error(response?.error || 'Could not secure the export job.');
       }
+
+      // The existing v0.2.7 exporter resolves a stopped session from this page's
+      // sessionStorage when get_state belongs to a different tab. Seed that hint
+      // from the background-owned session before replaying the exporter click.
+      // Without this cross-tab handoff a correctly recovered job could still say
+      // "No stopped recording is available" after the original tab was closed.
+      seedStoppedHint(response.session);
 
       startProtection(
         response.session.sessionId,
@@ -289,11 +320,27 @@
     return null;
   }
 
+  function scheduleResumeRetry() {
+    if (resumeRetryTimer || launching || protectedSessionId) return;
+    resumeRetryTimer = setTimeout(() => {
+      resumeRetryTimer = 0;
+      void resumeInterruptedExport();
+    }, RESUME_RETRY_MS);
+  }
+
   async function resumeInterruptedExport() {
     const found = await waitForPanelAndStop();
     if (!found || launching || protectedSessionId) return;
     const pending = await send({ action: 'get_resumable_export_job' });
-    if (!pending?.ok || !pending.job?.sessionId || !pending.autoResume) return;
+    if (!pending?.ok || !pending.job?.sessionId) return;
+    if (!pending.autoResume) {
+      // A freshly closed/navigated-away owner may still have a valid heartbeat
+      // for a few seconds. Keep polling this already-open Etsy page so the job is
+      // claimed automatically as soon as that lease expires; do not require a
+      // second manual refresh just because the user came back quickly.
+      if (pending.job.status === 'active' && !pending.failed) scheduleResumeRetry();
+      return;
+    }
     appendActivity('Interrupted ZIP export detected. Resuming automatically.');
     await claimAndReplay(found.stop, pending.job.sessionId, true);
   }
