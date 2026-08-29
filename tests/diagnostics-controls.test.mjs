@@ -9,11 +9,12 @@ const controls = await readFile(new URL('../diagnostics-extension/controls.js', 
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
 
-test('diagnostics v0.2 loads dedicated content and background control layers', () => {
+test('diagnostics v0.2 loads transport, content and control layers in safe order', () => {
   assert.equal(manifest.version, '0.2.0');
-  assert.deepEqual(manifest.content_scripts[0].js, ['content.js', 'controls.js']);
+  assert.deepEqual(manifest.content_scripts[0].js, ['transport.js', 'content.js', 'controls.js']);
   assert.match(serviceWorker, /importScripts\('background\.js', 'har-extra-info\.js', 'background-controls\.js'\)/);
   assert.match(build, /background-controls\.js/);
+  assert.match(build, /transport\.js/);
   assert.match(build, /controls\.js/);
 });
 
@@ -78,4 +79,14 @@ test('stopped capture is retained until explicit export or replacement', () => {
   assert.match(backgroundControls, /readEvents\(id\)/);
   assert.match(backgroundControls, /buildHar\(session, events\)/);
   assert.match(backgroundControls, /buildSummary\(session, events, har\)/);
+});
+
+
+test('unexpected debugger detach is recovered as a stopped exportable session', () => {
+  assert.match(backgroundControls, /LAST_SESSION_KEY_PREFIX/);
+  assert.match(backgroundControls, /chrome\.debugger\.onDetach\.addListener/);
+  assert.match(backgroundControls, /unexpected-detach-recovered/);
+  assert.match(backgroundControls, /recoverableAfterDetach = true/);
+  assert.match(backgroundControls, /await setActive\(tabId, persisted\)/);
+  assert.match(backgroundControls, /if \(!persisted \|\| persisted\.stoppedAt\) return/);
 });
