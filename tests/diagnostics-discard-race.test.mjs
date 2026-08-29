@@ -34,3 +34,11 @@ test('destructive Cancel uses explicit-id finalization after detaching and verif
   assert.match(discard, /deleteSessionData\(id\)/);
   assert.match(discard, /discard_stream_recording/);
 });
+
+test('successful Stop & Export waits beyond every detach-recovery timer before deleting data', () => {
+  assert.match(discard, /FINALIZE_DETACH_SETTLE_MS = 750/);
+  assert.match(discard, /action === 'finalize_stream_export'/);
+  assert.match(discard, /setTimeout\(resolve, FINALIZE_DETACH_SETTLE_MS\)/);
+  assert.match(discard, /background-controls recovery waits 250 ms/);
+  assert.match(discard, /Chrome-banner recovery/);
+});
