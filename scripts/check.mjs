@@ -67,6 +67,9 @@ if (diagnosticsContentScript.js?.[0] !== 'transport.js') {
 if (!diagnosticsContentScript.js?.includes('controls.js')) {
   throw new Error('Diagnostics recorder must load its controls layer.');
 }
+if (diagnosticsContentScript.js?.at(-1) !== 'controls-detach-autoexport.js') {
+  throw new Error('Diagnostics detach auto-export hardening must load after the controls layer.');
+}
 
 const checkFiles = [
   'etsy-bettersearch.user.js',
@@ -76,10 +79,12 @@ const checkFiles = [
   'diagnostics-extension/service-worker.js',
   'diagnostics-extension/background.js',
   'diagnostics-extension/background-controls.js',
+  'diagnostics-extension/background-detach-autoexport.js',
   'diagnostics-extension/har-extra-info.js',
   'diagnostics-extension/transport.js',
   'diagnostics-extension/content.js',
   'diagnostics-extension/controls.js',
+  'diagnostics-extension/controls-detach-autoexport.js',
   'scripts/project.mjs',
   'scripts/build.mjs',
   'scripts/check.mjs',
