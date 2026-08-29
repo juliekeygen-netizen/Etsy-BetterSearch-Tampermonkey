@@ -44,11 +44,14 @@ test('final collection installer contains no pagination recovery or movement', (
   assert.doesNotMatch(install, /WtPagination|Favorite Items Page Results|favHasPaginationPayload0126|favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
 
-test('live pagination compatibility hooks are final no-ops before module 95 one-page visibility policy', () => {
+test('pagination compatibility hooks remain native-only and module 95 cannot reintroduce pager policy', () => {
   assert.match(boundary, /favProtectNativePagination0126 = function favProtectNativePagination0128\(\) \{\};/);
   assert.match(boundary, /favRestorePagination0122 = function favRestorePagination0128\(\) \{\s*favState\.nativePagination0120 = null;\s*\};/);
   assert.match(boundary, /favRenderPagination = function favRenderPagination0128\(\) \{\};/);
-  assert.match(pagination, /classList\.toggle\('ebsf-local-single-page0129'/);
+  assert.doesNotMatch(pagination, /classList\.toggle\('ebsf-local-single-page0129'/);
+  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
+  assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
+  assert.match(pagination, /classList\.remove\('ebsf-local-single-page0129'\)/);
   assert.doesNotMatch(`${pagination}\n${final}`, /favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
 

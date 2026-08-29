@@ -47,9 +47,12 @@ function favCollectionToolbarTarget0136(header) {
 function favAlignCollectionToolbarX0136(header, right) {
     if (!header || !right) return;
 
-    /* All is already the visual source of truth, and narrow layouts use the
-     * stacked responsive rules. Never offset either of those states. */
-    if (header.matches?.('[data-ebsf-all-header]') || innerWidth < 900) {
+    /* Narrow layouts use the stacked responsive rules. On desktop BOTH All
+     * and collection headers are aligned to the live listing-column boundary.
+     * Treating All as inherently correct became stale once the permanent rail
+     * and content column could settle independently, producing the observed
+     * right-shifted All Search control. */
+    if (innerWidth < 900) {
         favClearCollectionToolbarX0136(right);
         return;
     }
@@ -149,8 +152,9 @@ function favApplyExactSearchWidth0135() {
     right.style.setProperty('min-width', toolbarCss, 'important');
     right.dataset.ebsfExactToolbarOwns = '1';
 
-    /* Width is final now, so anchor collection X from the same right boundary
-     * that the All header uses. This intentionally changes position only. */
+    /* Width is final now, so anchor both All and collection X positions from
+     * the same live listing-column right boundary. This intentionally changes
+     * position only. */
     favAlignCollectionToolbarX0136(header, right);
 }
 

@@ -354,7 +354,7 @@ function favMetadataCoverage0141(requirements, auxResult = {}, deepResult = {}) 
     return coverage;
 }
 
-async function favMetadataEnsureCurrentRequirements(options = {}) {
+async function favMetadataEnsureCurrentRequirements0141(options = {}) {
     if (!isFavoritesPage()) return { complete:true, pending:0, unresolved:0, capabilities:[] };
     const datasetKey = favDatasetKey();
     const requirements = options.requirements instanceof Set ? options.requirements : favMetadataRequirements0141();
