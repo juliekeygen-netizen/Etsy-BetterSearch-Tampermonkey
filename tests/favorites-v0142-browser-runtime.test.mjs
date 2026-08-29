@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const metadata = await readFile(new URL('../src/61h-favorites-metadata-coordinator.js', import.meta.url), 'utf8');
+const shell = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 const exactSearch = await readFile(new URL('../src/98-favorites-exact-search-width.js', import.meta.url), 'utf8');
 const hardening = await readFile(new URL('../src/101-favorites-v0141-smoke-fixes.js', import.meta.url), 'utf8');
@@ -21,13 +22,39 @@ test('repository check rejects undefined version-suffixed Favorites runtime symb
   assert.match(check, /missingRuntimeSymbols/);
 });
 
-test('legacy module 95 no longer replaces the renderer or native pager', () => {
-  assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
-  assert.doesNotMatch(pagination, /favRenderPagination\s*=/);
-  assert.doesNotMatch(pagination, /FAV_LOCAL_PAGE_SIZE0129/);
-  assert.match(pagination, /function favPageRouteKey0129/);
-  assert.match(pagination, /function favRequestedPage0129/);
-  assert.match(pagination, /classList\.remove\('ebsf-local-single-page0129'\)/);
+test('page shell no longer forces every local result onto one giant page', () => {
+  assert.doesNotMatch(shell, /favState\.pageSize\s*=\s*Math\.max\(1,favState\.records\.length\)/);
+  assert.doesNotMatch(shell, /favRenderCurrentBefore0122/);
+  assert.doesNotMatch(shell, /favRenderCurrent\s*=\s*function favRenderCurrent0122/);
+  assert.match(shell, /Result pagination is no longer a page-shell responsibility/);
+});
+
+test('module 95 is the explicit local-pagination owner without touching Etsy native pager state', () => {
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0144 = 20/);
+  assert.match(pagination, /favRenderCurrentBefore0144 = favRenderCurrent/);
+  assert.match(pagination, /favRenderCurrent = function favRenderCurrent0144/);
+  assert.match(pagination, /favRenderPagination = favRenderPagination0144/);
+  assert.match(pagination, /BetterSearch filtered favorites pages/);
+  assert.match(pagination, /favState\.localPage = target/);
+  assert.doesNotMatch(pagination, /preventDefault\(|stopPropagation\(|stopImmediatePropagation\(/);
+  assert.doesNotMatch(pagination, /location\.(?:assign|replace)|history\.(?:pushState|replaceState)/);
+});
+
+test('local ownership strongly hides Etsy grid and pager while preserving them in DOM', () => {
+  assert.match(pagination, /nativeGrid\.style\.setProperty\('display', 'none', 'important'\)/);
+  assert.match(pagination, /nativeGrid\.setAttribute\('data-ebsf-native-hidden', '1'\)/);
+  assert.match(pagination, /nativeGrid\.style\.removeProperty\('display'\)/);
+  assert.match(pagination, /body\.ebsf-results-active nav\[aria-label="Favorite Items Page Results"\]/);
+  assert.match(pagination, /display:none!important/);
+  assert.doesNotMatch(pagination, /nativeGrid\.remove\(\)|nativeGrid\.replaceChildren\(/);
+});
+
+test('local paging resets on dataset/config generation and uses exactly 20 records per page', () => {
+  assert.match(pagination, /function favLocalPagingKey0144\(\)/);
+  assert.match(pagination, /return `\$\{favDatasetKey\(\)\}\|\$\{config\}`/);
+  assert.match(pagination, /favState\.localPagingKey0144 !== key/);
+  assert.match(pagination, /favState\.localPage = 1/);
+  assert.match(pagination, /favState\.pageSize = FAV_LOCAL_PAGE_SIZE0144/);
 });
 
 test('final browser hardening never jumps backward to a historical renderer', () => {
