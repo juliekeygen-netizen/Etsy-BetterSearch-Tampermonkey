@@ -1,13 +1,17 @@
-# RepoAutoPull standalone EXE wrapper
+# Repo AutoPull standalone EXE
 
-`RepoAutoPull.exe` is a small Go wrapper around the canonical `Repo_AutoPull/Repo-AutoPull.ps1` implementation.
+This directory contains the reproducible source for `Repo_AutoPull/RepoAutoPull.exe`.
 
-The wrapper embeds the PowerShell implementation into the executable, writes it to a temporary directory while running, and launches Windows PowerShell in the same console. Persistent settings are redirected to `%APPDATA%\RepoAutoPull`, so the distributed EXE remains a true single-file tool.
+The Go wrapper embeds `Repo-AutoPull.ps1`, extracts it to a temporary directory at runtime, and launches Windows PowerShell. Settings are stored under `%APPDATA%\RepoAutoPull`.
 
-Build on Windows with Go installed:
+## Build on Windows
+
+Run:
 
 ```powershell
 .\build.ps1
 ```
 
-The build script copies the canonical PowerShell implementation to a temporary `embedded.ps1`, builds a Windows x64 single executable, then removes the temporary embedded source. Output goes to `Repo_AutoPull\Standalone\RepoAutoPull.exe` and is ignored by Git because repository-wide `*.exe` artifacts are ignored.
+The build script copies the current `Repo_AutoPull/Repo-AutoPull.ps1` into the Go embed input, runs `go vet`, and builds `Repo_AutoPull/RepoAutoPull.exe` for Windows x64.
+
+The standalone EXE and script edition use the same ordered custom-command list, Git, build, launch, and notification behavior.
