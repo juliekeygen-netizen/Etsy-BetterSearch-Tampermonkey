@@ -1,9 +1,9 @@
 'use strict';
 
-// Final page-side hardening for diagnostics v0.2.3. This deliberately reuses
-// the Stop/Export controls instead of duplicating the proven chunked ZIP path.
-// It also owns the final collapsed-launcher geometry and active drawer lock so
-// earlier compatibility CSS cannot override the intended UX.
+// Final page-side hardening for diagnostics v0.2.4. Chrome's own debugger
+// banner Cancel is handled as an immediate Stop+Export request, but a failed
+// export is never auto-retried on every future Etsy navigation. Retained data
+// stays available through the normal Export ZIP control instead.
 (() => {
   const PANEL_ID = '__etsy_bettersearch_diagnostics__';
   const ARM_KEY = 'ebsf-diagnostics:armed:v1';
@@ -108,14 +108,14 @@
     return 'unknown';
   }
 
-  async function autoExportStoppedSession(session, reason = 'unexpected-detach') {
+  async function autoExportStoppedSession(session, reason = 'canceled_by_user') {
     const id = String(session?.sessionId || '');
-    if (!id || handledSessions.has(id)) return;
+    if (!id || reason !== 'canceled_by_user' || handledSessions.has(id)) return;
     handledSessions.add(id);
 
     // Chrome already detached CDP. Prevent any old document-start arm from
-    // resurrecting the page recorder on the next reload, and close the content
-    // transport gate immediately while the stopped session is exported.
+    // resurrecting the page recorder and close the content transport gate before
+    // invoking the existing retained Stop/Export workflow.
     clearReloadArm();
     globalThis.__EBSF_DIAG_TRANSPORT__?.setCaptureEnabled(false);
 
@@ -134,9 +134,10 @@
       return;
     }
 
-    // Let the existing controls layer settle its get_state() result first. If
-    // it still thinks it is recording, the same click performs Stop+Export; if
-    // it already sees the recovered stopped session, it performs Export only.
+    // The controls layer was installed before this file. Its current UI mode may
+    // still say recording for a moment after Chrome detached; clicking the same
+    // Stop/Export control is intentional. background-controls.js treats the
+    // already-stopped retained session idempotently, then exports it.
     await new Promise((resolve) => setTimeout(resolve, 180));
     if (stop.disabled) {
       const deadline = Date.now() + 5000;
@@ -154,8 +155,9 @@
     if (outcome === 'success') {
       await send({ action: 'clear_auto_export', sessionId: id });
     } else if (outcome !== 'failed') {
-      // Keep autoExportPending for a retry after refresh if Chrome interrupted
-      // the page before the existing export controls could report an outcome.
+      // Keep the stopped data and pending marker, but do not auto-run another
+      // heavyweight export on a later Etsy navigation. The normal Export ZIP
+      // button remains the explicit retry path.
       handledSessions.delete(id);
     }
   }
@@ -178,20 +180,30 @@
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type !== 'ebsf-diagnostics-unexpected-detach') return;
     clearReloadArm();
-    void autoExportStoppedSession(message.session, message.reason || 'unexpected-detach');
+    if (message.bannerCancel !== true && message.reason !== 'canceled_by_user') return;
+    void autoExportStoppedSession(message.session, 'canceled_by_user');
   });
 
-  async function recoverPendingAutoExport() {
-    await waitForPanel();
+  async function surfacePendingAutoExport() {
+    const root = await waitForPanel();
+    if (!root) return;
     await new Promise((resolve) => setTimeout(resolve, 650));
     const response = await send({ action: 'get_state' });
     const stopped = response?.stopped;
-    if (stopped?.sessionId && stopped.autoExportPending) {
-      clearReloadArm();
-      void autoExportStoppedSession(stopped, stopped.autoExportReason || 'pending-after-navigation');
+    if (!stopped?.sessionId || !stopped.autoExportPending) return;
+
+    // A previous immediate auto-export was interrupted or failed. Keep startup
+    // passive: clear any reload arm and retain the stopped data, but do not build
+    // a ZIP automatically just because Etsy was opened/refreshed again.
+    clearReloadArm();
+    globalThis.__EBSF_DIAG_TRANSPORT__?.setCaptureEnabled(false);
+    const activity = root.querySelector('[data-role="activity"]');
+    if (activity && !/Chrome debugger Cancel recording is retained/i.test(activity.textContent || '')) {
+      const prefix = activity.textContent ? `${activity.textContent.trimEnd()}\n` : '';
+      activity.textContent = `${prefix}[${new Date().toLocaleTimeString()}] Chrome debugger Cancel recording is retained. Use Export ZIP to retry; it will not auto-export on page load.`;
     }
   }
 
   installPanelGuard();
-  void recoverPendingAutoExport();
+  void surfacePendingAutoExport();
 })();
