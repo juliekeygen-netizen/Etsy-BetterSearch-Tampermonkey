@@ -182,8 +182,11 @@ function favRestoreViewportAnchor0110(snapshot) {
 
 favReapply = async function favReapply0110(...args) {
     const viewport = favCaptureViewportAnchor0110();
-    const result = await favReapplyBefore0110(...args);
-    if (favSanitizeMetadataFilters0101()) favRenderCurrent();
+    let result = await favReapplyBefore0110(...args);
+    /* Sanitizing unsupported/stale metadata filters changes the active
+     * dependency set. Re-enter the v0.14 reapply pipeline instead of rendering
+     * directly so metadata requirements are recalculated before local output. */
+    if (favSanitizeMetadataFilters0101()) result = await favReapplyBefore0110(...args);
     favRestoreViewportAnchor0110(viewport);
     if (favState.filterOpen && favState.rail) requestAnimationFrame(() => favApplyFilterLayoutAndAvailability0110(favState.rail));
     return result;
