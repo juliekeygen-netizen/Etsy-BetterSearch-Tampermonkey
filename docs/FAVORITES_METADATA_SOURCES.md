@@ -291,3 +291,65 @@ Create positive, negative, and unknown fixtures for every deep field. For the si
 - Ships from semantic row with alternate whitespace/markup / absent origin
 
 Tests must verify that a missing selector in an incomplete or changed page can remain `unknown` rather than silently becoming `false`.
+
+---
+
+## Empirical IndexedDB coverage — 2026-08-29 audit
+
+A full development-profile IndexedDB export was analyzed after a successful long Diagnostics session. The raw export is private and is not committed; aggregate evidence is recorded here and in `FAVORITES_DIAGNOSTICS_AND_INDEXEDDB_AUDIT_2026-08-29.md`.
+
+The index contained 114 listing rows and 80 shop rows. Every listing had completed at least one deep scan, and every referenced shop had a matching shop-store row with known Star Seller state.
+
+Observed listing-field coverage:
+
+| Capability / stored field | Known |
+| --- | ---: |
+| price | 114 / 114 |
+| rating | 114 / 114 |
+| review count | 114 / 114 |
+| sale state | 114 / 114 |
+| card free-shipping signal | 114 / 114 |
+| sold-out signal | 114 / 114 |
+| card digital signal | 114 / 114 |
+| card personalization | 114 / 114 |
+| variations | 114 / 114 |
+| deep category | **114 / 114** |
+| deep seller name | 114 / 114 |
+| deep gift wrap | 6 / 114 |
+| Etsy's Pick | 0 / 114 |
+| vintage / vintage era | 0 / 114 |
+| ships-from country | 108 / 114 |
+| shipping cost | 114 / 114 |
+| estimated delivery | 94 / 114 |
+| returns | 113 / 114 |
+| exchanges | 111 / 114 |
+| processing days | 0 / 114 |
+| verified ships-to | 0 / 114 |
+| carts | 16 / 114 |
+| stock/low-stock | 31 / 114 |
+
+### Category availability conclusion changed
+
+Earlier browser-only diagnosis considered missing category metadata as a possible reason unavailable category choices stayed visible. The database disproves that explanation for this profile: category metadata is known for all 114 indexed listings and for every member of the cached All snapshot.
+
+Therefore the remaining category availability bug should be investigated in the availability/lifecycle/reconciliation chain rather than by launching more category scans.
+
+The source currently has multiple generations of category/availability logic across modules `72`, `76`, `78`, `85`, `88` and `91`. Consolidation should compute one generation-aware availability model and reconcile the mounted rail idempotently.
+
+### Shipping context observations
+
+Most newer shipping-cost / estimated-delivery fields carry a destination context key. A small number of older rows retain an empty context key from observations predating the context-aware coordinator.
+
+Do not migrate those legacy rows by guessing a destination. The current coordinator correctly treats context-sensitive values as fresh only when the stored context matches the current destination; an active shipping requirement should re-fetch old contextless values.
+
+### Positive-only deep fields remain semantically different from known false
+
+The low coverage for Etsy's Pick, Vintage and Gift wrap should not automatically be read as "almost every listing is false". Their parser/source contracts include positive-only or incomplete-page cases where absence may remain unknown.
+
+Any availability UI that hides a filter because no current record is positively known to match must surface whether the underlying capability is fully resolved. Use explicit `available / unavailable / unknown` semantics rather than collapsing unknown into false.
+
+### Sold-out rows and Favorites membership
+
+The dump contains both available and sold-out favorite records. Live HAR evidence also shows Etsy returning a sold-out listing from the current unfiltered Favorites endpoint, so sold-out must not be treated as synonymous with unfavorited or absent from the current Favorites universe.
+
+Keep `availabilityState` independent from favorite membership, and test authoritative scope reconciliation with sold-out rows explicitly.
