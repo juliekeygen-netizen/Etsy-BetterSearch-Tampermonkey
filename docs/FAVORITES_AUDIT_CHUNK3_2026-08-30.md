@@ -1,281 +1,167 @@
 # Favorites audit chunk 3 — count authority, owner identity, collection lifecycle and cross-tab persistence
 
-**Date:** 2026-08-30  
-**Production baseline audited:** BetterSearch v0.15.1, `main` at `0cf7520ed87e74f6b5e520a7e974fabde8d2c719`  
+**Date:** 2026-08-30
+
+**Production baseline audited:** BetterSearch v0.15.1, `main` at `0cf7520ed87e74f6b5e520a7e974fabde8d2c719`
+
 **Status:** source audit / design evidence. This document does not change runtime behavior.
 
-This continues:
+This is the broad synthesis for audit chunk 3. The focused documents created beside it contain the implementation-level detail:
 
-- `FAVORITES_DIAGNOSTICS_AND_INDEXEDDB_AUDIT_2026-08-29.md`
-- `FAVORITES_INDEXEDDB_INTEGRITY_ADDENDUM_2026-08-29.md`
-- `FAVORITES_AUDIT_CONTINUATION_2026-08-30.md`
-- `FAVORITES_LOCAL_CARD_ACTION_AUDIT_2026-08-30.md`
+- `FAVORITES_NATIVE_QUERY_COMMIT_EVIDENCE_2026-08-30.md`
+- `FAVORITES_INDEXEDDB_V3_GENERATION_MIGRATION_PLAN_2026-08-30.md`
+- `FAVORITES_MULTITAB_AND_DELIVERY_TARGET_AUDIT_2026-08-30.md`
+- `FAVORITES_MULTI_OWNER_MEMBERSHIP_AUDIT_2026-08-30.md`
+- `FAVORITES_INDEXEDDB_ATOMIC_WRITE_AUDIT_2026-08-30.md`
+- `FAVORITES_CATALOG_LEASE_STORAGE_AUDIT_2026-08-30.md`
+- `FAVORITES_SCOPE_CREATION_AND_RETENTION_AUDIT_2026-08-30.md`
+- `FAVORITES_IDENTITY_AND_API_BOUNDARY_AUDIT_2026-08-30.md`
+- `FAVORITES_AUDIT_INDEX_AND_NEXT_PHASES_2026-08-30.md`
 
 Raw account/query/listing/session data is intentionally omitted.
 
-## Executive summary
+## Executive conclusion
 
-The third source pass found that several previously separate symptoms share one identity/generation problem.
+The third source pass shows that the remaining Favorites correctness problems are not separate isolated bugs. They cluster around one missing architecture boundary:
 
-1. Owner extraction is coupled to finding a usable Favorites total. `favProps()` refuses otherwise-valid owner-bearing props unless it can also derive `totalListings`. Owner identity can therefore temporarily become empty even when an owner-bearing props payload exists.
-2. There is no stable owner latch. `favScope()` recomputes owner from transient DOM props every time. A temporary empty owner changes `favDatasetKey()`, can trigger a dataset reset, can suppress own-profile auto-sync, and can allow ownerless current-page persistence.
-3. The collection model cache is not keyed by owner. When current props disappear, `favCollections0120()` can reuse whatever `favState.collectionModel0120` belonged to the previous profile/scope.
-4. Collection-creation completion detection watches any dialog on the page for up to two minutes. It is not bound to the create-collection dialog, starting owner, route, or operation generation.
-5. `favState.total` is not an authoritative Favorites total. It is a mutable runtime count sourced from cache/network and optimistically decremented. Header/count UI nevertheless gives it higher priority than Etsy's current total.
-6. IndexedDB scope observations are serialized only inside one JavaScript realm. The scope read and the later scope write happen in separate transactions. Two tabs can therefore perform stale read/modify/write cycles and lose each other's membership updates even though individual readwrite transactions themselves serialize.
-7. This cross-tab persistence race is independent of the v0.14 catalogue lease. The lease protects the complete catalogue crawler for the same dataset; ordinary partial current-page/metadata observations can still race in other tabs.
+> BetterSearch does not yet have a stable owner/scope/query generation that remains authoritative from native identity discovery, through network work, through IndexedDB persistence, through cross-tab coordination, and finally through rendered UI ownership.
 
-These findings raise owner latching and atomic scope-generation persistence to the same P0 boundary as the already documented immutable snapshot work.
+The strongest new conclusions are:
 
----
+1. owner extraction can disappear merely because a usable total count is temporarily unavailable;
+2. current collection model fallback is not keyed by owner/profile generation;
+3. count UI mixes server totals, cached catalogue counts, global index coverage and local shown counts;
+4. generic IndexedDB writes are only serialized inside one tab and can overwrite newer state committed by another tab;
+5. deep metadata can race an unfavorite in another tab and restore stale favorite/membership state;
+6. queue claim/completion is hardened, but ordinary enqueue/update can still race a running lease;
+7. one global listing-level `isFavorite` flag incorrectly gates owner-specific profile memberships;
+8. the localStorage catalogue-lock fallback is not a true atomic lock;
+9. native query commit can still become durable from an 850 ms timeout without a verified Etsy result generation;
+10. auto-sync and generated-group helper crawls can amplify a mistaken query identity into durable scope pollution.
 
-# 1. Full count-authority writer/consumer map
-
-The code currently has several values that can all be presented or interpreted as “Favorites count”, but they mean different things.
-
-## 1.1 `favState.total` writers
-
-### Initial runtime state
-
-`src/60-favorites-state.js` initializes:
-
-```text
-favState.total = 0
-```
-
-### Cache bootstrap
-
-`src/61e-favorites-cache-bootstrap.js::favPrimeDatasetFromCache0137()` materializes the cached scope and assigns:
-
-```text
-favState.records = materialized cache records
-favState.total = records.length
-favState.loadComplete = true
-favState.loadSource0137 = "cache"
-```
-
-This is the source of the observed stale cached 107 becoming the live runtime total.
-
-### Network catalogue commit
-
-`src/61b-favorites-sync.js::favCatalogCommitLive0141()` assigns the newly crawled/hydrated record array and again sets:
-
-```text
-favState.total = favState.records.length
-```
-
-### Local favorite removal
-
-`src/63-favorites-runtime.js::favRemoveLocalFavorite()` optimistically decrements `favState.total` before durable/index/native reconciliation completes.
-
-### Dataset reset
-
-The runtime dataset-reset path clears `favState.total` back to zero before the new scope/cache/network generation loads.
-
-## 1.2 `favState.total` consumers
-
-### All/collection header
-
-`src/86-favorites-page-shell.js::favScopeCounts0120()` currently chooses:
-
-```text
-favState.total
-→ Etsy props.totalListings
-→ Etsy props.itemCount
-→ favState.records.length
-```
-
-Because cache startup writes `favState.total`, a stale cached count outranks a current Etsy total.
-
-### Local result count
-
-The runtime result-count path uses roughly:
-
-```text
-base = favState.total || favState.records.length
-shown = favState.filtered.length
-```
-
-This is acceptable only if `favState.total` is explicitly defined as “count of the currently committed BetterSearch catalogue generation”. It is not safe as a generic current-Etsy-Favorites total.
-
-## 1.3 Other count authorities
-
-### Etsy page props
-
-`favProps()` exposes `totalListings` or derives it from `itemCount` / current `listings.length`.
-
-This is the best current server/native total when the props object is known to represent the current owner/scope/query generation, but it can be stale SSR state during later React-native search transitions.
-
-### Stored scope membership
-
-`scope.listingIds.length` is the current persisted membership-array count. The prior audits prove that a `complete:true` row can contain partial additions after the last complete timestamp, so this is not currently an immutable complete-generation count.
-
-### Global owner index stats
-
-`favIndexGetStats(owner)` unions IDs across all retained scopes for that owner and then reports `isFavorite=true` rows. That produced the 114-style “indexed active favorites” value in the analyzed database. It is index coverage, not authoritative current All membership.
-
-### Settings composite total
-
-The module-68 Settings layer independently computes approximately:
-
-```text
-max(
-  current Etsy props total,
-  cached All scope listingIds count,
-  owner-wide active indexed rows
-)
-```
-
-and then formats coverage against that maximum. This is a fourth count semantic.
-
-### Synchronization progress hint
-
-The catalogue service can use Etsy props as an expected total when scope/query identity appears to match. That value is useful as a crawl verification/progress hint, not necessarily as final durable authority.
-
-### Native grid child count
-
-The mounted native grid normally represents one current page (commonly up to 20 cards). It is a visible-page count, never the full scope total.
-
-### Local filtered count
-
-`favState.filtered.length` is the BetterSearch match count for the current committed catalogue/config. This is the correct source for “shown” in local mode if its render generation is current.
-
-## 1.4 Required count model
-
-Replace the overloaded “total” concept with a named count view model, for example:
-
-```text
-CountModel {
-  scopeKey
-  ownerGeneration
-  nativeQueryGeneration
-
-  serverScopeTotal?: {
-    value
-    observedAt
-    provenance
-    generation
-  }
-
-  catalogueGenerationTotal?: {
-    value
-    generationId
-    completedAt
-    verifiedComplete
-  }
-
-  localMatchTotal?: {
-    value
-    renderGeneration
-  }
-
-  indexedActiveRows?: {
-    value
-    meaning: "index coverage"
-  }
-}
-```
-
-UI rules:
-
-- native current-scope header: prefer a server/native total proven current for the active scope/query generation;
-- BetterSearch local mode: base total comes from the exact committed catalogue generation; `shown` comes from the exact local render generation;
-- Settings: label global index values as indexed records/coverage, not simply Favorites;
-- sync progress: server total may remain a hint but must not silently overwrite generation truth;
-- never use one mutable number for all of these semantics.
+The next production phase should therefore begin with **stable identity plus atomic storage mutation primitives**, then introduce IndexedDB v3 immutable verified scope generations. UI/lifecycle consolidation should sit on top of that corrected data boundary.
 
 ---
 
-# 2. Owner extraction is incorrectly coupled to count availability — SOURCE-PROVEN BUG
+# 1. Full count-authority map
 
-`src/60-favorites-state.js::favProps()` does not simply return a props object containing `profileOwnerUserId`.
+There is no single current “Favorites total” authority in v0.15.1.
 
-It performs this sequence:
+## Runtime catalogue total
 
-```text
-find text/props script containing profileOwnerUserId
-parse JSON
-require profileOwnerUserId
-try to obtain totalListings
-  -> totalListings
-  -> itemCount
-  -> listings.length
-only return the props object if totalListings is finite
-```
-
-Therefore this object is currently rejected:
+`favState.total` is written by several paths:
 
 ```text
-{
-  profileOwnerUserId: valid owner,
-  ...useful identity fields,
-  but no count field currently available
-}
+initial runtime              -> 0
+cache bootstrap              -> materialized cached record count
+network catalogue commit     -> crawled/hydrated record count
+local favorite removal       -> optimistic decrement
+dataset reset                -> 0
 ```
 
-That means BetterSearch can lose **identity** merely because it temporarily cannot determine a **count**.
+The All/collection header then gives this mutable runtime count first priority before Etsy props.
 
-This is the wrong dependency direction.
+That is how a stale cached value such as 107 can outrank a newer Etsy/server value such as 108.
 
-## Required split
+## Etsy/native total
 
-Use separate readers:
+`favProps()` attempts to expose `totalListings`, falling back to `itemCount` and then `listings.length`.
+
+Those values do not necessarily have the same semantics:
+
+- exact full scope total;
+- item-count field whose scope needs verification;
+- embedded/current-page listing count.
+
+They should not be normalized into one undifferentiated `totalListings` property.
+
+## Stored scope membership count
+
+`scope.listingIds.length` is currently mutable even after `complete:true`; previous audits prove partial observations can be unioned into an older complete row.
+
+It is therefore not an immutable complete-generation count.
+
+## Global index coverage count
+
+`favIndexGetStats(owner)` builds an owner ID universe from retained scope references and then gates rows with global `listing.isFavorite`.
+
+This is index coverage/history, not exact current authoritative All membership.
+
+## Settings count
+
+Later Settings code independently derives a maximum across multiple sources, producing the 114-style coverage value seen in the database/capture analysis.
+
+## Local shown count
+
+`favState.filtered.length` means something different again: matches from the currently loaded BetterSearch catalogue/config.
+
+## Required replacement
+
+Use an explicit count model carrying provenance/generation:
 
 ```text
-favIdentityProps()
-  -> owner/viewer/profile-login/scope identity
-  -> does NOT require totalListings
-
-favCountProps()
-  -> totalListings/itemCount/listing-count hints
-
-favPresentationProps()
-  -> collectionsTabs/privacy/listing presentation data
+serverScopeTotal
+catalogueGenerationTotal
+localMatchTotal
+indexedRecordCoverage
+nativeVisiblePageCount
 ```
 
-A missing count must never make a known owner disappear.
+UI then chooses the correct meaning for the context instead of reusing one mutable number.
 
 ---
 
-# 3. There is no stable owner latch — SOURCE-PROVEN BUG
+# 2. Owner extraction is incorrectly dependent on count availability
 
-`favScope()` calls `favProps()` every time and emits:
+`favProps()` currently:
+
+1. finds a `script[type="text/props"]` containing `profileOwnerUserId`;
+2. parses it;
+3. requires an owner ID;
+4. attempts to derive a total count;
+5. only returns the props object when that total is finite.
+
+This means a perfectly useful owner-bearing props object can be rejected when a count is temporarily missing.
+
+The resulting failure is not merely “unknown count”. It becomes:
 
 ```text
-owner: String(props?.profileOwnerUserId || "")
+favProps() -> null
+favScope().owner -> ""
+favIsOwnFavoritesPage() -> false
 ```
 
-There is no document/profile owner generation or last-known-valid owner latch.
+That can affect:
 
-The current broad runtime MutationObserver repeatedly schedules scope/dataset reconciliation. If Etsy temporarily removes/replaces the props island during a soft transition, BetterSearch can observe this sequence:
+- dataset identity;
+- current-page persistence;
+- owner-required API URLs;
+- auto-sync eligibility;
+- collection model selection;
+- native-query scope identity.
+
+Identity and count extraction must be split.
+
+---
+
+# 3. No stable owner latch exists
+
+`favScope()` recomputes owner from current transient DOM props every time.
+
+The runtime and shell observers can ask for scope identity repeatedly while Etsy hydrates/reconciles the page.
+
+A transient props gap can therefore produce:
 
 ```text
-owner = valid
-  ↓
-props temporarily unavailable / count cannot be derived
-  ↓
-owner = ""
-  ↓
-favDatasetKey changes
-  ↓
-dataset reset / current-page observation / UI reconciliation
-  ↓
-owner becomes valid again
-  ↓
-second dataset change/reset
+valid owner
+-> empty owner
+-> dataset key change/reset
+-> ownerless observation/storage attempt
+-> valid owner again
+-> another dataset change/reset
 ```
 
-This connects several prior symptoms:
-
-- durable ownerless scope in IndexedDB;
-- historical malformed `/users//collections/...` request;
-- avoidable dataset resets during page lifecycle changes;
-- auto-sync occasionally being ineligible because `favIsOwnFavoritesPage()` also depends on fragile `favProps()`;
-- collection-model identity ambiguity.
-
-## Owner-latch contract
-
-Introduce a stable identity object:
+A durable owner/profile identity needs an explicit generation:
 
 ```text
 OwnerIdentity {
@@ -289,359 +175,513 @@ OwnerIdentity {
 }
 ```
 
-Rules:
+Temporary absence must not clear a valid owner within the same profile-route generation.
 
-1. profile login from the pathname may establish the profile route identity immediately;
-2. a non-empty owner ID observed from trusted Etsy props may latch for that profile route;
-3. temporary absence does not clear the owner;
-4. a different non-empty owner ID is accepted only when the profile route/generation legitimately changes;
-5. owner-required network/storage APIs reject unresolved owner rather than encoding empty string;
-6. scope/query/collection models are keyed to owner generation;
-7. latching another user's profile must remain distinct from “own profile” status; viewer identity must not be guessed.
-
-Do not persist a guessed owner from stale previous-profile state merely to avoid an empty string. A latch is valid only inside its matching profile-route generation.
+A different profile route must create a different generation; the latch must never reuse profile A's owner for profile B merely to avoid emptiness.
 
 ---
 
-# 4. Collection model cache is not owner-keyed — SOURCE-PROVEN CROSS-PROFILE RISK
+# 4. The current props selector can also choose stale identity evidence
 
-`src/86-favorites-page-shell.js` stores one global:
+`favProps()` returns the first qualifying `text/props` script in document order.
 
-```text
-favState.collectionModel0120
-```
+There is no explicit current-island/route-generation selection rule.
 
-`favCollections0120()` behaves approximately as:
+If Etsy temporarily leaves multiple matching props scripts connected during soft navigation, BetterSearch has no proof the first one belongs to the current Favorites view.
 
-```text
-if current favProps().collectionsTabs exists:
-    collectionModel = current tabs
-else:
-    use previous collectionModel
-```
+This is a source ambiguity rather than a claim that the analyzed capture definitely contained conflicting owner props scripts.
 
-The fallback is not keyed by:
+The future native adapter should discover candidates and validate them against current route/island generation.
 
-- owner ID;
-- profile login;
-- route generation;
-- current All/collection scope.
+---
 
-Therefore this is possible:
+# 5. Collection model fallback is not owner-keyed
+
+The page shell stores one global `favState.collectionModel0120`.
+
+When current `collectionsTabs` props are unavailable, `favCollections0120()` falls back to that previous model without checking owner/profile generation.
+
+Potential transition:
 
 ```text
-profile A -> cache A collection tabs
+profile A -> collection model A cached
 navigate to profile B
 B props temporarily unavailable
-favCollections0120() -> reuses A collection tabs
+fallback -> model A reused
 ```
 
-Even if the wrong links are corrected on a later pass, exposing another profile's stale collection model in the interim is an identity correctness failure.
-
-## Required model
-
-```text
-collectionModelsByOwnerGeneration: Map<ownerGeneration, {
-  ownerId,
-  profileLogin,
-  tabs,
-  observedAt,
-  source
-}>
-```
-
-If the current owner generation is unresolved, do not fall back to an unrelated previous owner model.
+The collection model must be keyed to owner/profile generation.
 
 ---
 
-# 5. Collection-creation completion watcher is too broad — SOURCE-PROVEN LIFECYCLE RISK
+# 6. Collection-create completion watcher is too broad
 
-`favWatchCollectionCreation0120()`:
+The current create watcher observes the entire body for up to two minutes.
 
-- observes the entire `document.body`;
-- treats **any** `[role="dialog"]` as evidence that the create flow opened;
-- remembers `sawDialog=true`;
-- when no dialog is present anymore, calls `favRefreshCollectionModel0120()`;
-- remains armed for up to 120 seconds.
+Any `[role="dialog"]` can set its `sawDialog` flag, and disappearance of all dialogs can trigger collection-model refresh.
 
-It does not capture:
+It does not bind the operation to:
 
-- the exact native create-collection dialog;
+- the exact create dialog;
 - starting owner/profile generation;
 - starting route/scope;
-- operation ID;
-- expected collection creation result.
+- an operation ID;
+- expected native completion.
 
-A different Etsy dialog opened/closed during that window can satisfy the watcher.
+The later refresh fetches current `location.href`, not necessarily the route that started the create action.
 
-If navigation occurs while it is armed, the later callback fetches **current** `location.href`, not the route that started the create operation.
-
-## Collection-create operation contract
-
-Capture at click time:
-
-```text
-CollectionCreateOperation {
-  operationId
-  ownerGeneration
-  profileLogin
-  startingScope
-  nativeCreateButtonIdentity
-  startedAt
-}
-```
-
-Then:
-
-- recognize the specific create dialog / create lifecycle, not arbitrary dialogs;
-- cancel on owner/profile generation change;
-- after confirmed completion/close, fetch/parse the matching profile route;
-- verify returned `profileOwnerUserId` matches the operation owner;
-- atomically replace only that owner's collection model;
-- ignore a stale result if another owner/profile generation has become current.
-
-`favRefreshCollectionModel0120()` should also return/store owner identity from the fetched document, not only `collectionsTabs`.
+A collection-create operation should capture owner/route generation at click time, recognize the specific native flow, cancel when that generation changes, and verify the owner of the fetched result before replacing the cached model.
 
 ---
 
-# 6. `favIndexObserveRecordsNow()` has a cross-tab stale read/modify/write race — NEW P0 SOURCE-PROVEN RISK
+# 7. Scope observation is not cross-tab atomic
 
-The index has:
+The general index writer uses a per-tab Promise queue, but the persistence sequence is:
 
 ```text
-favIndexOperationQueue = Promise.resolve()
+readonly transaction -> read old scope/listing state
+compute merged full objects in JavaScript
+later readwrite transaction -> put whole rows
 ```
 
-which serializes observations **inside one JavaScript runtime/tab**.
+Another tab can commit between those two transactions.
 
-But `favIndexObserveRecordsNow()` performs:
-
-```text
-1. readonly transaction
-   -> read old listings / old scope / shops
-
-2. compute merged scope/listing state in JS
-
-3. separate readwrite transaction
-   -> write computed listing/scope/shop rows
-```
-
-IndexedDB serializes conflicting readwrite transactions, but the critical old-scope read happened earlier in a separate transaction. Two tabs can therefore both compute from the same stale base.
-
-## Lost partial update example
-
-Starting scope:
+Example lost update:
 
 ```text
-listingIds = [A]
-```
-
-Tab 1:
-
-```text
-reads [A]
-plans partial union C -> [A,C]
-```
-
-Tab 2 before Tab 1 writes:
-
-```text
-reads [A]
-plans partial union D -> [A,D]
-```
-
-Then:
-
-```text
+scope starts [A]
+Tab 1 reads [A], plans [A,C]
+Tab 2 reads [A], plans [A,D]
 Tab 1 writes [A,C]
-Tab 2 writes stale plan [A,D]
+Tab 2 writes [A,D]
+C is lost
 ```
 
-C is lost.
+More seriously, a stale partial observation can be computed from an old complete row, then overwrite a newer complete row committed by another tab.
 
-## More severe complete-vs-partial example
-
-Tab 2 reads old complete generation v1.
-
-Tab 1 completes a new authoritative generation v2 and writes:
-
-```text
-listingIds = v2 IDs
-lastCompleteSyncAt = T2
-complete = true
-```
-
-Tab 2 then writes a partial observation calculated from its stale v1 `oldScope`. Because the scope row is replaced, it can restore old membership/completion metadata plus its partial union, effectively overwriting the newer v2 scope row.
-
-This is conceptually separate from the already documented “partial page contaminates a previous complete snapshot” bug. Even after the complete crawler itself becomes generation-safe, generic cross-tab observation must also become atomic/generation-aware.
-
-## Why the catalogue lease does not solve this
-
-The v0.14 catalogue lock protects complete-catalogue crawling for the same dataset.
-
-It does not make every current-page observation, metadata observation, or other `favIndexObserveRecords()` caller acquire that catalogue lock.
-
-The storage layer itself must therefore be concurrency-safe.
-
-## Required persistence rule
-
-The operation that reads current scope state and commits its mutation must occur under one storage-level atomic contract.
-
-Options:
-
-1. perform scope read + merge + scope write in one IndexedDB readwrite transaction;
-2. better, stop mutating authoritative complete membership for partial observations at all, and append/update a separate overlay keyed by generation;
-3. generation/CAS check before committing a scope pointer or overlay mutation.
-
-The future immutable-generation design should make a stale observation unable to rewrite an active-generation pointer.
+The catalogue crawler lease does not make generic metadata/current-page observations atomic.
 
 ---
 
-# 7. Peer-tab catalogue completion currently proves time, not generation
+# 8. Deep metadata can resurrect stale favorite/membership state
 
-`favCatalogPeerCompleted0141(scope, requestedAt)` accepts peer completion based on roughly:
+The deep observation path also reads a listing in one transaction, constructs a full `next` object, and later puts it in another transaction.
 
-```text
-scope.complete === true
-&& scope.lastCompleteSyncAt >= requestedAt
-```
-
-The waiting tab then primes from the current scope row.
-
-With today's mutable scope row, timestamp + `complete:true` is not proof of an exact immutable membership generation.
-
-After the generation migration, peer completion should return/verify an exact generation identifier:
+Two-tab example:
 
 ```text
-expected dataset key
-completedGenerationId
-completedAt
-verifiedComplete
+Tab A deep scan reads X as favorited/active
+Tab B unfavorites X and commits removal
+Tab A finishes parsing and puts its stale full-row copy + new metadata
 ```
 
-The waiter should materialize that generation explicitly. It must not merely read whatever mutable row happens to exist when it wakes.
+Tab A can restore stale `isFavorite:true` and old membership state.
+
+The deep job lease protects queue ownership, not unrelated listing-row mutations from another tab.
+
+Final metadata merge must read the latest listing and apply only metadata fields inside one short readwrite transaction.
 
 ---
 
-# 8. Current-page observation has no owner-validity boundary
+# 9. Unfavorite/availability writes can erase concurrent metadata too
 
-`favIndexObserveCurrentPage()` builds current records and calls:
+The inverse race exists as well.
 
-```text
-favIndexObserveRecords(records, {
-  scope: favIndexCurrentScope(),
-  complete: false
-})
-```
+Direct unfavorite and availability-update paths also read a whole listing first and later replace it.
 
-`favIndexCurrentScope()` accepts the current `favScope()` including an empty owner.
+A newer metadata observation committed between those steps can be erased by the later stale unfavorite/availability put.
 
-The runtime invokes current-page observation during startup, route/view changes and mutation-driven settling.
-
-Therefore owner validation must exist below the runtime caller:
-
-```text
-favIndexCurrentScope / favIndexObserveRecords
-```
-
-should reject an owner-required scope whose canonical owner generation is unresolved.
-
-The correct response is not to drop useful card information forever. Listing/card observations may be temporarily held in memory or persisted as owner-neutral presentation observations if a future schema intentionally supports that. They must not be attached to a fabricated ownerless Favorites membership scope.
+The correct primitive is an atomic latest-row mutator, not whole-row last-writer-wins.
 
 ---
 
-# 9. Own-profile detection and auto-sync inherit the owner-props fragility
+# 10. Deep queue is only partially atomic
 
-`favIsOwnFavoritesPage(props=favProps())` returns false when `favProps()` returns null.
+Module 75 correctly hardened:
 
-`favMaybeAutoSync()` requires `favIsOwnFavoritesPage()`.
+- job claim;
+- expired recovery;
+- lease renewal;
+- worker-owned completion/failure;
+- stale-worker final verification.
 
-Therefore the same temporary props/count failure that empties `favScope().owner` can also suppress a due automatic sync during that pass.
+Those paths read and mutate a job inside one IndexedDB readwrite transaction.
 
-The existing capture/database cannot prove that this was why the stale All generation remained old; configuration may also have disabled auto-sync. But the current source shows that auto-sync eligibility is unnecessarily coupled to transient count-bearing props.
-
-Future Diagnostics should record:
+But ordinary enqueue/update can still use the older pattern:
 
 ```text
-owner generation
-viewer identity state
-is-own-profile decision source
-autoSync configured?
-interval
-due?
-decision/rejection reason
+readonly get
+-> compute merged row
+-> later put
 ```
+
+Race:
+
+```text
+A enqueue reads queued job
+B atomically claims job -> running + worker lease
+A writes stale queued copy
+```
+
+The running worker will later notice lost lease, so the CAS hardening prevents stale terminal commit, but the row can still be knocked backward and fetched again.
+
+Every queue-row mutation should use the same atomic mutation pattern.
 
 ---
 
-# 10. Additional tests required from this audit
+# 11. One global `listing.isFavorite` corrupts multi-owner semantics
 
-## Owner/props
+The schema stores owner-specific `favoriteScopes`, but also one global `listing.isFavorite`.
 
-- valid owner props with no total count still produce a stable owner identity;
-- count props may be unknown independently;
-- temporary props removal does not change owner generation;
-- actual navigation from profile A -> profile B creates a new owner generation;
-- unresolved owner blocks owner-required API/storage operations;
-- own-profile decision does not become false merely because total count is unavailable.
+Every observed profile Favorites record can set that global flag true.
 
-## Collections
+A complete no-query `items` scope for any owner is treated as an authoritative favorite scope. When an ID disappears, the current global unfavorite path can mark **all** stored scope memberships inactive.
 
-- profile A model cannot appear on profile B while B props hydrate;
-- collection model cache is keyed by owner/profile generation;
-- create watcher ignores unrelated dialogs;
-- navigation/owner change cancels stale collection-create operation;
-- fetched collection refresh must verify returned owner before committing tabs;
-- stale refresh response cannot replace the new owner's model.
-
-## Count authority
-
-- stale cache count cannot outrank a verified current server/native total;
-- index coverage is never rendered under an ambiguous “current Favorites total” label;
-- local shown count is tied to the current render generation;
-- optimistic unfavorite cannot permanently change authoritative total if native mutation fails/rolls back;
-- cache/network/server counts may coexist without silently overwriting one another.
-
-## Cross-tab storage
-
-Executable two-tab/store simulations should cover:
+Example:
 
 ```text
-partial C || partial D
-complete v2 || stale partial from v1
-metadata observation || complete generation commit
-unfavorite || stale positive observation
+listing X belongs to owner A and owner B
+A refresh no longer contains X
+current global unfavorite path can also invalidate B membership
 ```
 
-and prove no stale operation can overwrite a newer generation pointer or lose another tab's partial observation.
+Cache materialization then gates owner B on the same global `isFavorite` value.
 
-Static tests that merely confirm a readwrite transaction exists are insufficient because the current bug is specifically the split between the earlier readonly snapshot and later readwrite commit.
+Required semantic split:
+
+```text
+listing metadata                    -> global by listing ID
+profile Favorites membership        -> owner/scope generation specific
+viewer personal heart state         -> separate viewer-specific concept
+```
+
+A verified All generation may retire only that owner's membership.
 
 ---
 
-# 11. Revised priority after audit chunk 3
+# 12. Catalogue localStorage fallback is not a true lock
 
-## P0
+The service prefers Web Locks, which is the better path.
 
-1. immutable/versioned complete scope generations;
-2. atomic/generation-safe cross-tab persistence;
-3. stable owner identity latch independent from counts;
-4. owner validation at network + persistence boundaries;
-5. local/native pager semantic collision;
-6. generation-safe local grid/pager takeover.
+The localStorage fallback performs:
 
-## P1
+```text
+read lease
+write my token
+read back my token
+```
 
-7. owner-keyed collection model + scoped create operation;
-8. one named count-authority/view-model system;
-9. verified native-query generations rather than timeout-created durable identity;
-10. query scope retention/GC;
-11. one availability owner + one lifecycle controller.
+This is not an atomic compare-and-set.
 
-## P2
+Valid interleaving:
 
-12. Diagnostics generation/decision instrumentation;
-13. delivery-target/multi-tab runtime singleton and settings propagation hardening;
-14. local-card action identity/state hardening.
+```text
+A reads empty
+B reads empty
+A writes A
+A reads A -> acquired
+B writes B
+B reads B -> acquired
+```
 
-The focused query, IndexedDB migration and multi-tab design documents created alongside this audit expand items 2, 3, 9 and 13.
+Both can enter the crawler.
+
+The stale worker's heartbeat notices token loss only by returning false; that false result does not abort the crawler.
+
+The v3 fallback should use an IndexedDB coordinator row mutated in one readwrite transaction, plus generation/CAS checks before active snapshot commit.
+
+---
+
+# 13. Lease identity unnecessarily contains raw dataset/query text
+
+The fallback localStorage key and value include the full dataset key:
+
+```text
+owner | scope type | scope id | query
+```
+
+Normal completion removes the lease, but a crash can leave a stale query-bearing key until that exact dataset is touched again.
+
+Historical query pollution makes this undesirable.
+
+Use a bounded opaque coordinator key and keep readable identity in live diagnostics/state rather than persistent lock names.
+
+---
+
+# 14. Native query commit still has no authoritative acknowledgement
+
+Current v0.13.1 query logic correctly separates draft typing from submitted intent, but final commit still occurs when either:
+
+```text
+native grid fingerprint changed
+OR
+850 ms elapsed
+```
+
+The timeout alone can therefore create durable dataset identity.
+
+This is especially important for zero-result queries: the native grid fingerprint is empty, so the current DOM-fingerprint algorithm cannot acknowledge a legitimate zero-result result at all. It must eventually use the timeout.
+
+The fix is therefore not “delete the timer”. It is “replace DOM/timer inference with a verified result generation”.
+
+The Diagnostics extension already captures the CDP request/response timeline needed for short controlled research sessions.
+
+---
+
+# 15. Generated-group search can leave a byproduct items-query scope
+
+Generated-group query resolution currently crawls:
+
+```text
+A. unqueried group
+B. owner-wide items + query
+result = intersection(A,B)
+```
+
+The helper items-query crawl uses the normal page crawler, which persists per-page partial scope observations.
+
+So an internal helper can leave an owner-wide `items + query` scope even though the user's logical dataset was a group query.
+
+Future catalogue requests need an explicit persistence purpose:
+
+```text
+authoritative durable scope
+positive overlay only
+ephemeral helper / metadata-only
+```
+
+Internal helper work should not create durable query caches accidentally.
+
+---
+
+# 16. Auto-sync can amplify a bad query identity
+
+Auto-sync always checks canonical All and may also check/sync the current scope when it differs.
+
+If the current scope contains a native query, auto-sync can perform a complete crawl and persist it.
+
+With the current timeout query commit, the amplification path is:
+
+```text
+unverified query commits after timer
+-> becomes current dataset
+-> partial scope may be observed
+-> auto-sync sees it due
+-> complete query scope is crawled/persisted
+-> no TTL/GC removes it
+```
+
+Verified query generation must become a prerequisite for durable query scope creation/sync.
+
+---
+
+# 17. API request boundary is too permissive
+
+`favApiUrlForScope()` accepts an empty owner for owner-required items/collection paths.
+
+A collection then becomes the historical malformed shape:
+
+```text
+.../member/users//collections/...
+```
+
+Owner validation belongs before URL construction, not only in a higher-level Sync button wrapper.
+
+---
+
+# 18. Deterministic HTTP errors are retried
+
+`favFetchJson()` currently retries all non-OK HTTP responses unless aborted.
+
+That means deterministic statuses such as 400/404/410 can be retried like transient network/429/5xx failures.
+
+The historical malformed ownerless 404 therefore had both:
+
+- a URL-construction gap;
+- a retry-classification gap.
+
+Use typed retryability and fail deterministic malformed/missing requests immediately.
+
+---
+
+# 19. IndexedDB v3 design
+
+The focused migration plan proposes:
+
+```text
+scopeSnapshots
+  immutable exact generation membership
+
+scopes
+  mutable identity/status + activeSnapshotKey/generation
+  partial positive overlay
+```
+
+Core invariant:
+
+> Page/current/metadata observations never mutate an already committed complete snapshot.
+
+A failed/cancelled replacement crawl leaves the active generation pointer unchanged.
+
+Migrated v2 `complete:true` rows are marked legacy-mixed/unverified because the original exact completion membership cannot be reconstructed after later partial unions.
+
+The first successful v3 full crawl establishes the first verified generation.
+
+---
+
+# 20. Database upgrade itself needs multi-tab cooperation
+
+Current DB open code handles `onblocked` by rejecting, but an already-open DB connection does not install a `versionchange` handler that closes itself.
+
+A future v3 upgrade can therefore be blocked by another Etsy tab retaining a v2 connection.
+
+Old tabs must close on `versionchange`, invalidate their local DB handle/work, and rejoin after reload/reopen.
+
+---
+
+# 21. Extension and Tampermonkey have different live persistence semantics
+
+The browser extension prelude mirrors `storage.local` into an in-memory Map and updates that raw Map on storage changes.
+
+But `favCfg` / `favUiPrefs` are initialized as live objects once. Updating the raw Map does not automatically re-normalize those live objects or trigger reapply.
+
+Tampermonkey currently has no project-owned value-change-listener bridge at all.
+
+The project needs an explicit settings propagation policy rather than accidental delivery-target differences.
+
+---
+
+# 22. Deep Cancel/challenge suppression is tab-local
+
+Deep scanning's cancel/challenge suppression uses tab-local booleans/controllers.
+
+Another Etsy tab can remain eligible to start/continue automatic deep work.
+
+Safety policy should be durable/global:
+
+```text
+paused
+pauseReason
+pausedAt
+resumeAfter?
+revision
+```
+
+Every tab checks it before automatic queue work.
+
+---
+
+# 23. Running userscript + feature extension together is split-brain
+
+There is no cross-delivery feature-runtime singleton.
+
+If the Tampermonkey BetterSearch and BetterSearch browser extension are both enabled, two separate runtimes can each believe they own:
+
+- the same Etsy DOM;
+- lifecycle observers/listeners;
+- catalogue work;
+- potentially overlapping site-origin coordination storage;
+
+while using separate persistent config stores.
+
+Until a singleton exists, treat simultaneous feature runtimes as unsupported.
+
+The separate Diagnostics extension is different: it is development/observational tooling and is intentionally allowed alongside one BetterSearch feature runtime.
+
+---
+
+# 24. Concrete implementation order
+
+## Data Release A — stable identity + atomic mutators
+
+Implement first:
+
+1. split owner identity from count/presentation props;
+2. stable owner/profile generation latch;
+3. owner-required URL/storage validation;
+4. typed HTTP retry policy;
+5. `db.onversionchange` handling;
+6. atomic latest-row listing/scope/queue mutation primitives;
+7. convert deep observation, unfavorite, availability and queue enqueue/update;
+8. executable cross-tab interleaving tests.
+
+## Data Release B — IndexedDB v3 generations
+
+Then:
+
+1. schema migration;
+2. legacy-mixed compatibility state;
+3. immutable scope snapshots;
+4. atomic active generation pointer;
+5. partial positive overlay;
+6. owner-specific membership semantics;
+7. generation-safe catalogue completion;
+8. atomic/opaque cross-tab fallback lease;
+9. exact peer generation handoff.
+
+## Data Release C — native query + scope lifecycle
+
+Then:
+
+1. collect short controlled CDP native submit/clear sessions;
+2. implement verified query generation state machine;
+3. timeout becomes UI fallback only;
+4. durable-query prerequisite;
+5. generated-group helper persistence cleanup;
+6. scope classes + TTL/LRU/GC;
+7. explicit count view model.
+
+## UI/Lifecycle release
+
+On top of stable data truth:
+
+1. bounded local/native pager identity correction;
+2. generation-safe local result takeover;
+3. one shell/rail/toolbar lifecycle owner;
+4. one availability renderer;
+5. remove superseded wrappers instead of adding another patch layer.
+
+---
+
+# 25. Test philosophy after this audit
+
+Several bugs survived green tests because the fixture did not model the real combined state.
+
+Required future fixtures include:
+
+```text
+hidden native pager page 1 + visible local pager page 2
+old complete generation + failed replacement crawl
+partial write in tab A + partial write in tab B
+deep response in A + unfavorite in B
+enqueue in A + atomic claim in B
+same listing in owner A + owner B
+owner props present while count missing
+profile A collection cache -> profile B hydration gap
+submit A -> clear/B -> late A response
+old v2 DB connection -> v3 versionchange
+Tampermonkey + extension duplicate feature runtime
+```
+
+The crucial transaction rule is:
+
+> A test does not prove multi-tab atomicity merely because a function contains a readwrite transaction. The read of the state being mutated must be inside the same atomic mutation contract.
+
+---
+
+# 26. What this audit intentionally did not change
+
+No production code was modified during this audit phase.
+
+The current visual contract remains frozen.
+
+The audit does not request:
+
+- a UI redesign;
+- a giant all-at-once rewrite;
+- raw private capture data in public GitHub;
+- blindly trusting undocumented Etsy APIs;
+- deleting historical metadata just because membership is stale;
+- abandoning Tampermonkey in favor of an extension-only architecture.
+
+The immediate goal is to establish durable identity/data truth so the later lifecycle cleanup can become simpler rather than adding another generation of repair modules.
