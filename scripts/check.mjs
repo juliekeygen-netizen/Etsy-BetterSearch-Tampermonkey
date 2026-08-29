@@ -59,8 +59,13 @@ if (!diagnosticsManifest.permissions?.includes('debugger')) throw new Error('Dia
 if (diagnosticsManifest.background?.service_worker !== 'service-worker.js') {
   throw new Error('Diagnostics extension must use its service-worker wrapper.');
 }
-if (!diagnosticsManifest.content_scripts?.some((item) => item.run_at === 'document_start')) {
-  throw new Error('Diagnostics recorder must load at document_start.');
+const diagnosticsContentScript = diagnosticsManifest.content_scripts?.find((item) => item.run_at === 'document_start');
+if (!diagnosticsContentScript) throw new Error('Diagnostics recorder must load at document_start.');
+if (diagnosticsContentScript.js?.[0] !== 'transport.js') {
+  throw new Error('Diagnostics transport hardening must load before the recorder content script.');
+}
+if (!diagnosticsContentScript.js?.includes('controls.js')) {
+  throw new Error('Diagnostics recorder must load its controls layer.');
 }
 
 const checkFiles = [
@@ -70,8 +75,11 @@ const checkFiles = [
   'extension/background.js',
   'diagnostics-extension/service-worker.js',
   'diagnostics-extension/background.js',
+  'diagnostics-extension/background-controls.js',
   'diagnostics-extension/har-extra-info.js',
+  'diagnostics-extension/transport.js',
   'diagnostics-extension/content.js',
+  'diagnostics-extension/controls.js',
   'scripts/project.mjs',
   'scripts/build.mjs',
   'scripts/check.mjs',
@@ -81,7 +89,9 @@ const checkFiles = [
   'tests/favorites-deep-queue.test.mjs',
   'tests/favorites-revamp.test.mjs',
   'tests/diagnostics-recorder.test.mjs',
-  'tests/diagnostics-har-extra-info.test.mjs'
+  'tests/diagnostics-har-extra-info.test.mjs',
+  'tests/diagnostics-controls.test.mjs',
+  'tests/diagnostics-transport.test.mjs'
 ];
 
 for (const file of checkFiles) {
@@ -97,4 +107,4 @@ for (const file of checkFiles) {
 console.log(`Syntax checked ${checkFiles.length} files.`);
 console.log(`Verified ${modules.length} userscript modules and v${version} cache-busters.`);
 console.log(`Verified ${defined.size} versioned runtime symbol definitions.`);
-console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, service worker and document_start wiring.`);
+console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, transport, service worker and document_start wiring.`);
