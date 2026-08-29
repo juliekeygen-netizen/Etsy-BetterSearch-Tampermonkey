@@ -56,6 +56,9 @@ if (missingRuntimeSymbols.length) {
 const diagnosticsManifest = JSON.parse(await readFile(resolve(ROOT, 'diagnostics-extension/manifest.json'), 'utf8'));
 if (diagnosticsManifest.manifest_version !== 3) throw new Error('Diagnostics extension must use Manifest V3.');
 if (!diagnosticsManifest.permissions?.includes('debugger')) throw new Error('Diagnostics extension must declare debugger permission.');
+if (diagnosticsManifest.background?.service_worker !== 'service-worker.js') {
+  throw new Error('Diagnostics extension must use its service-worker wrapper.');
+}
 if (!diagnosticsManifest.content_scripts?.some((item) => item.run_at === 'document_start')) {
   throw new Error('Diagnostics recorder must load at document_start.');
 }
@@ -65,7 +68,9 @@ const checkFiles = [
   ...modules.map((item) => item.path),
   'extension/platform-prelude.js',
   'extension/background.js',
+  'diagnostics-extension/service-worker.js',
   'diagnostics-extension/background.js',
+  'diagnostics-extension/har-extra-info.js',
   'diagnostics-extension/content.js',
   'scripts/project.mjs',
   'scripts/build.mjs',
@@ -75,7 +80,8 @@ const checkFiles = [
   'tests/favorites-deep-parser.test.mjs',
   'tests/favorites-deep-queue.test.mjs',
   'tests/favorites-revamp.test.mjs',
-  'tests/diagnostics-recorder.test.mjs'
+  'tests/diagnostics-recorder.test.mjs',
+  'tests/diagnostics-har-extra-info.test.mjs'
 ];
 
 for (const file of checkFiles) {
@@ -91,4 +97,4 @@ for (const file of checkFiles) {
 console.log(`Syntax checked ${checkFiles.length} files.`);
 console.log(`Verified ${modules.length} userscript modules and v${version} cache-busters.`);
 console.log(`Verified ${defined.size} versioned runtime symbol definitions.`);
-console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest and document_start wiring.`);
+console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, service worker and document_start wiring.`);
