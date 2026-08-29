@@ -32,7 +32,7 @@ test('no late shell layer can reintroduce the obsolete all-results-on-one-page r
 });
 
 test('native pager and local-result page identity cannot alias each other', () => {
-  assert.match(adapter, /Native page identity is ONLY a view identity/);
+  assert.match(adapter, /favViewKey0137 = function favViewKey0139/);
   assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
   assert.match(pagination, /Compatibility no-op/);
   assert.match(pagination, /favState\.localResultKey0150/);
