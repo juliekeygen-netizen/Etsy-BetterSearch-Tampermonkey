@@ -21,11 +21,37 @@ if (pkg.version !== version) {
 }
 if (!modules.length) throw new Error('No local @require modules found.');
 
+const moduleSources = [];
 for (const module of modules) {
-  await access(resolve(ROOT, module.path));
+  const path = resolve(ROOT, module.path);
+  await access(path);
   if (module.cacheVersion !== version) {
     throw new Error(`${module.path} uses cache-buster ${module.cacheVersion || '(missing)'} instead of ${version}.`);
   }
+  moduleSources.push({ path:module.path, source:await readFile(path, 'utf8') });
+}
+
+/* The shared Favorites code intentionally uses version-suffixed global helper
+ * names across separately maintained source files. JavaScript syntax checking
+ * cannot catch a call to a misspelled/renamed global helper; the generated
+ * bundle remains syntactically valid and only fails in the browser. Audit the
+ * complete module chain for versioned fav...#### identifiers that are referenced
+ * but never declared/assigned anywhere. This would have caught the v0.14.1
+ * favMetadataEnsureCurrentRequirements0141 ReferenceError before artifact upload. */
+const runtimeSource = moduleSources.map(({ source }) => source).join('\n');
+const versionedPattern = /\b(fav[A-Za-z0-9_$]*\d{4})\b/g;
+const referenced = new Set(Array.from(runtimeSource.matchAll(versionedPattern), (match) => match[1]));
+const defined = new Set();
+for (const pattern of [
+  /\bfunction\s+(fav[A-Za-z0-9_$]*\d{4})\b/g,
+  /\b(?:var|let|const)\s+(fav[A-Za-z0-9_$]*\d{4})\b/g,
+  /(?<![.\w$])(fav[A-Za-z0-9_$]*\d{4})\s*=/g,
+]) {
+  for (const match of runtimeSource.matchAll(pattern)) defined.add(match[1]);
+}
+const missingRuntimeSymbols = [...referenced].filter((name) => !defined.has(name)).sort();
+if (missingRuntimeSymbols.length) {
+  throw new Error(`Undefined versioned runtime symbol${missingRuntimeSymbols.length === 1 ? '' : 's'}: ${missingRuntimeSymbols.join(', ')}`);
 }
 
 const checkFiles = [
@@ -55,3 +81,4 @@ for (const file of checkFiles) {
 
 console.log(`Syntax checked ${checkFiles.length} files.`);
 console.log(`Verified ${modules.length} userscript modules and v${version} cache-busters.`);
+console.log(`Verified ${defined.size} versioned runtime symbol definitions.`);
