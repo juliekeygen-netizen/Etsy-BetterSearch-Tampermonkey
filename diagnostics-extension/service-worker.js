@@ -9,5 +9,6 @@ importScripts(
   'background-controls.js',
   'background-detach-autoexport.js',
   'background-session-health.js',
-  'background-streaming-export.js'
+  'background-streaming-export.js',
+  'background-discard-hardening.js'
 );
