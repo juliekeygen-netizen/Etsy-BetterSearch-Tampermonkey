@@ -1,148 +1,103 @@
 Repo AutoPull
 =============
 
-Repo AutoPull watches one local Git repository, checks its tracked remote branch,
-and fast-forwards the local copy when new commits appear.
+Repo AutoPull watches one local Git repository, pulls fast-forward updates, and can run ordered post-pull actions.
 
-After a successful pull it can optionally:
-  1. run: npm run build
-  2. run a custom terminal command
-  3. open/run any selected file, app, or script
-  4. show a Windows notification after the post-pull actions finish
-
-POWERSHELL / SCRIPT EDITION
----------------------------
-Normal launcher:
+START / CONFIGURE
+-----------------
+Run:
   Start Repo AutoPull.cmd
 
-There is only one launcher now. Opening it shows:
-
+Menu:
   1. Start
   2. Configure
 
-Pressing Enter chooses 1 (Start).
+Press Enter to choose Start. On first run, configuration opens automatically.
 
-If no configuration exists yet, first-time setup opens automatically.
-
-CONFIGURE BEHAVIOR
-------------------
-When changing an existing setup, pressing Enter at a setting keeps its current
-value. Yes/no settings use an uppercase [Y/N] prompt and explicitly show the
-current/default state.
-
-Configuration includes:
-- repository folder (any local Git repository)
+CONFIGURATION
+-------------
+You can configure:
+- repository to watch
 - check interval
-- npm run build on/off
-- optional custom command
-- optional file/app/script to open after the commands finish
+- optional npm run build
+- zero or more custom commands
+- optional file/app/script to launch afterward
 
-INTERVAL INPUT
---------------
-Plain numbers mean seconds.
+For existing settings, pressing Enter keeps the current value.
 
-Examples accepted as seconds:
+Intervals accept forms such as:
   30
   30s
-  30 s
-  30sec
   30 sec
   30 seconds
-  30seconds
-
-Examples accepted as minutes:
   5m
-  5 m
-  5min
   5 min
   5 minutes
-  5minutes
-
-Examples accepted as hours:
   1h
-  1 h
-  1hr
   1 hour
-  1hours
 
-The displayed/saved form is normalized, for example:
-  30 seconds
-  5 minutes
-  1 hour
+A bare number means seconds.
+
+CUSTOM COMMANDS
+---------------
+Custom commands are an ordered list. The command manager supports:
+  1. Add new command
+  2. Edit command
+  3. Delete command
+  4. Move command
+
+Commands execute in the exact order shown.
+
+Every custom command runs with the watched repository as its working directory. For example, if a command is:
+  npm run build
+
+that is equivalent to opening a terminal in the watched repository and typing:
+  npm run build
+
+Shell operators supported by cmd.exe also work, for example:
+  npm test && npm run build
+
+If npm run build is also enabled as the dedicated build step and you additionally add npm run build as a custom command, it will run twice.
 
 POST-PULL ORDER
 ---------------
-The actions run in this order:
+After a successful pull:
+  1. npm run build (if enabled)
+  2. custom command 1
+  3. custom command 2
+  4. ...remaining commands in order
+  5. selected file/app/script (if enabled)
+  6. Windows notification
 
-  git pull --ff-only --autostash
-      -> npm run build (optional)
-      -> custom command (optional)
-      -> selected file (optional)
-      -> Windows notification
-
-The build and custom command run with the repository folder as their working
-directory.
-
-If the build fails, later command/file actions are skipped.
-If the custom command fails, the selected file is skipped.
-The dashboard and notification report the failed stage.
+If the build or any custom command fails, later commands and the launch step are skipped. The dashboard and notification identify the failed action.
 
 GIT SAFETY
 ----------
-Repo AutoPull uses normal Git CLI commands. It does not use reset --hard or
-force-pull behavior.
+Repo AutoPull uses normal Git CLI commands and only fast-forwards:
+  git fetch
+  git pull --ff-only --autostash
 
-Tracked local edits are handled with Git's --autostash during a fast-forward.
-If Git cannot reapply the local changes cleanly, post-pull actions are skipped
-and the dashboard reports that attention is needed.
-
-If local and remote history diverge, Repo AutoPull refuses to auto-merge and
-asks you to resolve the Git history manually.
-
-The tool also prevents two monitor instances from watching the same repository
-at the same time.
+It does not use reset --hard or discard local work. If local and remote history diverge, AutoPull stops for manual resolution. If autostash reapply conflicts, post-pull actions are skipped and the dashboard warns you.
 
 CONFIG FILE
 -----------
-The script edition uses:
-  Repo-AutoPull.config.json
+Script version:
+  Repo_AutoPull\Repo-AutoPull.config.json
 
-That file is local-only and ignored by Git.
-
-Older BetterSearch-AutoPull.config.json settings are automatically imported on
-the first run of the renamed tool when available.
-
-STANDALONE EXE EDITION
-----------------------
-A single-file Windows build is provided separately as RepoAutoPull.exe.
-
-You can copy RepoAutoPull.exe anywhere and use it by itself. It contains the
-same Repo AutoPull PowerShell logic internally and temporarily extracts it only
-while the program is running.
-
-The standalone EXE keeps its settings outside the EXE folder at:
+Standalone EXE version:
   %APPDATA%\RepoAutoPull\Repo-AutoPull.config.json
 
-So the folder containing RepoAutoPull.exe can genuinely contain only that one
-file.
+Config version 4 stores custom commands as an array. Older config version 3 files with a single postPullCommand are migrated automatically to command #1.
 
-The EXE is an unsigned custom Windows executable, so Windows SmartScreen may
-show the normal warning for an unrecognized downloaded application.
+STANDALONE EXE
+--------------
+Repo_AutoPull\RepoAutoPull.exe is a standalone Windows x64 launcher containing the same PowerShell implementation.
 
-REQUIREMENTS
-------------
+Its settings live under %APPDATA%, so the EXE itself can be copied elsewhere and used alone.
+
+Requirements:
 - Windows 10/11
-- Git available as `git` on PATH
-- Windows PowerShell 5.1 (included with Windows 10/11)
-- npm on PATH only if the npm-build option is enabled
+- Git on PATH
+- npm on PATH only if npm build / npm custom commands are used
 
-DISPLAY
--------
-The monitor uses one refreshed dashboard instead of appending every check.
-It shows:
-- repository + branch/upstream
-- normalized check interval
-- current HEAD and commit title
-- enabled post-pull actions
-- status / last check / next check
-- a short recent-pulls history with pulled commits and action results
+The EXE is unsigned, so Windows SmartScreen may show an unknown-publisher warning.
