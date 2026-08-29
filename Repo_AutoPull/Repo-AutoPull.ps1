@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$Configure,
     [switch]$StartDirect,
     [switch]$TestNotification
@@ -269,16 +269,24 @@ function Get-UnmergedFiles {
     if ($r.ExitCode -ne 0) { return @() }; return @(Get-NonEmptyLines $r)
 }
 
-function Prompt-YesNoSetting {
+function Prompt-BooleanSetting {
     param([string]$Question, [bool]$Current, [bool]$HasCurrent = $true)
-    $hint = if ($HasCurrent) {
-        "current: $(if ($Current) { 'ON' } else { 'OFF' }); Enter = keep"
-    } else {
-        "default: $(if ($Current) { 'YES' } else { 'NO' }); Enter = default"
-    }
+    $state = if ($Current) { "ON" } else { "OFF" }
+    $hint = if ($HasCurrent) { "currently $state; Enter = keep" } else { "default $state; Enter = use default" }
     while ($true) {
         $answer = (Read-Host "$Question [Y/N] ($hint)").Trim()
         if ([string]::IsNullOrWhiteSpace($answer)) { return $Current }
+        if ($answer -match '^[Yy]') { return $true }
+        if ($answer -match '^[Nn]') { return $false }
+        Write-Host "Type Y, N, or press Enter." -ForegroundColor Yellow
+    }
+}
+
+function Prompt-ActionYesNo {
+    param([string]$Question, [string]$EnterMeaning = "cancel")
+    while ($true) {
+        $answer = (Read-Host "$Question [Y/N] (Enter = $EnterMeaning)").Trim()
+        if ([string]::IsNullOrWhiteSpace($answer)) { return $false }
         if ($answer -match '^[Yy]') { return $true }
         if ($answer -match '^[Nn]') { return $false }
         Write-Host "Type Y, N, or press Enter." -ForegroundColor Yellow
@@ -360,14 +368,19 @@ function Manage-CustomCommands {
         Write-Host " Repo AutoPull - Custom Commands"
         Write-Host "========================================================" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "Commands run from the watched repository folder, in this exact order." -ForegroundColor DarkGray
-        Write-Host "If one command fails, later commands and the launch step are skipped." -ForegroundColor DarkGray
+        Write-Host "These commands run from the watched repository folder." -ForegroundColor DarkGray
+        Write-Host "They run in the order shown, after the optional npm build." -ForegroundColor DarkGray
+        Write-Host "If one fails, later commands and the launch step are skipped." -ForegroundColor DarkGray
         Write-Host ""
 
-        if ($commands.Count -eq 0) { Write-Host "Custom commands: none" -ForegroundColor DarkGray }
+        if ($commands.Count -eq 0) {
+            Write-Host "Current commands: none" -ForegroundColor DarkGray
+        }
         else {
-            Write-Host "Custom commands:" -ForegroundColor Cyan
-            for ($i = 0; $i -lt $commands.Count; $i++) { Write-Host ("  {0}. {1}" -f ($i + 1), $commands[$i]) }
+            Write-Host "Current order:" -ForegroundColor Cyan
+            for ($i = 0; $i -lt $commands.Count; $i++) {
+                Write-Host ("  {0}. {1}" -f ($i + 1), $commands[$i])
+            }
         }
 
         Write-Host ""
@@ -385,23 +398,34 @@ function Manage-CustomCommands {
                 if (-not [string]::IsNullOrWhiteSpace($newCommand)) { [void]$commands.Add($newCommand) }
             }
             "2" {
-                if ($commands.Count -eq 0) { continue }
+                if ($commands.Count -eq 0) {
+                    Write-Host "There are no commands to edit." -ForegroundColor Yellow
+                    Start-Sleep -Milliseconds 650
+                    continue
+                }
                 $index = Read-CommandIndex -Prompt "Command number to edit (Enter = cancel)" -Count $commands.Count
                 if ($null -eq $index) { continue }
                 Write-Host "Current: $($commands[$index])" -ForegroundColor DarkGray
-                $replacement = Read-Host "New command (Enter = keep)"
+                $replacement = Read-Host "New command (Enter = keep current)"
                 if (-not [string]::IsNullOrWhiteSpace($replacement)) { $commands[$index] = $replacement.Trim() }
             }
             "3" {
-                if ($commands.Count -eq 0) { continue }
+                if ($commands.Count -eq 0) {
+                    Write-Host "There are no commands to delete." -ForegroundColor Yellow
+                    Start-Sleep -Milliseconds 650
+                    continue
+                }
                 $index = Read-CommandIndex -Prompt "Command number to delete (Enter = cancel)" -Count $commands.Count
                 if ($null -eq $index) { continue }
-                Write-Host "Delete: $($commands[$index])" -ForegroundColor Yellow
-                $confirm = (Read-Host "Delete this command? [Y/N] (Enter = cancel)").Trim()
-                if ($confirm -match '^[Yy]') { $commands.RemoveAt($index) }
+                Write-Host "Selected: $($commands[$index])" -ForegroundColor Yellow
+                if (Prompt-ActionYesNo -Question "Delete this command?" -EnterMeaning "cancel") { $commands.RemoveAt($index) }
             }
             "4" {
-                if ($commands.Count -lt 2) { continue }
+                if ($commands.Count -lt 2) {
+                    Write-Host "At least two commands are needed to change the order." -ForegroundColor Yellow
+                    Start-Sleep -Milliseconds 650
+                    continue
+                }
                 $index = Read-CommandIndex -Prompt "Command number to move (Enter = cancel)" -Count $commands.Count
                 if ($null -eq $index) { continue }
                 $target = Read-CommandIndex -Prompt "Move it to position (1-$($commands.Count); Enter = cancel)" -Count $commands.Count
@@ -410,7 +434,10 @@ function Manage-CustomCommands {
                 $commands.RemoveAt($index)
                 $commands.Insert($target, $item)
             }
-            default { Write-Host "Choose 1, 2, 3, 4, or press Enter." -ForegroundColor Yellow; Start-Sleep -Milliseconds 700 }
+            default {
+                Write-Host "Choose 1, 2, 3, 4, or press Enter." -ForegroundColor Yellow
+                Start-Sleep -Milliseconds 650
+            }
         }
     }
     return @($commands.ToArray())
@@ -427,46 +454,75 @@ function Run-Configuration {
     Write-Host " Repo AutoPull - Configure"
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Press Enter at any existing setting to keep it unchanged." -ForegroundColor DarkGray
+    if ($hasExisting) {
+        Write-Host "Press Enter to keep any existing setting unchanged." -ForegroundColor DarkGray
+    } else {
+        Write-Host "First-time setup. Press Enter to accept shown defaults." -ForegroundColor DarkGray
+    }
 
+    Write-Host ""
+    Write-Host "[1/4] Repository" -ForegroundColor Cyan
     if ($hasExisting -and (Test-GitRepository ([string]$current.repoPath))) {
-        Write-Host ""; Write-Host "Repository:" -ForegroundColor Cyan; Write-Host "  $($current.repoPath)"
-        $changeRepo = Prompt-YesNoSetting -Question "Change repository?" -Current $false -HasCurrent $true
+        Write-Host "  $($current.repoPath)"
+        $changeRepo = Prompt-ActionYesNo -Question "Change repository?" -EnterMeaning "keep current repository"
         $repoPath = if ($changeRepo) { Choose-NewRepository -InitialPath ([string]$current.repoPath) } else { [string]$current.repoPath }
     } else {
-        Write-Host ""; Write-Host "Choose the repository to watch." -ForegroundColor Cyan
+        Write-Host "Choose the local Git repository to watch." -ForegroundColor DarkGray
         $repoPath = Choose-NewRepository -InitialPath ([string]$current.repoPath)
     }
 
+    Write-Host ""
+    Write-Host "[2/4] Check interval" -ForegroundColor Cyan
     $currentInterval = Parse-Interval ([string]$current.interval)
     while ($true) {
-        Write-Host ""
-        $intervalInput = (Read-Host "Check interval [$($currentInterval.Display)] (Enter = keep)").Trim()
+        $intervalPrompt = if ($hasExisting) {
+            "Check interval [$($currentInterval.Display)] (Enter = keep)"
+        } else {
+            "Check interval [$($currentInterval.Display)] (Enter = use default)"
+        }
+        $intervalInput = (Read-Host $intervalPrompt).Trim()
         if ([string]::IsNullOrWhiteSpace($intervalInput)) { $intervalInfo = $currentInterval; break }
         try { $intervalInfo = Parse-Interval $intervalInput; break }
         catch { Write-Host $_.Exception.Message -ForegroundColor Red }
     }
+    Write-Host "  Examples: 30, 30 sec, 5 min, 1 hour" -ForegroundColor DarkGray
 
     Write-Host ""
-    $runNpmBuild = Prompt-YesNoSetting -Question "Run 'npm run build' after each successful pull?" -Current ([bool]$current.runNpmBuild) -HasCurrent $hasExisting
+    Write-Host "[3/4] Post-pull commands" -ForegroundColor Cyan
+    $runNpmBuild = Prompt-BooleanSetting -Question "Run 'npm run build' after each successful pull?" -Current ([bool]$current.runNpmBuild) -HasCurrent $hasExisting
 
-    $customCommands = @(Manage-CustomCommands -CurrentCommands @($current.customCommands))
+    $existingCommands = @($current.customCommands)
+    if ($existingCommands.Count -eq 0) {
+        Write-Host "Custom commands: none" -ForegroundColor DarkGray
+    } else {
+        Write-Host "Custom commands:" -ForegroundColor DarkGray
+        for ($i = 0; $i -lt $existingCommands.Count; $i++) {
+            Write-Host ("  {0}. {1}" -f ($i + 1), $existingCommands[$i]) -ForegroundColor DarkGray
+        }
+    }
+    $manageCommands = Prompt-ActionYesNo -Question "Manage custom commands?" -EnterMeaning "keep current commands"
+    $customCommands = if ($manageCommands) {
+        @(Manage-CustomCommands -CurrentCommands $existingCommands)
+    } else {
+        @($existingCommands)
+    }
 
     Clear-Host
     Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host " Repo AutoPull - Configure"
     Write-Host "========================================================" -ForegroundColor Cyan
-
     Write-Host ""
+    Write-Host "[4/4] Launch after commands" -ForegroundColor Cyan
     $currentLaunch = [string]$current.launchPath
     $currentLaunchEnabled = -not [string]::IsNullOrWhiteSpace($currentLaunch)
-    $launchEnabled = Prompt-YesNoSetting -Question "Open/run a selected file after commands finish?" -Current $currentLaunchEnabled -HasCurrent $hasExisting
+    $launchEnabled = Prompt-BooleanSetting -Question "Open/run a selected file after commands finish?" -Current $currentLaunchEnabled -HasCurrent $hasExisting
     $launchPath = ""
     if ($launchEnabled) {
         $launchPath = $currentLaunch
         if ($currentLaunchEnabled -and (Test-Path -LiteralPath $currentLaunch -PathType Leaf)) {
-            Write-Host "Current file:" -ForegroundColor Cyan; Write-Host "  $currentLaunch"
-            $changeFile = Prompt-YesNoSetting -Question "Change selected file?" -Current $false -HasCurrent $true
+            Write-Host "Current file:" -ForegroundColor DarkGray
+            Write-Host "  $currentLaunch"
+            $changeFile = Prompt-ActionYesNo -Question "Change selected file?" -EnterMeaning "keep current file"
             if ($changeFile) { $launchPath = "" }
         }
         while ([string]::IsNullOrWhiteSpace($launchPath) -or -not (Test-Path -LiteralPath $launchPath -PathType Leaf)) {
@@ -487,19 +543,26 @@ function Run-Configuration {
     }
     Save-Configuration -Config $updated
 
+    Clear-Host
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host " Repo AutoPull - Configuration Saved"
+    Write-Host "========================================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Saved configuration." -ForegroundColor Green
-    Write-Host "  Repo    : $repoPath"
-    Write-Host "  Interval: $($intervalInfo.Display)"
-    Write-Host ("  Build   : {0}" -f $(if ($runNpmBuild) { "npm run build" } else { "off" }))
+    Write-Host "Repository : $repoPath"
+    Write-Host "Interval   : $($intervalInfo.Display)"
+    Write-Host ("Build      : {0}" -f $(if ($runNpmBuild) { "npm run build" } else { "off" }))
     if ($customCommands.Count -eq 0) {
-        Write-Host "  Commands : none"
+        Write-Host "Commands   : none"
     }
     else {
-        Write-Host "  Commands : $($customCommands.Count)"
-        for ($i = 0; $i -lt $customCommands.Count; $i++) { Write-Host ("             {0}. {1}" -f ($i + 1), $customCommands[$i]) }
+        Write-Host "Commands   : $($customCommands.Count)"
+        for ($i = 0; $i -lt $customCommands.Count; $i++) {
+            Write-Host ("             {0}. {1}" -f ($i + 1), $customCommands[$i])
+        }
     }
-    Write-Host ("  Launch  : {0}" -f $(if ([string]::IsNullOrWhiteSpace($launchPath)) { "off" } else { $launchPath }))
+    Write-Host ("Launch     : {0}" -f $(if ([string]::IsNullOrWhiteSpace($launchPath)) { "off" } else { $launchPath }))
+    Write-Host ""
+    Write-Host "Post-pull order: pull -> build -> custom commands -> launch -> notification" -ForegroundColor DarkGray
     if (-not $FirstRun) { Write-Host ""; Read-Host "Press Enter to return to the menu" | Out-Null }
     return Read-Configuration
 }
@@ -764,7 +827,8 @@ function Show-MainMenu {
             Write-Host "========================================================" -ForegroundColor Cyan
             Write-Host " Repo AutoPull"
             Write-Host "========================================================" -ForegroundColor Cyan
-            Write-Host ""; Write-Host "No configuration found. Starting first-time setup..." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "No configuration found. Starting first-time setup..." -ForegroundColor Yellow
             Start-Sleep -Milliseconds 500
             $config = Run-Configuration -FirstRun $true
             Start-Monitor -Config $config
@@ -775,10 +839,26 @@ function Show-MainMenu {
         Write-Host "========================================================" -ForegroundColor Cyan
         Write-Host " Repo AutoPull"
         Write-Host "========================================================" -ForegroundColor Cyan
-        Write-Host ""; Write-Host "1. Start"; Write-Host "2. Configure"; Write-Host ""
+        Write-Host ""
+        Write-Host "Current setup:" -ForegroundColor Cyan
+        Write-Host "  Repository : $($config.repoPath)"
+        Write-Host "  Interval   : $($config.interval)"
+        Write-Host "  After pull : $(Get-ActionLabel $config)"
+        Write-Host ""
+        Write-Host "1. Start monitoring"
+        Write-Host "2. Configure"
+        Write-Host ""
         $choice = (Read-Host "Choose [1]").Trim()
-        if ([string]::IsNullOrWhiteSpace($choice) -or $choice -eq "1") { Start-Monitor -Config $config }
-        elseif ($choice -eq "2") { Run-Configuration | Out-Null }
+        if ([string]::IsNullOrWhiteSpace($choice) -or $choice -eq "1") {
+            Start-Monitor -Config $config
+        }
+        elseif ($choice -eq "2") {
+            Run-Configuration | Out-Null
+        }
+        else {
+            Write-Host "Choose 1 or 2." -ForegroundColor Yellow
+            Start-Sleep -Milliseconds 650
+        }
     }
 }
 

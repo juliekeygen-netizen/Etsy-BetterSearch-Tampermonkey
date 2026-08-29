@@ -1,31 +1,68 @@
 Repo AutoPull
 =============
 
-Repo AutoPull watches one local Git repository, pulls fast-forward updates, and can run ordered post-pull actions.
+Repo AutoPull watches one local Git repository, checks its tracked remote branch,
+and fast-forwards the local copy when new commits appear.
+
+After a successful pull it can optionally:
+  1. run npm run build
+  2. run any number of custom terminal commands, in order
+  3. open/run a selected file, app, or script
+  4. show a Windows notification after all enabled actions finish
 
 START / CONFIGURE
 -----------------
-Run:
+Normal launcher:
   Start Repo AutoPull.cmd
 
-Menu:
-  1. Start
+The launcher shows the current setup and two choices:
+
+  1. Start monitoring
   2. Configure
 
-Press Enter to choose Start. On first run, configuration opens automatically.
+Pressing Enter chooses 1. If no configuration exists, first-time setup opens
+automatically.
 
-CONFIGURATION
--------------
-You can configure:
-- repository to watch
-- check interval
-- optional npm run build
-- zero or more custom commands
-- optional file/app/script to launch afterward
+CONFIGURATION UI
+----------------
+Configuration is split into clear sections:
+  [1/4] Repository
+  [2/4] Check interval
+  [3/4] Post-pull commands
+  [4/4] Launch after commands
 
-For existing settings, pressing Enter keeps the current value.
+For an existing setup, pressing Enter keeps the current value.
 
-Intervals accept forms such as:
+Actual on/off settings show their real state, for example:
+  Run 'npm run build' after each successful pull? [Y/N]
+  (currently ON; Enter = keep)
+
+Action questions do not use misleading ON/OFF wording. For example:
+  Change repository? [Y/N] (Enter = keep current repository)
+  Manage custom commands? [Y/N] (Enter = keep current commands)
+  Change selected file? [Y/N] (Enter = keep current file)
+
+CUSTOM COMMANDS
+---------------
+The command manager supports:
+  1. Add new command
+  2. Edit command
+  3. Delete command
+  4. Move command
+
+Commands run from the watched repository folder in exactly the displayed order.
+So a command such as:
+  npm run build
+runs exactly as if it were typed in a terminal opened at that repository root.
+
+If one custom command fails, later commands and the launch step are skipped.
+The dashboard and notification identify the failed command and exit code.
+
+INTERVAL INPUT
+--------------
+Plain numbers mean seconds.
+
+Accepted examples include:
   30
   30s
   30 sec
@@ -34,70 +71,58 @@ Intervals accept forms such as:
   5 min
   5 minutes
   1h
+  1 hr
   1 hour
 
-A bare number means seconds.
-
-CUSTOM COMMANDS
----------------
-Custom commands are an ordered list. The command manager supports:
-  1. Add new command
-  2. Edit command
-  3. Delete command
-  4. Move command
-
-Commands execute in the exact order shown.
-
-Every custom command runs with the watched repository as its working directory. For example, if a command is:
-  npm run build
-
-that is equivalent to opening a terminal in the watched repository and typing:
-  npm run build
-
-Shell operators supported by cmd.exe also work, for example:
-  npm test && npm run build
-
-If npm run build is also enabled as the dedicated build step and you additionally add npm run build as a custom command, it will run twice.
+The displayed/saved form is normalized, such as:
+  30 seconds
+  5 minutes
+  1 hour
 
 POST-PULL ORDER
 ---------------
-After a successful pull:
-  1. npm run build (if enabled)
-  2. custom command 1
-  3. custom command 2
-  4. ...remaining commands in order
-  5. selected file/app/script (if enabled)
-  6. Windows notification
+Actions run in this order:
 
-If the build or any custom command fails, later commands and the launch step are skipped. The dashboard and notification identify the failed action.
+  git pull --ff-only --autostash
+      -> npm run build (optional)
+      -> custom command 1
+      -> custom command 2
+      -> ...
+      -> selected file (optional)
+      -> Windows notification
+
+Both npm run build and all custom commands run with the watched repository as
+their working directory.
 
 GIT SAFETY
 ----------
-Repo AutoPull uses normal Git CLI commands and only fast-forwards:
-  git fetch
-  git pull --ff-only --autostash
+Repo AutoPull uses the normal Git CLI. It does not use reset --hard or force
+pulling. Tracked local edits are handled using --autostash during a fast-forward.
+If local/remote history diverges or an autostash reapply conflicts, automatic
+post-pull actions stop and the dashboard reports that manual attention is needed.
 
-It does not use reset --hard or discard local work. If local and remote history diverge, AutoPull stops for manual resolution. If autostash reapply conflicts, post-pull actions are skipped and the dashboard warns you.
+The tool prevents two monitor instances from watching the same repository at the
+same time.
 
-CONFIG FILE
------------
-Script version:
-  Repo_AutoPull\Repo-AutoPull.config.json
-
-Standalone EXE version:
-  %APPDATA%\RepoAutoPull\Repo-AutoPull.config.json
-
-Config version 4 stores custom commands as an array. Older config version 3 files with a single postPullCommand are migrated automatically to command #1.
+SCRIPT EDITION
+--------------
+Files:
+  Start Repo AutoPull.cmd
+  Repo-AutoPull.ps1
+  Repo-AutoPull.config.json  (local-only / Git-ignored)
 
 STANDALONE EXE
 --------------
-Repo_AutoPull\RepoAutoPull.exe is a standalone Windows x64 launcher containing the same PowerShell implementation.
+RepoAutoPull.exe contains the same PowerShell implementation in one Windows x64
+executable. Its settings are stored at:
+  %APPDATA%\RepoAutoPull\Repo-AutoPull.config.json
 
-Its settings live under %APPDATA%, so the EXE itself can be copied elsewhere and used alone.
+The EXE is unsigned, so Windows SmartScreen may show the usual unknown-publisher
+warning.
 
-Requirements:
+REQUIREMENTS
+------------
 - Windows 10/11
 - Git on PATH
-- npm on PATH only if npm build / npm custom commands are used
-
-The EXE is unsigned, so Windows SmartScreen may show an unknown-publisher warning.
+- Windows PowerShell 5.1
+- npm on PATH only when npm build or an npm custom command is enabled
