@@ -21,16 +21,6 @@ if (pkg.version !== version) {
 }
 if (!modules.length) throw new Error('No local @require modules found.');
 
-const moduleSources = [];
-for (const module of modules) {
-  const path = resolve(ROOT, module.path);
-  await access(path);
-  if (module.cacheVersion !== version) {
-    throw new Error(`${module.path} uses cache-buster ${module.cacheVersion || '(missing)'} instead of ${version}.`);
-  }
-  moduleSources.push({ path: module.path, source: await readFile(path, 'utf8') });
-}
-
 /* The shared Favorites code intentionally uses version-suffixed global helper
  * names across separately maintained source files. JavaScript syntax checking
  * cannot catch a call to a misspelled/renamed global helper; the generated
@@ -67,6 +57,19 @@ if (diagnosticsContentScript.js?.[0] !== 'transport.js') {
 if (!diagnosticsContentScript.js?.includes('controls.js')) {
   throw new Error('Diagnostics recorder must load its controls layer.');
 }
+if (diagnosticsContentScript.js?.at(-1) !== 'controls-detach-autoexport.js') {
+  throw new Error('Diagnostics detach auto-export hardening must load after the controls layer.');
+}
+
+const moduleSources = [];
+for (const module of modules) {
+  const path = resolve(ROOT, module.path);
+  await access(path);
+  if (module.cacheVersion !== version) {
+    throw new Error(`${module.path} uses cache-buster ${module.cacheVersion || '(missing)'} instead of ${version}.`);
+  }
+  moduleSources.push({ path: module.path, source: await readFile(path, 'utf8') });
+}
 
 const checkFiles = [
   'etsy-bettersearch.user.js',
@@ -76,10 +79,12 @@ const checkFiles = [
   'diagnostics-extension/service-worker.js',
   'diagnostics-extension/background.js',
   'diagnostics-extension/background-controls.js',
+  'diagnostics-extension/background-detach-autoexport.js',
   'diagnostics-extension/har-extra-info.js',
   'diagnostics-extension/transport.js',
   'diagnostics-extension/content.js',
   'diagnostics-extension/controls.js',
+  'diagnostics-extension/controls-detach-autoexport.js',
   'scripts/project.mjs',
   'scripts/build.mjs',
   'scripts/check.mjs',
