@@ -19,7 +19,7 @@ test('diagnostics v0.2 loads transport, content and control layers in safe order
 });
 
 
-test('recording control state provides Pause\/Resume and Stop without forcing export', () => {
+test('recording controls provide Pause\/Resume, Stop without export and later Export ZIP', () => {
   assert.match(controls, /Stop recording/);
   assert.match(controls, /Recording paused/);
   assert.match(controls, /Recording resumed/);
@@ -27,42 +27,58 @@ test('recording control state provides Pause\/Resume and Stop without forcing ex
   assert.match(controls, /Export ZIP/);
   assert.match(backgroundControls, /pause_recording/);
   assert.match(backgroundControls, /resume_recording/);
-  assert.match(backgroundControls, /export_stopped/);
+  assert.match(backgroundControls, /stopRecordingCompact/);
   assert.match(backgroundControls, /active\.recording = false/);
   assert.match(backgroundControls, /active\.paused = true/);
   assert.match(backgroundControls, /active\.recording = true/);
 });
 
 
-test('pause keeps debugger attached while stop uses the core stop path that detaches it', () => {
+test('pause keeps debugger attached while explicit stop detaches and persists stopped state first', () => {
   const pauseBody = backgroundControls.slice(
     backgroundControls.indexOf('async function pauseRecording'),
     backgroundControls.indexOf('async function resumeRecording')
   );
+  const stopBody = backgroundControls.slice(
+    backgroundControls.indexOf('async function stopRecordingCompact'),
+    backgroundControls.indexOf('async function prepareExport')
+  );
   assert.doesNotMatch(pauseBody, /detach\(/);
-  assert.match(controls, /action: 'stop_recording'/);
+  assert.match(stopBody, /await putSession\(active\)/);
+  assert.match(stopBody, /await detach\(tabId\)/);
+  assert.ok(stopBody.indexOf('await putSession(active)') < stopBody.indexOf('await detach(tabId)'));
 });
 
 
-test('drawer is forced open during recording or pause and collapses to a tiny square launcher otherwise', () => {
-  assert.match(controls, /ui\.mode === 'recording' \|\| ui\.mode === 'paused'/);
-  assert.match(controls, /Drawer stays open while recording/);
-  assert.match(controls, /width:42px!important/);
+test('drawer remembers open\/closed preference across reload while active reload opens it once', () => {
+  assert.match(controls, /PANEL_OPEN_KEY/);
+  assert.match(controls, /sessionStorage\.setItem\(PANEL_OPEN_KEY/);
+  assert.match(controls, /sessionStorage\.getItem\(PANEL_OPEN_KEY/);
+  assert.match(controls, /applyPanelOpen\(active\?\.recording \|\| active\?\.paused \? true : readPanelOpen\(\), false\)/);
+  assert.match(controls, /target\.matches\('\[data-role="collapse"\]'\)/);
+});
+
+
+test('collapsed launcher trims top\/left box while preserving the existing 42px plus-button geometry', () => {
+  assert.match(controls, /width:36px!important/);
+  assert.match(controls, /height:36px!important/);
   assert.match(controls, /header>span\{display:none!important\}/);
-  assert.match(controls, /header>button\{width:42px!important;height:42px!important/);
+  assert.match(controls, /header>button\{position:absolute!important;right:0!important;bottom:0!important;width:42px!important;height:42px!important/);
 });
 
 
-test('Record & Reload is owned by the new control layer and keeps document-start arming', () => {
+test('Record & Reload remains document-start armed and Start button is repurposed as Pause\/Resume', () => {
   assert.match(controls, /startAndReload/);
   assert.match(controls, /start_recording/);
   assert.match(controls, /sessionStorage\.setItem\(ARM_KEY/);
   assert.match(controls, /location\.reload\(\)/);
-  assert.match(controls, /target\.matches\('\[data-start="reload"\]'\)/);
+  assert.match(controls, /target\.matches\('\[data-start="start"\]'\)/);
+  assert.match(controls, /pauseRecording/);
+  assert.match(controls, /resumeRecording/);
 });
 
 
-test('manual marker dialog has true Cancel in addition to keep-without-note and save-note', () => {
+test('manual marker dialog has true Cancel that removes captured marker artifacts', () => {
   assert.match(controls, /data-role="marker-cancel"/);
   assert.match(controls, /button\.textContent = 'Cancel'/);
   assert.match(controls, /cancel_marker/);
@@ -72,21 +88,45 @@ test('manual marker dialog has true Cancel in addition to keep-without-note and 
 });
 
 
-test('stopped capture is retained until explicit export or replacement', () => {
-  assert.match(controls, /STOPPED_KEY/);
-  assert.match(controls, /stoppedExportData/);
-  assert.match(controls, /finalize_export/);
-  assert.match(backgroundControls, /readEvents\(id\)/);
-  assert.match(backgroundControls, /buildHar\(session, events\)/);
-  assert.match(backgroundControls, /buildSummary\(session, events, har\)/);
+test('large stopped exports use a persistent chunk cache instead of one giant runtime response', () => {
+  assert.match(backgroundControls, /EXPORT_DB_NAME/);
+  assert.match(backgroundControls, /EXPORT_CHUNK_CHARS = 256 \* 1024/);
+  assert.match(backgroundControls, /prepare_export/);
+  assert.match(backgroundControls, /export_chunk/);
+  assert.match(backgroundControls, /persistExportChunks/);
+  assert.match(controls, /readPreparedExport/);
+  assert.match(controls, /Reading export data/);
+  assert.doesNotMatch(controls, /action: 'export_stopped'/);
 });
 
 
-test('unexpected debugger detach is recovered as a stopped exportable session', () => {
+test('stopped data survives export failure, successful download request and refresh until replacement', () => {
+  assert.match(controls, /STOPPED_KEY/);
+  assert.match(controls, /data is still retained/);
+  assert.match(controls, /Export failed safely/);
+  assert.match(controls, /can be retried after refresh/);
+  const exportBody = controls.slice(controls.indexOf('async function exportStopped'), controls.indexOf('async function stopAndExport'));
+  assert.doesNotMatch(exportBody, /finalize_export/);
+  assert.match(controls, /discardStoppedIfNeeded/);
+  assert.match(controls, /finalize_export/);
+});
+
+
+test('control layer owns visible status\/timer so stopped UI cannot keep counting from legacy recorder timer', () => {
+  assert.match(controls, /status-core/);
+  assert.match(controls, /elapsed-core/);
+  assert.match(controls, /status-v2/);
+  assert.match(controls, /elapsed-v2/);
+  assert.match(controls, /ui\.mode === 'stopped'/);
+  assert.match(controls, /ui\.stopped\?\.stoppedAt/);
+});
+
+
+test('unexpected debugger detach remains recoverable as a stopped exportable session', () => {
   assert.match(backgroundControls, /LAST_SESSION_KEY_PREFIX/);
   assert.match(backgroundControls, /chrome\.debugger\.onDetach\.addListener/);
   assert.match(backgroundControls, /unexpected-detach-recovered/);
   assert.match(backgroundControls, /recoverableAfterDetach = true/);
-  assert.match(backgroundControls, /await setActive\(tabId, persisted\)/);
-  assert.match(backgroundControls, /if \(!persisted \|\| persisted\.stoppedAt\) return/);
+  assert.match(backgroundControls, /stoppedSessionForTab/);
+  assert.match(backgroundControls, /stoppedAt/);
 });
