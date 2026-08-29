@@ -42,6 +42,7 @@ const diagnosticsBackground = await readFile(resolve(diagnosticsRoot, 'backgroun
 const diagnosticsBackgroundControls = await readFile(resolve(diagnosticsRoot, 'background-controls.js'), 'utf8');
 const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
 const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
+const diagnosticsTransport = await readFile(resolve(diagnosticsRoot, 'transport.js'), 'utf8');
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 const diagnosticsControls = await readFile(resolve(diagnosticsRoot, 'controls.js'), 'utf8');
 
@@ -61,6 +62,7 @@ try {
   new Function(diagnosticsBackgroundControls);
   new Function(diagnosticsHarExtraInfo);
   new Function(diagnosticsServiceWorker);
+  new Function(diagnosticsTransport);
   new Function(diagnosticsContent);
   new Function(diagnosticsControls);
 } catch (error) {
@@ -95,6 +97,7 @@ await Promise.all([
   writeFile(resolve(diagnosticsDir, 'background-controls.js'), `${diagnosticsBackgroundControls.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'transport.js'), `${diagnosticsTransport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls.js'), `${diagnosticsControls.trim()}\n`, 'utf8'),
   writeFile(
@@ -103,7 +106,7 @@ await Promise.all([
       version: diagnosticsManifest.version,
       target: 'chrome',
       source: 'diagnostics-extension',
-      sourceFiles: ['service-worker.js', 'background.js', 'background-controls.js', 'har-extra-info.js', 'content.js', 'controls.js'],
+      sourceFiles: ['service-worker.js', 'background.js', 'background-controls.js', 'har-extra-info.js', 'transport.js', 'content.js', 'controls.js'],
       companionForBetterSearchVersion: version
     }, null, 2)}\n`,
     'utf8'
