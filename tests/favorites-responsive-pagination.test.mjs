@@ -37,14 +37,18 @@ test('module 95 owns local pagination without replacing the renderer chain', () 
   assert.doesNotMatch(pagination, /favRenderCurrentBefore0122/);
 });
 
-test('native and BetterSearch pagers have distinct ownership and labels', () => {
+test('native and BetterSearch page state stay distinct while the visible local pager uses Etsy WtPagination presentation', () => {
   assert.match(pagination, /nav\[aria-label="Favorite Items Page Results"\]/);
-  assert.match(pagination, /aria-label', 'BetterSearch filtered favorites pages'/);
   assert.match(pagination, /data-ebsf-native-pager-hidden/);
   assert.match(pagination, /data-ebsf-local-pagination/);
+  assert.match(pagination, /function favNativePagerTemplate0151/);
+  assert.match(pagination, /native\?\.cloneNode\(false\)/);
+  assert.match(pagination, /data-clg-id.*WtPagination/);
+  assert.match(pagination, /wt-action-group__item-container/);
+  assert.match(pagination, /dataset\.ebsfPaginationPresentation = 'etsy-native'/);
   assert.match(pagination, /favRestoreNativePagers0150/);
   assert.match(pagination, /favRemoveLocalPagination0150/);
-  assert.doesNotMatch(pagination, /createElement\(['"]nav['"]\)[^]*Favorite Items Page Results/);
+  assert.doesNotMatch(pagination, /BetterSearch filtered favorites pages|ebsf-local-page-button/);
 });
 
 test('native page adapter cannot map Etsy page buttons into localPage', () => {

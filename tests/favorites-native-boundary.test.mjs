@@ -44,13 +44,16 @@ test('final collection installer contains no pagination recovery or movement', (
   assert.doesNotMatch(install, /WtPagination|Favorite Items Page Results|favHasPaginationPayload0126|favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
 
-test('module 94 leaves Etsy pager structurally native and module 95 adds a separate local-only pager', () => {
+test('module 94 leaves Etsy pager structurally native and module 95 uses native WtPagination presentation for local pages', () => {
   assert.match(boundary, /favProtectNativePagination0126 = function favProtectNativePagination0128\(\) \{\};/);
   assert.match(boundary, /favRestorePagination0122 = function favRestorePagination0128\(\) \{\s*favState\.nativePagination0120 = null;\s*\};/);
   assert.match(boundary, /favRenderPagination = function favRenderPagination0128\(\) \{\};/);
   assert.match(pagination, /favRenderPagination = function favRenderPagination0150/);
-  assert.match(pagination, /BetterSearch filtered favorites pages/);
+  assert.match(pagination, /function favNativePagerTemplate0151/);
+  assert.match(pagination, /data-clg-id.*WtPagination/);
+  assert.match(pagination, /wt-action-group__item-container/);
   assert.match(pagination, /nav\[aria-label="Favorite Items Page Results"\]/);
+  assert.doesNotMatch(pagination, /ebsf-local-page-button|BetterSearch filtered favorites pages/);
   assert.doesNotMatch(pagination, /favRenderCurrent\s*=/);
   assert.doesNotMatch(`${pagination}\n${final}`, /favRecoverPaginationFromCorruptStrip0126|favPlacePaginationBelowGrid0126/);
 });
