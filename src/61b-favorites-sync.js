@@ -147,9 +147,16 @@ async function favCatalogWithCrossTabLease0141(scope, requestedAt, signal, work)
     if (!storage) return work(() => {});
     const lease = await favCatalogAcquireStorageLease0141(scope, requestedAt, signal);
     if (lease.peerCompleted) return { peerCompleted:true };
+    /* The storage fallback must remain owned even when one page/retry takes
+     * longer than the nominal lease window. Page-boundary touches alone can
+     * expire during a slow request and allow a second tab to start the same
+     * dataset crawl. Keep a lightweight heartbeat until work finishes. */
+    const heartbeatMs = Math.max(1000, Math.floor(FAV_CATALOG_LEASE_MS0141 / 3));
+    const heartbeat = globalThis.setInterval?.(() => favCatalogRefreshLease0141(scope, lease.token), heartbeatMs);
     try {
         return await work(() => favCatalogRefreshLease0141(scope, lease.token));
     } finally {
+        if (heartbeat != null) globalThis.clearInterval?.(heartbeat);
         favCatalogReleaseLease0141(scope, lease.token);
     }
 }
@@ -189,7 +196,11 @@ async function favCatalogCrawlSimple0141(scope, controller, options = {}) {
         const listings = favApiListings(payload);
         const records = favRecordsFromListings(listings, offset, liveNodes);
         repeatedFingerprint = favCatalogRepeatedFingerprint0141(repeatedFingerprint, records);
+        const sizeBefore = recordMap.size;
         favCatalogMergeRecords0141(recordMap, records);
+        if (listings.length === FAV_CATALOG_PAGE_SIZE0141 && recordMap.size === sizeBefore) {
+            throw new Error('Favorites endpoint returned a full page with no new listings; catalogue refresh stopped safely.');
+        }
         pagesProcessed += 1;
         options.touchLease?.();
         const state = favCatalogPublish0141(scope, {

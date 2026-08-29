@@ -238,6 +238,7 @@ async function favMetadataFetchAux0141(requirements, options = {}) {
     if (!requirements.size || !favState.records.length) return { requested:0, unresolved:0 };
     const datasetKey = favDatasetKey();
     const destination = favMetadataDestination0141();
+    const scope = favIndexCurrentScope();
     const requestKey = `${datasetKey}|${destination.contextKey}|${Array.from(requirements).sort().join(',')}`;
     if (favMetadataInflight0141.has(requestKey)) return favMetadataInflight0141.get(requestKey);
 
@@ -255,12 +256,16 @@ async function favMetadataFetchAux0141(requirements, options = {}) {
             if (destination.country) url.searchParams.set('country_iso_code', destination.country);
             url.searchParams.set('postal_code', destination.postal);
             const data = await favFetchJson(url, controller.signal);
+            /* A route/dataset change can occur while the request is in flight.
+             * Never mutate old records or persist them under whatever scope is
+             * current by the time the response arrives. */
+            if (!isFavoritesPage() || favDatasetKey() !== datasetKey) throw new DOMException('Stale metadata request', 'AbortError');
             const observedAt = Date.now();
             for (const record of batch) {
                 favMetadataApplyAux0141(record, data?.map?.[record.id] || null, requirements, observedAt, destination);
             }
             requested += batch.length;
-            await favIndexObserveRecords(batch, { scope:favIndexCurrentScope(), complete:false, syncState:'metadata' });
+            await favIndexObserveRecords(batch, { scope, complete:false, syncState:'metadata' });
         }
         const unresolved = favState.records.reduce((count, record) => count + Array.from(requirements).filter((capability) => !favMetadataFieldState0141(record, capability).known).length, 0);
         return { requested, unresolved };
@@ -278,6 +283,14 @@ async function favMetadataIndexedById0141(records = favState.records) {
     return new Map(values.filter(Boolean).map((listing) => [String(listing.listingId), listing]));
 }
 
+async function favMetadataDeepQueueById0141(records = favState.records) {
+    if (!records.length) return new Map();
+    const db = await favIndexOpen();
+    const store = db.transaction(FAV_DEEP_QUEUE_STORE, 'readonly').objectStore(FAV_DEEP_QUEUE_STORE);
+    const jobs = await Promise.all(records.map((record) => favIndexRequest(store.get(`listing:${String(record.id)}`))));
+    return new Map(jobs.filter(Boolean).map((job) => [String(job.listingId), job]));
+}
+
 function favMetadataDeepNeedsWork0141(record, indexed, requirements, now = Date.now()) {
     if (!requirements.size) return false;
     const scanStale = !Number(indexed?.lastDeepScanAt)
@@ -293,16 +306,21 @@ async function favMetadataQueueDeep0141(requirements) {
     const ordered = favMetadataPriorityRecords0141();
     const visible = favMetadataVisibleIds0141();
     const indexedById = await favMetadataIndexedById0141(ordered);
+    const queueById = await favMetadataDeepQueueById0141(ordered);
     let queued = 0;
     for (const record of ordered) {
         const indexed = indexedById.get(String(record.id));
         if (!favMetadataDeepNeedsWork0141(record, indexed, requirements)) continue;
-        await favDeepQueueEnqueue(record.id, {
+        /* A terminal failed job already exhausted the queue retry budget. Do
+         * not let the metadata-completion reapply immediately reset it and
+         * create an automatic retry loop. Manual Update all still force-requeues. */
+        if (queueById.get(String(record.id))?.status === 'failed') continue;
+        const job = await favDeepQueueEnqueue(record.id, {
             type:'missing_metadata',
             priority:visible.has(String(record.id)) ? 1 : 2,
             url:record.url || indexed?.url || '',
         });
-        queued += 1;
+        if (job?.status === 'queued' || job?.status === 'running') queued += 1;
     }
     if (queued) void favDeepRunQueue();
     const unresolved = ordered.reduce((count, record) => count + Array.from(requirements).filter((capability) => !favMetadataDeepState0141(record, capability).known).length, 0);
@@ -368,9 +386,14 @@ favIndexGetActiveListings = async function favIndexGetActiveListings0141(owner =
         return (await favIndexRequest(store.getAll())).filter((listing) => listing.isFavorite === true);
     }
     const authoritativeKey = favIndexScopeKey({ owner, type:'items', id:'', query:'' });
-    let scope = await favIndexRequest(db.transaction('scopes', 'readonly').objectStore('scopes').get(authoritativeKey));
-    let ids = Array.from(new Set((scope?.listingIds || []).map(String).filter(Boolean)));
-    if (!ids.length) {
+    const scope = await favIndexRequest(db.transaction('scopes', 'readonly').objectStore('scopes').get(authoritativeKey));
+    let ids = scope?.complete === true
+        ? Array.from(new Set((scope.listingIds || []).map(String).filter(Boolean)))
+        : [];
+    /* A partial authoritative All observation is not complete membership. If
+     * it is incomplete, fall back to the union of known owner scopes instead
+     * of silently treating its partial ID list as the whole catalogue. */
+    if (scope?.complete !== true) {
         const scopes = await favIndexRequest(db.transaction('scopes', 'readonly').objectStore('scopes').getAll());
         ids = Array.from(new Set(scopes.filter((entry) => String(entry.owner || '') === String(owner)).flatMap((entry) => entry.listingIds || []).map(String)));
     }
