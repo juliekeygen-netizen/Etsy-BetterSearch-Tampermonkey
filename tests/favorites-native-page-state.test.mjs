@@ -95,9 +95,10 @@ test('URL page remains a direct/history fallback when native WtPagination is not
   assert.equal(fixture.context.favCurrentFavoritePage0139(), 4);
 });
 
-test('runtime and 20-item renderer are rebound to the same native page identity', () => {
+test('native view identity and BetterSearch local paging are explicitly separate', () => {
   assert.match(runtime, /function favViewKey0137\(\)/);
-  assert.match(pagination, /function favSyncLocalPageFromRoute0129\(\)/);
+  assert.match(pagination, /FAV_LOCAL_PAGE_SIZE0144 = 20/);
+  assert.match(pagination, /function favLocalPagingKey0144\(\)/);
   assert.match(adapter, /favRequestedRoutePage0137 = function favRequestedRoutePage0139/);
   assert.match(adapter, /favViewKey0137 = function favViewKey0139/);
   assert.match(adapter, /favPageRouteKey0129 = function favPageRouteKey0139/);
@@ -106,19 +107,20 @@ test('runtime and 20-item renderer are rebound to the same native page identity'
   assert.match(adapter, /favState\.localPageRouteKey0129 = ''/);
 });
 
-test('native pager clicks seed page intent but never hijack Etsy pagination', () => {
+test('native pager clicks seed native page intent but never mutate BetterSearch localPage', () => {
   assert.match(adapter, /document\.addEventListener\('click'/);
   assert.match(adapter, /favPagerButtonTargetPage0139\(button\)/);
   assert.match(adapter, /favSetNativePageIntent0139\(target\)/);
-  assert.match(adapter, /favState\.localPage = target/);
+  assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
   assert.match(adapter, /favScheduleSync\(0\)/);
   assert.match(adapter, /favScheduleCurrentPageObservation\(300\)/);
   assert.doesNotMatch(adapter, /preventDefault\(|stopPropagation\(|stopImmediatePropagation\(/);
   assert.doesNotMatch(adapter, /replaceChildren\(|createElement\(['"]nav['"]\)|\.remove\(\)/);
 });
 
-test('a numeric native page click immediately becomes the local view intent while Etsy owns the click', () => {
+test('a numeric Etsy page click changes native view intent while local results stay on their own page', () => {
   const fixture = executeAdapterFixture({ selectedPage: 1 });
+  fixture.context.favState.localPage = 3;
   const button = {
     textContent: '2',
     disabled: false,
@@ -126,11 +128,11 @@ test('a numeric native page click immediately becomes the local view intent whil
     querySelector: () => null,
   };
   fixture.click(button);
-  assert.equal(fixture.context.favState.localPage, 2);
+  assert.equal(fixture.context.favState.localPage, 3);
   assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
 });
 
-test('Previous and Next button intents derive from Etsy current page', () => {
+test('Previous and Next native intents derive only from Etsy current page or URL', () => {
   const block = adapter.slice(
     adapter.indexOf('function favPagerButtonTargetPage0139'),
     adapter.indexOf('function favScheduleNativePageReconcile0139')
@@ -139,6 +141,8 @@ test('Previous and Next button intents derive from Etsy current page', () => {
   assert.match(block, /current \+ 1/);
   assert.match(block, /label === 'previous'/);
   assert.match(block, /Math\.max\(1, current - 1\)/);
+  assert.match(block, /favNativeSelectedPage0139\(\) \|\| favUrlPage0139\(\) \|\| 1/);
+  assert.doesNotMatch(block, /favState\.localPage/);
   assert.match(block, /button\.disabled/);
   assert.match(block, /aria-disabled/);
 });
@@ -150,8 +154,10 @@ test('page-only interaction cannot clear or redownload the complete catalogue', 
   assert.match(adapter, /favState\.localPageRouteKey0129 = ''/);
 });
 
-test('history page navigation can seed the transient page intent before runtime classification', () => {
+test('history page navigation seeds native intent without touching local pagination', () => {
   assert.match(adapter, /window\.addEventListener\('popstate'/);
   assert.match(adapter, /const page = favUrlPage0139\(\)/);
   assert.match(adapter, /favSetNativePageIntent0139\(page\)/);
+  const historyBlock = adapter.slice(adapter.indexOf("window.addEventListener('popstate'"));
+  assert.doesNotMatch(historyBlock, /favState\.localPage\s*=/);
 });
