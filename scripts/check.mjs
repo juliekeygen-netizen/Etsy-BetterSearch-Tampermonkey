@@ -62,6 +62,9 @@ if (diagnosticsManifest.background?.service_worker !== 'service-worker.js') {
 if (!diagnosticsManifest.content_scripts?.some((item) => item.run_at === 'document_start')) {
   throw new Error('Diagnostics recorder must load at document_start.');
 }
+if (!diagnosticsManifest.content_scripts?.some((item) => item.js?.includes('controls.js'))) {
+  throw new Error('Diagnostics recorder must load its controls layer.');
+}
 
 const checkFiles = [
   'etsy-bettersearch.user.js',
@@ -70,8 +73,10 @@ const checkFiles = [
   'extension/background.js',
   'diagnostics-extension/service-worker.js',
   'diagnostics-extension/background.js',
+  'diagnostics-extension/background-controls.js',
   'diagnostics-extension/har-extra-info.js',
   'diagnostics-extension/content.js',
+  'diagnostics-extension/controls.js',
   'scripts/project.mjs',
   'scripts/build.mjs',
   'scripts/check.mjs',
@@ -81,7 +86,8 @@ const checkFiles = [
   'tests/favorites-deep-queue.test.mjs',
   'tests/favorites-revamp.test.mjs',
   'tests/diagnostics-recorder.test.mjs',
-  'tests/diagnostics-har-extra-info.test.mjs'
+  'tests/diagnostics-har-extra-info.test.mjs',
+  'tests/diagnostics-controls.test.mjs'
 ];
 
 for (const file of checkFiles) {
