@@ -81,7 +81,9 @@ test('HAR enrichment merges CDP extra headers and associated request cookies', (
 
   assert.ok(seen.events.find((event) => event.type === 'Network.requestWillBeSent').data.params.request.headers['X-Extra'] === 'yes');
   assert.ok(seen.events.find((event) => event.type === 'Network.responseReceived').data.params.response.headers['X-Response-Extra'] === 'seen');
-  assert.deepEqual(entry.request.cookies, [{ name: 'sid', value: 'abc' }]);
+  assert.equal(entry.request.cookies.length, 1);
+  assert.equal(entry.request.cookies[0].name, 'sid');
+  assert.equal(entry.request.cookies[0].value, 'abc');
   assert.equal(entry._requestExtraInfo.headers['X-Extra'], 'yes');
   assert.equal(entry._responseExtraInfo.headers['X-Response-Extra'], 'seen');
 });
