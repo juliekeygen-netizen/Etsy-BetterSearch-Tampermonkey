@@ -8,6 +8,7 @@ const syncSource = await readFile(new URL('../src/61b-favorites-sync.js', import
 const catalogSource = syncSource;
 const metadataSource = await readFile(new URL('../src/61h-favorites-metadata-coordinator.js', import.meta.url), 'utf8');
 const runtimeSource = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
+const shellSource = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
 function catalogueFixture(pageLengths) {
@@ -176,9 +177,26 @@ test('local mode owns a sibling grid and never reparents/replaces Etsy native ca
   assert.match(runtimeSource, /renderMode0141='native'/);
 });
 
-test('dependency-aware render stays native while required deep work is pending and exposes unresolved coverage', () => {
+test('late Favorites shell cannot blank the native grid or bypass v0.14 metadata requirements', () => {
+  const loading = shellSource.slice(
+    shellSource.indexOf('function favShowResultsLoading0120'),
+    shellSource.indexOf('function favHideResultsLoading0120')
+  );
+  assert.doesNotMatch(loading, /replaceChildren|favMainGrid\(|createElement\('li'\)/);
+
+  const reapply = shellSource.match(/favReapply=async function favReapply0120\([^)]*\)\{[\s\S]*?\};/)?.[0] || '';
+  assert.match(reapply, /return favReapplyBefore0120\(force\)/);
+  assert.doesNotMatch(reapply, /favNeedsExtraInfo|favScheduleLocalRender0121|favRenderCurrent/);
+
+  const legacyHelper = shellSource.match(/function favScheduleLocalRender0121\([^)]*\) \{[^}]*\}/)?.[0] || '';
+  assert.match(legacyHelper, /favReapplyBefore0120\(force\)/);
+  assert.doesNotMatch(legacyHelper, /favRenderCurrent/);
+});
+
+test('dependency-aware render stays native while required deep work is pending and final shell exposes unresolved coverage', () => {
   assert.match(runtimeSource, /if\(coverage\.pending>0\)/);
   assert.match(runtimeSource, /favRestoreNative\(\)/);
-  assert.match(runtimeSource, /metadata values unknown/);
   assert.match(metadataSource, /unresolved/);
+  assert.match(shellSource, /metadataCoverage0141\?\.unresolved/);
+  assert.match(shellSource, /metadata values unknown/);
 });
