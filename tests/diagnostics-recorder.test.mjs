@@ -13,7 +13,7 @@ test('diagnostics extension is isolated, MV3, Etsy-scoped and starts at document
   assert.ok(manifest.permissions.includes('debugger'));
   assert.ok(manifest.permissions.includes('storage'));
   assert.deepEqual(manifest.host_permissions, ['https://www.etsy.com/*']);
-  assert.equal(manifest.background?.service_worker, 'background.js');
+  assert.equal(manifest.background?.service_worker, 'service-worker.js');
   assert.equal(manifest.content_scripts?.[0]?.run_at, 'document_start');
   assert.deepEqual(manifest.content_scripts?.[0]?.matches, ['https://www.etsy.com/*']);
 });
@@ -84,10 +84,12 @@ test('automatic markers cover known BetterSearch lifecycle and owner\/request fa
   assert.match(background, /runtime-exception/);
 });
 
-test('Record & Reload is armed across navigation before the page reloads', () => {
+test('Record & Reload is armed per-tab across navigation before the page reloads', () => {
   assert.match(content, /Record &amp; Reload/);
   assert.match(content, /ARM_KEY/);
-  assert.match(content, /localStorage\.setItem\(ARM_KEY/);
+  assert.match(content, /sessionStorage\.setItem\(ARM_KEY/);
+  assert.match(content, /sessionStorage\.getItem\(ARM_KEY/);
+  assert.doesNotMatch(content, /localStorage\.(?:setItem|getItem)\(ARM_KEY/);
   assert.match(content, /armed-document-start/);
   assert.match(content, /location\.reload\(\)/);
 });
