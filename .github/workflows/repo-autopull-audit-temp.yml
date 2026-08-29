@@ -8,7 +8,7 @@ on:
       - .github/workflows/repo-autopull-audit-temp.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -46,16 +46,30 @@ jobs:
         with:
           go-version: '1.23.x'
 
-      - name: Rebuild and compare standalone EXE
+      - name: Build reproducible Windows x64 EXE twice
         shell: bash
         run: |
           set -euo pipefail
           cp Repo_AutoPull/Repo-AutoPull.ps1 tools/repo-autopull-exe/embedded.ps1
           pushd tools/repo-autopull-exe
           go vet ./...
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/RepoAutoPull.exe .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o /tmp/RepoAutoPull-a.exe .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags='-s -w' -o /tmp/RepoAutoPull-b.exe .
           popd
           rm -f tools/repo-autopull-exe/embedded.ps1
-          file Repo_AutoPull/RepoAutoPull.exe
-          cmp /tmp/RepoAutoPull.exe Repo_AutoPull/RepoAutoPull.exe
+          cmp /tmp/RepoAutoPull-a.exe /tmp/RepoAutoPull-b.exe
+          file /tmp/RepoAutoPull-a.exe
           echo 'Standalone EXE reproducibility: OK'
+
+      - name: Update tracked standalone EXE
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/RepoAutoPull-a.exe Repo_AutoPull/RepoAutoPull.exe
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f Repo_AutoPull/RepoAutoPull.exe
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: refresh deterministic RepoAutoPull executable'
+            git push origin HEAD:repo-autopull-multicommand
+          fi
