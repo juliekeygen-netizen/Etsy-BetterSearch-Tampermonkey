@@ -91,6 +91,7 @@ jobs:
 
           $fail = Invoke-CustomCommand -RepoPath $work -Command 'exit /b 7'
           if ($fail.Success -or $fail.ExitCode -ne 7) { throw "Failure exit-code handling is wrong: $($fail.ExitCode)" }
+          $global:LASTEXITCODE = 0
           Write-Host 'Custom command CWD + exit-code audit: OK'
 
       - name: Audit ordered command execution and Git safety
