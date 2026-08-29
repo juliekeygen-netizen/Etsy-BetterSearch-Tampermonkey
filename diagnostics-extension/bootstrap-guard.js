@@ -41,8 +41,9 @@
   }
 
   // Let the immediately-following content.js consume a genuinely fresh reload
-  // arm once, then remove it. A confirmed live background session can re-arm
-  // afterward. This prevents a failed/cancelled old run becoming permanent.
+  // arm once, then remove it. This is deliberately a one-shot handoff. A
+  // confirmed live background session can re-arm afterward. This prevents a
+  // failed/cancelled old run becoming permanent.
   globalThis.__EBSF_DIAG_FRESH_ARM__ = {
     sessionId: current.sessionId,
     armedAt: current.armedAt
