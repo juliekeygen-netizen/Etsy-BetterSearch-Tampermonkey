@@ -2,11 +2,42 @@
 
 This roadmap is the implementation plan for evolving BetterSearch from a userscript-first project into one shared codebase that can ship as Tampermonkey, Chrome, and Firefox builds while adding a durable Favorites metadata index and deeper filtering later.
 
-The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, persistent deep-listing queue, filter reliability pass, and v0.12.0 Favorites shell reconstruction are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
+The shared build, Favorites UI parity pass, durable metadata index, authoritative cheap Favorites synchronization, persistent deep-listing queue, filter reliability pass, v0.12.0 Favorites shell reconstruction, v0.13.x route/cache hardening, and the bounded v0.14.0 Favorites ownership refactor are implemented. Moving queue ownership into the extension service worker and adding more evidence-backed fields remain future work.
 
 The v0.12.0 pass replaces the native desktop sidebar with a permanent filter rail, adds the real-collection strip and collection-style All header, moves counts into Etsy's metadata row, leaves Etsy's pager as the only page selector, and migrates layouts to binding-based schema v2. It also adds EU-27 origin filtering, optional generated-group URL redirection, and scoped seller, returns/exchanges, shipping-cost, and rating/review parsing. Ship to, Ready to ship, gift cards, Best Seller, Minimum discount, Color, and Has Video are intentionally absent from the filter catalogue.
 
-Remaining roadmap work includes browser smoke testing, service-worker queue ownership, settings export/import, future schema migrations, sanitized fixture expansion, and selector fallback maintenance as Etsy changes its page markup.
+The v0.14.0 pass changes ownership underneath that accepted UI rather than redesigning it: complete catalogue crawling has one owner, metadata enrichment is capability/freshness driven, and BetterSearch-local results render in a sibling grid instead of structurally taking over Etsy's hydrated card tree.
+
+Remaining roadmap work includes browser smoke testing, lifecycle/MutationObserver consolidation, controlled Etsy server-filter delegation experiments, a deliberate local-pagination architecture, service-worker queue ownership, settings export/import, future schema migrations, sanitized fixture expansion, and selector fallback maintenance as Etsy changes its page markup.
+
+## v0.14.0 — Favorites ownership refactor **(implemented)**
+
+This release implements the bounded ownership subset of `FAVORITES_NATIVE_ARCHITECTURE_RESEARCH_AND_REFACTOR_PLAN.md` while freezing the accepted v0.13.2 visual contract.
+
+Implemented boundaries:
+
+- `src/61b-favorites-sync.js` owns the single complete-catalogue service. `favLoadAll()`, manual Sync now, stale auto-sync, and background refresh delegate to it instead of maintaining separate crawlers.
+- Complete snapshots are accepted only after a short-page boundary. Exact 20/40/60-style totals therefore request one verifying page instead of trusting the reported total as proof of completeness.
+- Same-dataset callers share one in-flight refresh. Different datasets have independent slots, so an All refresh does not globally block a collection refresh.
+- Same-dataset cross-tab work uses Web Locks when available and a dataset-scoped storage lease fallback otherwise.
+- Complete/partial IndexedDB observation semantics remain authoritative: partial work cannot infer global unfavorites; a completed unfiltered All snapshot may reconcile absence.
+- `src/61h-favorites-metadata-coordinator.js` derives metadata requirements from the active filter/sort, caches field provenance/freshness, tracks destination context for shipping-sensitive observations, and queues deep work only when an active deep capability needs it.
+- Ordinary Favorites browsing no longer starts a whole-catalogue auxiliary/deep metadata pass as a display prerequisite.
+- Owner-scoped deep maintenance materializes listings from scope membership with keyed listing reads instead of scanning the entire historical listing store.
+- BetterSearch-local rendering uses a separate sibling grid. Etsy's native grid remains in place and is hidden/revealed; native hydrated card nodes are cloned for local presentation rather than moved or emptied.
+- Local favorite/cart actions forward to Etsy's live native control when the matching native card exists, preserving Etsy as the interaction owner where practical.
+- Metadata coverage preserves `unknown` separately from false/zero. Dependency-driven deep work keeps the native result set visible while required work is pending, and unresolved values are surfaced in coverage/count UI instead of being silently presented as fully known.
+- CI now includes a real `git diff --check` release gate in addition to syntax/consistency checks, the full test suite, Chrome build, and Firefox build.
+
+Explicitly deferred from this release:
+
+- lifecycle/MutationObserver consolidation;
+- Etsy server-filter delegation;
+- a new BetterSearch-local pagination architecture;
+- broad late-module-chain consolidation;
+- service-worker ownership of the persistent deep queue.
+
+---
 
 ## Guiding rules
 
@@ -160,19 +191,19 @@ Current implementation notes:
 
 ---
 
-## Phase 3 — Authoritative Favorites scope synchronization **(implemented in v0.9.0)**
+## Phase 3 — Authoritative Favorites scope synchronization **(implemented in v0.9.0; unified behind the v0.14.0 catalogue service)**
 
 Goal: know the complete active Favorite set without opening every listing page.
 
 Implemented behavior:
 
 1. Current embedded Favorites state/card data is observed continuously as a partial cheap source.
-2. A dedicated controller synchronizes All Items, generated groups, custom collections, and native Favorites queries through Etsy's same-site pagination JSON.
+2. Complete All Items, generated-group, custom-collection, and native-query refreshes use the single v0.14.0 catalogue service through Etsy's same-site pagination JSON.
 3. Sequential pages are deduplicated by listing ID and written to IndexedDB in batches.
 4. Partial observations survive a retry failure or cancellation without changing the previous complete snapshot.
 5. Only a completed unfiltered All Items job may infer a global unfavorite by absence; collection completion removes only that membership.
 6. The default auto-sync checks a scope at most when entering/changing Favorites routes and only refreshes a completed snapshot after a 12-hour stale interval.
-7. Route changes cancel view-bound work, while an intentionally independent All Items job may finish if its owner remains valid.
+7. Dataset-local request ownership allows unrelated scopes to refresh independently while same-dataset callers coalesce.
 
 UI:
 
@@ -181,7 +212,7 @@ UI:
 - v0.9.1 consolidates Favorites sorts into a migrated base-sort plus reverse-direction model, keeps unknown numeric metadata last, restores useful native-search width, and shares one scoped chevron/icon language.
 - Recommendation modules such as "Discover similar items" remain explicitly excluded.
 
-Terminology and implementation boundary: **Favorites sync** is the implemented, cheap Favorites API/card/auxiliary-data index refresh. A **deep metadata scan** is the future individual listing/shop-page crawler. This phase does not crawl those pages, provide future deep-filter metadata, or implement the persistent deep-scan queue.
+Terminology and implementation boundary: **Favorites sync** is now a freshness-policy/controller view over the single catalogue service. A **deep metadata scan** is individual listing-page enrichment through the persistent deep queue.
 
 ---
 
@@ -283,7 +314,7 @@ This keeps feature compatibility without pretending a userscript has a true alwa
 
 ---
 
-## Phase 6 — Wire richer Favorites filters and sorts **(implemented and narrowed in v0.12.0)**
+## Phase 6 — Wire richer Favorites filters and sorts **(implemented and narrowed in v0.12.0; demand scheduling hardened in v0.14.0)**
 
 Only activate a filter once its backing metadata is reliable.
 
@@ -327,7 +358,7 @@ unknown
 stale
 ```
 
-A filter must not silently reject an `unknown` listing unless the UI explicitly offers a "known only" behavior.
+A filter must not silently present an `unknown` listing as a known false/zero result. v0.14.0 tracks unresolved capability coverage explicitly, keeps native results visible while required deep work is pending, and surfaces unresolved metadata counts when positive-only evidence cannot resolve every record.
 
 ### Category UI
 
@@ -335,7 +366,7 @@ Build the Favorites category tree dynamically from categories actually present i
 
 ---
 
-## Phase 7 — Favorites UI/native-parity pass **(substantially implemented in v0.8.0)**
+## Phase 7 — Favorites UI/native-parity pass **(substantially implemented in v0.8.0; native-grid ownership hardened in v0.14.0)**
 
 Desktop layout remains:
 
@@ -347,12 +378,13 @@ Rules:
 
 - Native search form stays native and functional.
 - Desktop Filters replace the existing Favorites sidebar in the same column instead of pushing the grid sideways.
-- Preserve/detach/reattach actual Etsy sidebar nodes rather than recreating them with `innerHTML`, so Etsy listeners survive.
 - Mobile uses a full-height Etsy-style overlay with a bottom `Show results (N items)` action.
 - Sort uses Etsy-like transparent trigger/menu styling.
 - Strict title and Multi-search stay near the top of the Favorites filter rail and remain mutually exclusive.
 - BetterSearch filters persist across Favorite scopes unless Reset is used.
 - Current native Favorites search/scope changes update the underlying candidate pool; metadata filters then apply locally.
+- Native mode leaves Etsy's hydrated card tree intact.
+- BetterSearch-local mode renders a sibling grid and hides/reveals the native grid instead of reparenting or emptying native card nodes.
 - Desktop rail scrolls with the document and has no independent scrollbar.
 - Fresh pages auto-open sections with active values; arbitrary manual accordion state is not persisted.
 - Ordinary control changes keep the mounted rail DOM; structural controls update only their affected section where practical.
@@ -414,6 +446,9 @@ Ongoing work:
 0.10.x deep listing/shop parser + persistent queue
 0.11.x wire richer metadata filters/sorts
 0.12.x UI/native-parity and large-library hardening
+0.13.x route/cache correctness and accepted visual parity
+0.14.x catalogue/metadata/native-grid ownership refactor
+future lifecycle consolidation, server-delegation experiments, deliberate local pagination, migration/export
 1.0.0  stable Tampermonkey + Chrome + Firefox release line
 ```
 

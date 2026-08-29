@@ -369,7 +369,7 @@ favRefreshForViewChange0137 = function favRefreshForViewChange0140() {
         favState.viewRenderFallback0140 = 0;
         if (!isFavoritesPage() || favDatasetKey() !== requestKey || favViewKey0137() !== viewKey) return;
         if (!favEnhancementActive() || favState.loadKey !== requestKey || !favState.loadComplete) return;
-        favRenderCurrent();
+        void favReapply();
         favUpdateScopeHeader0120?.();
     }, FAV_VIEW_NATIVE_SETTLE_FALLBACK_MS0140);
 };
@@ -387,7 +387,7 @@ favScheduleCurrentPageObservation = function favScheduleCurrentPageObservation01
         favIndexObserveCurrentPage().catch(() => {});
         if (recaptured && favEnhancementActive() && favState.loadKey === favDatasetKey() && favState.loadComplete) {
             requestAnimationFrame(() => {
-                if (isFavoritesPage() && favEnhancementActive()) favRenderCurrent();
+                if (isFavoritesPage() && favEnhancementActive()) void favReapply();
             });
         }
     }, delay);

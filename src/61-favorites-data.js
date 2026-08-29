@@ -133,112 +133,18 @@ function favClearProgress() {
     favState.progressNode = null;
 }
 
+/* Compatibility entry point. The complete-dataset implementation lives only
+ * in the catalogue/sync owner (61b). */
 function favLoadAll(force = false) {
-    if (!isFavoritesPage()) return Promise.resolve([]);
-    const key = favDatasetKey();
-    if (!force && favState.loadKey === key && favState.loadComplete) return Promise.resolve(favState.records);
-    if (!force && favState.loadKey === key && favState.loadPromise) return favState.loadPromise;
-    favState.controller?.abort();
-    const controller = new AbortController();
-    favState.controller = controller;
-    Object.assign(favState, { loading:true, loadKey:key, loadComplete:false, extraReady:false, extraKey:'', extraPromise:null, localPage:1, pageSize:20 });
-
-    const promise = (async () => {
-        const map = new Map();
-        const limit = 20;
-        const liveNodes = favCardMap(document);
-        let complete = true;
-        try {
-            const props = favProps();
-            const wantedQuery = favDatasetQuery();
-            const liveQuery = String(props?.query || '').trim();
-            const knownTotal = normalize(wantedQuery) === normalize(liveQuery) ? Math.max(0, Number(props?.totalListings) || 0) : 0;
-            const scope = favScope();
-            favState.groupQueryResolved = false;
-            if (scope.type === 'group' && wantedQuery && scope.owner) {
-                const groupMap = new Map();
-                for (let offset = 0; ; offset += limit) {
-                    const listings = favApiListings(await favFetchJson(favApiUrlForScope(scope, offset, limit), controller.signal));
-                    favMergeRecords(groupMap, favRecordsFromListings(listings, offset, liveNodes));
-                    if (listings.length < limit) break;
-                }
-                let queryOrder = 0;
-                for (let offset = 0; ; offset += limit) {
-                    const queryScope = { ...scope, type:'items', id:'' };
-                    const listings = favApiListings(await favFetchJson(favApiUrlForScope(queryScope, offset, limit, wantedQuery), controller.signal));
-                    for (const listing of listings) {
-                        const idValue = String(listing?.listingId ?? listing?.listing_id ?? '');
-                        if (!idValue || !groupMap.has(idValue)) continue;
-                        const record = favRecordFromListing(listing, liveNodes.get(idValue), queryOrder++);
-                        if (record.id) map.set(record.id, record);
-                    }
-                    favProgress(`Loading matching favorites… ${map.size} found`);
-                    if (listings.length < limit) break;
-                }
-                favState.groupQueryResolved = true;
-            } else if (knownTotal > 0) {
-                const offsets = Array.from({ length:Math.ceil(knownTotal / limit) }, (_, index) => index * limit);
-                let cursor = 0;
-                await Promise.all(Array.from({ length:Math.min(3, offsets.length || 1) }, async () => {
-                    while (cursor < offsets.length) {
-                        const offset = offsets[cursor++];
-                        const listings = await favFetchBatch(offset, limit, controller.signal);
-                        favMergeRecords(map, favRecordsFromListings(listings, offset, liveNodes));
-                        favProgress(`Loading favorites… ${Math.min(map.size, knownTotal)} / ${knownTotal}`);
-                    }
-                }));
-            } else {
-                for (let offset = 0; ; offset += limit) {
-                    const listings = await favFetchBatch(offset, limit, controller.signal);
-                    favMergeRecords(map, favRecordsFromListings(listings, offset, liveNodes));
-                    favProgress(`Loading favorites… ${map.size} loaded`);
-                    if (listings.length < limit) break;
-                }
-            }
-            if (controller.signal.aborted || favState.loadKey !== key) return favState.records;
-            favState.records = Array.from(map.values()).sort((a,b)=>a.order-b.order);
-            favState.recordsById = new Map(favState.records.map((record)=>[record.id,record]));
-            favState.total = favState.records.length;
-            favState.loadComplete = true;
-            favClearProgress();
-            await favIndexObserveRecords(favState.records, { scope:favIndexCurrentScope(), complete:true });
-            await favIndexHydrateRecords(favState.records);
-            return favState.records;
-        } catch (error) {
-            if (error?.name === 'AbortError' || controller.signal.aborted || favState.loadKey !== key) return favState.records;
-            complete = false;
-            console.warn('[Etsy BetterSearch] Favorites load incomplete:', error);
-            favState.records = Array.from(map.values()).sort((a,b)=>a.order-b.order);
-            favState.recordsById = new Map(favState.records.map((record)=>[record.id,record]));
-            favState.total = Math.max(favState.records.length, Number(favState.total) || 0);
-            await favIndexObserveRecords(favState.records, { scope:favIndexCurrentScope(), complete:false }).catch(()=>{});
-            favProgress(favState.records.length ? `Favorites load incomplete · ${favState.records.length} items available` : 'Could not load favorites. Try again later.');
-            return favState.records;
-        } finally {
-            if (favState.controller === controller) favState.loading = false;
-            if (!complete) { favState.loadComplete = false; if (!controller.signal.aborted) controller.abort(); }
-        }
-    })();
-    const wrapped = promise.finally(()=>{if(favState.loadPromise===wrapped)favState.loadPromise=null;});
-    favState.loadPromise = wrapped;
-    return wrapped;
+    return favCatalogAcquireCurrent({ force:force === true });
 }
 
 function favExtraDatasetKey() { return `${favDatasetKey()}|${favState.records.map((record)=>record.id).join(',')}`; }
 
+/* Compatibility entry point. Demand-driven metadata work is installed by the
+ * metadata coordinator (61h) before Favorites runtime starts. */
 function favEnsureExtraInfo() {
-    if (!favState.records.length) { favState.extraReady=true; return Promise.resolve(true); }
-    const key=favExtraDatasetKey();
-    if (favState.extraReady&&favState.extraKey===key)return Promise.resolve(true);
-    if (favState.extraPromise&&favState.extraKey===key)return favState.extraPromise;
-    const controller=favState.controller||new AbortController(),signal=controller.signal;
-    Object.assign(favState,{extraKey:key,extraReady:false,extraLoading:true});
-    const promise=(async()=>{const props=favProps(),country=String(props?.countryIsoCode||''),postal=String(props?.buyerPostalCode||'');try{
-        for(let index=0;index<favState.records.length;index+=30){const batch=favState.records.slice(index,index+30).map((record)=>record.id);const url=new URL('/api/v3/ajax/bespoke/member/users/favorites/additional-listing-info',location.origin);batch.forEach((id)=>url.searchParams.append('listing_ids[]',id));if(country)url.searchParams.set('country_iso_code',country);url.searchParams.set('postal_code',postal);const data=await favFetchJson(url,signal);if(signal.aborted||favExtraDatasetKey()!==key)return false;
-            for(const [listingId,extra] of Object.entries(data?.map||{})){const record=favState.recordsById.get(String(listingId));if(!record)continue;record.known=record.known||{};record.shippingFormatted=String(extra?.shipping_costs||'');record.shipping=favParseMoney(extra?.shipping_costs);record.known.shipping=Object.prototype.hasOwnProperty.call(extra||{},'shipping_costs');if(!Number.isFinite(record.shipping)&&record.hasFreeShipping)record.shipping=0;if(record.shipping===0)record.hasFreeShipping=true;record.estimatedDelivery=String(extra?.estimated_delivery||'');record.acceptsReturns=String(extra?.accepts_returns)==='1';record.acceptsExchanges=String(extra?.accepts_exchanges)==='1';record.known.acceptsReturns=Object.prototype.hasOwnProperty.call(extra||{},'accepts_returns');record.known.acceptsExchanges=Object.prototype.hasOwnProperty.call(extra||{},'accepts_exchanges');record.urgency=String(extra?.urgency_signal||'');const carts=record.urgency.match(/in\s+(\d+)\s+carts?/i),stock=record.urgency.match(/(?:only\s+)?(\d+)\s+left/i);record.carts=carts?Number(carts[1]):NaN;record.stockLeft=/\bone\s+left\b/i.test(record.urgency)?1:(stock?Number(stock[1]):NaN);}}
-        if(favExtraDatasetKey()!==key)return false;favState.extraReady=true;await favIndexObserveRecords(favState.records,{scope:favIndexCurrentScope(),complete:false});return true;
-    }catch(error){if(error?.name!=='AbortError'&&!signal.aborted)console.warn('[Etsy BetterSearch] Favorites extra metadata incomplete:',error);favState.extraReady=false;return false;}finally{if(favState.extraKey===key)favState.extraLoading=false;}})();
-    favState.extraPromise=promise.finally(()=>{if(favState.extraKey===key)favState.extraPromise=null;});return favState.extraPromise;
+    return favMetadataEnsureCurrentRequirements0141().then((coverage) => coverage.complete);
 }
 
 function favNumericFilter(value,raw,comparison){if(raw===''||raw==null)return true;const target=Number(raw);return !Number.isFinite(target)||(Number.isFinite(value)&&comparison(value,target));}
