@@ -1,0 +1,4 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0BetterSearch-AutoPull.ps1" -Setup
