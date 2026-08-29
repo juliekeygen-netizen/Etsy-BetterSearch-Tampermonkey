@@ -1,0 +1,5 @@
+BetterSearch AutoPull verification test #2
+
+Created on 2026-08-29 so the new native-Git watcher can prove it detects and pulls a fresh remote commit automatically.
+
+If this file appears locally without a manual git pull, the AutoPull flow is working.
