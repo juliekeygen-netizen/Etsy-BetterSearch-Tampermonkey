@@ -102,7 +102,6 @@ jobs:
             'Push-Location $RepoPath',
             '$raw = @(& $commandProcessor /d /s /c $Command 2>&1)',
             'for ($commandIndex = 0; $postSuccess -and $commandIndex -lt $commands.Count; $commandIndex++)',
-            'git pull --ff-only --autostash',
             '@("pull", "--ff-only", "--autostash", "--quiet")'
           )
           foreach ($needle in $required) {
