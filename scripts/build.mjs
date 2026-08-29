@@ -39,10 +39,15 @@ const diagnosticsRoot = resolve(ROOT, 'diagnostics-extension');
 const diagnosticsManifestSource = await readFile(resolve(diagnosticsRoot, 'manifest.json'), 'utf8');
 const diagnosticsManifest = JSON.parse(diagnosticsManifestSource);
 const diagnosticsBackground = await readFile(resolve(diagnosticsRoot, 'background.js'), 'utf8');
+const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
+const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 
 if (!diagnosticsManifest.version) throw new Error('Diagnostics manifest version is missing.');
 if (!diagnosticsManifest.permissions?.includes('debugger')) throw new Error('Diagnostics extension must declare the debugger permission.');
+if (diagnosticsManifest.background?.service_worker !== 'service-worker.js') {
+  throw new Error('Diagnostics manifest must use the service-worker wrapper.');
+}
 
 // Parse the final concatenated production bundle and the standalone diagnostics
 // scripts before writing anything. This catches cross-module declaration
@@ -51,6 +56,8 @@ try {
   new Function(contentSource);
   new Function(backgroundSource);
   new Function(diagnosticsBackground);
+  new Function(diagnosticsHarExtraInfo);
+  new Function(diagnosticsServiceWorker);
   new Function(diagnosticsContent);
 } catch (error) {
   throw new Error(`Generated extension bundle has invalid syntax: ${error.message}`, { cause: error });
@@ -81,6 +88,8 @@ await mkdir(diagnosticsDir, { recursive: true });
 await Promise.all([
   writeFile(resolve(diagnosticsDir, 'manifest.json'), `${JSON.stringify(diagnosticsManifest, null, 2)}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background.js'), `${diagnosticsBackground.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(
     resolve(diagnosticsDir, 'BUILD_INFO.json'),
@@ -88,6 +97,7 @@ await Promise.all([
       version: diagnosticsManifest.version,
       target: 'chrome',
       source: 'diagnostics-extension',
+      sourceFiles: ['service-worker.js', 'background.js', 'har-extra-info.js', 'content.js'],
       companionForBetterSearchVersion: version
     }, null, 2)}\n`,
     'utf8'
