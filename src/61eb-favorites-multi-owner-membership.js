@@ -10,7 +10,8 @@
  *
  * This module is an early data-semantic owner. It loads after cache bootstrap
  * and before immutable snapshot commits. From here onward:
- *  - committed scope listingIds are authoritative membership for that scope;
+ *  - committed scope listingIds are authoritative baseline membership;
+ *  - newer verified own-profile native-heart removals are owner-specific overlays;
  *  - listing.favoriteScopes is owner/scope evidence, never global authority;
  *  - listing.isFavorite is compatibility summary only;
  *  - exact scope completion retires only that exact scope membership;
@@ -19,6 +20,7 @@
  */
 
 var FAV_MULTI_OWNER_REPAIR_KEY01519 = 'etsy-bettersearch.favorites.multi-owner-repair.v1';
+var FAV_OWNER_HEART_REMOVAL_SOURCE01519 = 'viewer-own-native-heart';
 var favMultiOwnerRepairPromise01519 = null;
 
 function favIndexScopeOwnerFromKey01519(scopeKey) {
@@ -77,7 +79,10 @@ function favIndexMergeMembershipState01519(existing, incoming, merged, observedA
         if (membership.active === true && previous.active === false && removedAt > incomingAt) continue;
 
         const next = { ...previous, ...membership };
-        if (next.active === true && Object.prototype.hasOwnProperty.call(next, 'removedAt')) delete next.removedAt;
+        if (next.active === true) {
+            if (Object.prototype.hasOwnProperty.call(next, 'removedAt')) delete next.removedAt;
+            if (Object.prototype.hasOwnProperty.call(next, 'removalSource')) delete next.removalSource;
+        }
         scopes[scopeKey] = next;
     }
 
@@ -114,9 +119,12 @@ function favIndexMarkScopeInactive01519(existing, scopeKey, observedAt = Date.no
         : {};
     const membership = current[scopeKey];
     if (!membership?.active) return existing;
+    const nextMembership = { ...membership, active:false, removedAt:observedAt };
+    if (options.removalSource) nextMembership.removalSource = String(options.removalSource);
+    else if (Object.prototype.hasOwnProperty.call(nextMembership, 'removalSource')) delete nextMembership.removalSource;
     const scopes = {
         ...current,
-        [scopeKey]: { ...membership, active:false, removedAt:observedAt },
+        [scopeKey]: nextMembership,
     };
     return favIndexNormalizeMembershipSummary01519(
         { ...existing, favoriteScopes:scopes },
@@ -141,7 +149,7 @@ favIndexApplyScopeCompletion = function favIndexApplyScopeCompletion01519(listin
     });
 };
 
-function favIndexMarkListingUnfavoriteForOwner01519(existing, owner, observedAt = Date.now()) {
+function favIndexMarkListingUnfavoriteForOwner01519(existing, owner, observedAt = Date.now(), options = {}) {
     const wantedOwner = String(owner || '').trim();
     if (!existing || !wantedOwner) return existing;
     const current = existing.favoriteScopes && typeof existing.favoriteScopes === 'object'
@@ -158,7 +166,9 @@ function favIndexMarkListingUnfavoriteForOwner01519(existing, owner, observedAt 
             scopes[scopeKey] = membershipValue;
             continue;
         }
-        scopes[scopeKey] = { ...membership, active:false, removedAt:observedAt };
+        const nextMembership = { ...membership, active:false, removedAt:observedAt };
+        if (options.removalSource) nextMembership.removalSource = String(options.removalSource);
+        scopes[scopeKey] = nextMembership;
         changed = true;
     }
     if (!changed) return existing;
@@ -185,7 +195,9 @@ function favIndexOwnProfileOwner01519() {
 
 /* Direct heart actions use one readwrite transaction so a stale tab-local row
  * cannot erase concurrent metadata/membership changes. If this is not proven to
- * be the viewer's own profile, do not mutate durable profile membership at all. */
+ * be the viewer's own profile, do not mutate durable profile membership at all.
+ * The verified native removal is recorded as a post-snapshot owner overlay; it
+ * never rewrites the immutable committed scope listingIds in place. */
 favIndexMarkUnfavoriteNow = async function favIndexMarkUnfavoriteNow01519(listingId, observedAt = Date.now(), options = {}) {
     const idValue = String(listingId || '');
     const owner = String(options?.owner || '').trim();
@@ -203,7 +215,9 @@ favIndexMarkUnfavoriteNow = async function favIndexMarkUnfavoriteNow01519(listin
             try {
                 const existing = request.result;
                 if (!existing) return;
-                const next = favIndexMarkListingUnfavoriteForOwner01519(existing, owner, observedAt);
+                const next = favIndexMarkListingUnfavoriteForOwner01519(existing, owner, observedAt, {
+                    removalSource:FAV_OWNER_HEART_REMOVAL_SOURCE01519,
+                });
                 if (next === existing) return;
                 store.put(next);
                 changed = true;
@@ -232,10 +246,27 @@ favIndexMarkUnfavorite = function favIndexMarkUnfavorite01519(listingId, observe
     return favIndexEnqueue(() => favIndexMarkUnfavoriteNow(listingId, observedAt, { ...options, owner }));
 };
 
-/* Committed scope membership is already represented by snapshot.ids. Do not let
- * legacy global isFavorite or a contradictory listing-side membership veto the
- * immutable committed snapshot. Adapt only the temporary read view, never the
- * durable listing row. */
+function favScopeCommittedAt01519(scopeRecord) {
+    return Math.max(
+        0,
+        Number(scopeRecord?.snapshotCommittedAt) || 0,
+        Number(scopeRecord?.lastCompleteSyncAt) || 0,
+    );
+}
+
+function favTrustedOwnHeartRemoval01519(listing, scopeKey, scopeRecord) {
+    const membership = listing?.favoriteScopes?.[scopeKey];
+    if (membership?.active !== false) return false;
+    if (membership?.removalSource !== FAV_OWNER_HEART_REMOVAL_SOURCE01519) return false;
+    const removedAt = Math.max(0, Number(membership.removedAt) || 0);
+    return removedAt > favScopeCommittedAt01519(scopeRecord);
+}
+
+/* Committed scope membership is the immutable baseline. Legacy global false or
+ * an untrusted contradictory listing-side tombstone cannot veto it. A verified
+ * own-profile native-heart removal newer than the committed snapshot is a
+ * bounded owner-specific overlay and remains suppressed until a newer positive
+ * observation/complete generation clears or supersedes that evidence. */
 function favCacheOwnerMembershipView01519(snapshot) {
     if (!snapshot) return snapshot;
     const scopeKey = String(snapshot?.scope?.scopeKey || snapshot?.scopeRecord?.scopeKey || '');
@@ -244,10 +275,12 @@ function favCacheOwnerMembershipView01519(snapshot) {
         const id = String(idValue);
         const listing = listingById.get(id);
         if (!listing) continue;
+        if (scopeKey && favTrustedOwnHeartRemoval01519(listing, scopeKey, snapshot.scopeRecord)) continue;
         const memberships = { ...(listing.favoriteScopes || {}) };
         if (scopeKey) {
             const membership = { ...(memberships[scopeKey] || {}), active:true };
             delete membership.removedAt;
+            delete membership.removalSource;
             memberships[scopeKey] = membership;
         }
         listingById.set(id, { ...listing, isFavorite:true, unfavoritedAt:0, favoriteScopes:memberships });
@@ -273,11 +306,18 @@ function favOwnerActiveListings01519(listings, scopes, owner) {
         );
     }
     const ids = favOwnerScopeIds01510(scopes, wantedOwner);
-    return Array.from(listings || []).filter((listing) => ids.has(String(listing?.listingId || '')));
+    const canonical = favCanonicalAllScope01510(scopes, wantedOwner);
+    const canonicalScopeKey = String(canonical?.scopeKey || '');
+    return Array.from(listings || []).filter((listing) => {
+        if (!ids.has(String(listing?.listingId || ''))) return false;
+        if (!canonical || !canonicalScopeKey) return true;
+        return !favTrustedOwnHeartRemoval01519(listing, canonicalScopeKey, canonical);
+    });
 }
 
 /* Owner-scoped maintenance/counts derive activity from that owner's committed
- * scope IDs. The global summary remains only the ownerless legacy fallback. */
+ * scope IDs plus a newer verified own-profile removal overlay. The global summary
+ * remains only the ownerless legacy fallback. */
 favIndexGetStats = async function favIndexGetStats01519(owner = '') {
     const db = await favIndexOpen();
     const transaction = db.transaction(['listings', 'shops', 'scopes'], 'readonly');
@@ -335,6 +375,7 @@ favRepairListingIntegrity01510 = function favRepairListingIntegrity01519(listing
         if (membership.active === true && Object.prototype.hasOwnProperty.call(membership, 'removedAt')) {
             const next = { ...membership };
             delete next.removedAt;
+            delete next.removalSource;
             scopes[scopeKey] = next;
             changed = true;
         } else {
