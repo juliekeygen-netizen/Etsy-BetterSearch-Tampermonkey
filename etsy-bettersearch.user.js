@@ -3,7 +3,7 @@
 // @namespace    https://github.com/juliekeygen-netizen
 // @version      0.15.19
 // @description  Adds strict title matching, rule-based multi-search, configurable scanning, persistent Etsy filters, and advanced Favorites filtering/sorting while keeping Etsy's native UI.
-// @homepageURL  https://github.com/juliekeygen-netizen
+// @homepageURL  https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey
 // @supportURL   https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/issues
 // @author       juliekeygen-netizen
 // @match        https://www.etsy.com/*
