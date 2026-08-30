@@ -36,7 +36,11 @@ function loadBoundaryFixture() {
     Promise,
     Set,
     Map,
+    Array,
     Object,
+    String,
+    Number,
+    Date,
     globalThis: null,
     favIndexOpen: async () => { calls.open += 1; return { name:'db' }; },
     favIndexObserveRecordsNow: async (records, options) => {
@@ -44,6 +48,17 @@ function loadBoundaryFixture() {
       return ['written'];
     },
     favIndexCurrentScope: () => currentScope,
+    favIndexMergeListing: (existing, incoming) => ({
+      ...(existing || {}),
+      ...(incoming || {}),
+      favoriteScopes:{
+        ...(existing?.favoriteScopes || {}),
+        ...(incoming?.favoriteScopes || {}),
+      },
+    }),
+    favIndexGetStats: async () => ({}),
+    favIndexGetActiveListings: async () => [],
+    favIndexRequest: async () => null,
     favApiUrlForScope: (scope, offset, limit, query) => {
       calls.api.push({ scope, offset, limit, query });
       return `owner:${scope.owner}`;
@@ -63,6 +78,7 @@ function loadBoundaryFixture() {
     open:()=>favIndexOpen(),
     resetOpen:(fn)=>{favIndexOpenBefore0153=fn;favIndexOwnerRepairPromise0153=null},
     setRepair:(fn)=>{favIndexRepairOwnerlessScopes0153=fn;favIndexOwnerRepairPromise0153=null},
+    setIntegrityRepair:(fn)=>{favIndexRepairStorageIntegrity01510=fn;favIndexOwnerRepairPromise0153=null},
     repairDone:()=>favOwnerRepairDone0153(),
   };`, context);
   context.testApi.calls = calls;
@@ -188,6 +204,10 @@ test('all index callers wait on one shared owner-repair promise per document', a
     repairs += 1;
     assert.equal(value, db);
     await repairGate;
+  });
+  api.setIntegrityRepair(async (value) => {
+    assert.equal(value, db);
+    return { repaired:false, scopesRemoved:0, listingsUpdated:0 };
   });
 
   const first = api.open();
