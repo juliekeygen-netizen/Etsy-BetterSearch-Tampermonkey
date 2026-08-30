@@ -8,19 +8,44 @@ const runtime = await readFile(new URL('../src/63-favorites-runtime.js', import.
 const pagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
-function executeAdapterFixture({ selectedPage = 1, url = 'https://www.etsy.com/people/test?tab=items' } = {}) {
+function executeAdapterFixture({
+  selectedPage = 1,
+  localSelectedPage = 1,
+  url = 'https://www.etsy.com/people/test?tab=items',
+  includeLocalPager = false,
+  localPagerFirst = false,
+} = {}) {
   let selectedText = String(selectedPage);
+  let localSelectedText = String(localSelectedPage);
   let pagerMounted = true;
+  let localPagerMounted = includeLocalPager;
   let clickHandler = null;
   let popstateHandler = null;
-  const selectedButton = { textContent: selectedText };
-  const pager = {
+
+  const nativeSelectedButton = { textContent: selectedText };
+  const localSelectedButton = { textContent: localSelectedText };
+  const nativePager = {
     isConnected: true,
     getClientRects: () => [{}],
-    querySelector: () => selectedButton,
+    matches: (selector) => selector === '[data-ebsf-local-pagination]' ? false : false,
+    querySelector: () => nativeSelectedButton,
   };
+  const localPager = {
+    isConnected: true,
+    getClientRects: () => [{}],
+    matches: (selector) => selector === '[data-ebsf-local-pagination]',
+    querySelector: () => localSelectedButton,
+  };
+
+  const mountedPagers = () => {
+    const list = [];
+    if (pagerMounted) list.push(nativePager);
+    if (localPagerMounted) list.push(localPager);
+    return localPagerFirst ? list.reverse() : list;
+  };
+
   const context = {
-    favState: { localPage: 1, localPageRouteKey0129: '' },
+    favState: { localPage: Number(localSelectedPage) || 1, localPageRouteKey0129: '' },
     favRequestedRoutePage0137: () => 1,
     favViewKey0137: () => '',
     favPageRouteKey0129: () => '',
@@ -30,7 +55,7 @@ function executeAdapterFixture({ selectedPage = 1, url = 'https://www.etsy.com/p
     favScheduleSync: () => {},
     favScheduleCurrentPageObservation: () => {},
     document: {
-      querySelectorAll: () => pagerMounted ? [pager] : [],
+      querySelectorAll: () => mountedPagers(),
       addEventListener: (name, handler) => { if (name === 'click') clickHandler = handler; },
     },
     window: {
@@ -48,12 +73,45 @@ function executeAdapterFixture({ selectedPage = 1, url = 'https://www.etsy.com/p
   };
   vm.createContext(context);
   vm.runInContext(adapter, context);
+
+  const makeClickButton = (button, pager) => ({
+    ...button,
+    closest: (selector) => selector === 'nav[aria-label="Favorite Items Page Results"]' ? pager : null,
+  });
+
   return {
     context,
-    setSelectedPage(page) { selectedText = String(page); selectedButton.textContent = selectedText; },
+    nativePager,
+    localPager,
+    setSelectedPage(page) {
+      selectedText = String(page);
+      nativeSelectedButton.textContent = selectedText;
+    },
+    setLocalSelectedPage(page) {
+      localSelectedText = String(page);
+      localSelectedButton.textContent = localSelectedText;
+      context.favState.localPage = Number(page) || 1;
+    },
     setPagerMounted(value) { pagerMounted = Boolean(value); },
-    click(button) { clickHandler?.({ target: { closest: () => button } }); },
+    setLocalPagerMounted(value) { localPagerMounted = Boolean(value); },
+    clickNative(button) {
+      const ownedButton = makeClickButton(button, nativePager);
+      clickHandler?.({ target: { closest: () => ownedButton } });
+    },
+    clickLocal(button) {
+      const ownedButton = makeClickButton(button, localPager);
+      clickHandler?.({ target: { closest: () => ownedButton } });
+    },
     popstate() { popstateHandler?.(); },
+  };
+}
+
+function numericButton(page) {
+  return {
+    textContent: String(page),
+    disabled: false,
+    getAttribute: () => null,
+    querySelector: () => null,
   };
 }
 
@@ -108,8 +166,15 @@ test('native view identity and BetterSearch local-result page identity are inten
   assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
 });
 
+test('native pager discovery explicitly excludes BetterSearch local pagination', () => {
+  assert.match(adapter, /function favNativePagers0139\(\)/);
+  assert.match(adapter, /!pager\.matches\?\.\('\[data-ebsf-local-pagination\]'\)/);
+  assert.match(adapter, /const pagers = favNativePagers0139\(\)/);
+});
+
 test('native pager clicks seed native intent but never hijack Etsy pagination or BetterSearch localPage', () => {
   assert.match(adapter, /document\.addEventListener\('click'/);
+  assert.match(adapter, /pager\.matches\?\.\('\[data-ebsf-local-pagination\]'\)/);
   assert.match(adapter, /favPagerButtonTargetPage0139\(button\)/);
   assert.match(adapter, /favSetNativePageIntent0139\(target\)/);
   assert.doesNotMatch(adapter, /favState\.localPage\s*=\s*target/);
@@ -121,14 +186,47 @@ test('native pager clicks seed native intent but never hijack Etsy pagination or
 
 test('a numeric Etsy page click changes native view intent but leaves local result page untouched', () => {
   const fixture = executeAdapterFixture({ selectedPage: 1 });
-  const button = {
-    textContent: '2',
-    disabled: false,
-    getAttribute: () => null,
-    querySelector: () => null,
-  };
-  fixture.click(button);
+  fixture.clickNative(numericButton(2));
   assert.equal(fixture.context.favState.localPage, 1);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
+});
+
+test('local and native pagers may share the Etsy aria-label without sharing page-state ownership', () => {
+  const fixture = executeAdapterFixture({
+    selectedPage: 3,
+    localSelectedPage: 7,
+    includeLocalPager: true,
+    localPagerFirst: true,
+    url: 'https://www.etsy.com/people/test?tab=items&page=1',
+  });
+
+  // The local pager is intentionally returned first and is visually mounted,
+  // but native page identity must still come from Etsy's native pager.
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 3);
+  assert.equal(fixture.context.favState.localPage, 7);
+
+  // A capture-phase click on the local pager must be invisible to the native
+  // adapter. Module 95 owns the actual local-page mutation separately.
+  fixture.clickLocal(numericButton(8));
+  assert.equal(fixture.context.favState.nativePageIntent0139, 0);
+  assert.equal(fixture.context.favState.localPage, 7);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 3);
+
+  // The real Etsy pager still seeds native intent normally.
+  fixture.clickNative(numericButton(4));
+  assert.equal(fixture.context.favState.localPage, 7);
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 4);
+});
+
+test('a local aria-current value cannot override native selected page identity', () => {
+  const fixture = executeAdapterFixture({
+    selectedPage: 2,
+    localSelectedPage: 9,
+    includeLocalPager: true,
+    localPagerFirst: true,
+  });
+  assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
+  fixture.setLocalSelectedPage(10);
   assert.equal(fixture.context.favCurrentFavoritePage0139(), 2);
 });
 
