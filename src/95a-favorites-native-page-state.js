@@ -1,6 +1,6 @@
 'use strict';
 
-/* v0.15.0 native Favorites page-state adapter.
+/* v0.15.2 native Favorites page-state adapter.
  *
  * Etsy's Favorites pager is React-owned button state, not reliably URL-owned
  * navigation. The current native page is expressed by aria-current / selected
@@ -11,6 +11,11 @@
  * identity is ONLY a view identity used to reconcile Etsy's current 20-card
  * page. BetterSearch local-result pagination has a separate favState.localPage
  * owned by module 95 and must never be changed by Etsy pager clicks.
+ *
+ * BetterSearch's local pager intentionally mirrors Etsy's WtPagination markup
+ * and aria-label. Semantic ownership must therefore be explicit: any pager
+ * carrying data-ebsf-local-pagination is BetterSearch-owned and is never a
+ * native Etsy page-state source, even when both pagers are mounted at once.
  */
 var FAV_NATIVE_PAGE_INTENT_TTL0139 = 1800;
 favState.nativePageIntent0139 = Math.max(0, Number(favState.nativePageIntent0139) || 0);
@@ -21,10 +26,15 @@ function favPositivePage0139(value) {
     return Number.isFinite(page) && page > 0 ? page : 0;
 }
 
+function favNativePagers0139() {
+    return Array.from(document.querySelectorAll('nav[aria-label="Favorite Items Page Results"]'))
+        .filter((pager) => pager?.isConnected && !pager.matches?.('[data-ebsf-local-pagination]'));
+}
+
 function favNativePager0139() {
-    const pagers = Array.from(document.querySelectorAll('nav[aria-label="Favorite Items Page Results"]'));
-    return pagers.find((pager) => pager.isConnected && pager.getClientRects().length > 0)
-        || pagers.find((pager) => pager.isConnected)
+    const pagers = favNativePagers0139();
+    return pagers.find((pager) => pager.getClientRects().length > 0)
+        || pagers[0]
         || null;
 }
 
@@ -131,10 +141,15 @@ function favScheduleNativePageReconcile0139() {
 /* Capture intent before Etsy's own click handler, but never cancel or replace
  * Etsy's action. The short-lived intent bridges the small interval before React
  * moves aria-current to the newly selected page. Critically, this does NOT touch
- * favState.localPage: native and BetterSearch pagination are independent. */
+ * favState.localPage: native and BetterSearch pagination are independent.
+ *
+ * The local BetterSearch pager deliberately shares Etsy's aria-label/presentation,
+ * so reject it by ownership marker before deriving native intent. */
 document.addEventListener('click', (event) => {
     const button = event.target?.closest?.('nav[aria-label="Favorite Items Page Results"] button');
     if (!button) return;
+    const pager = button.closest?.('nav[aria-label="Favorite Items Page Results"]');
+    if (!pager || pager.matches?.('[data-ebsf-local-pagination]')) return;
     const target = favPagerButtonTargetPage0139(button);
     if (!target) return;
     favSetNativePageIntent0139(target);
