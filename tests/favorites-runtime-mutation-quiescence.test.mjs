@@ -28,6 +28,7 @@ function loadMutationApi() {
   const scheduled = { sync:0, observe:0 };
   const context = vm.createContext({
     Array,
+    scheduled,
     favState:{ rendering:false },
     favScheduleSync:() => { scheduled.sync += 1; },
     favScheduleCurrentPageObservation:() => { scheduled.observe += 1; },
