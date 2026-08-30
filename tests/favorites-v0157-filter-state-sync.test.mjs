@@ -7,6 +7,7 @@ import { ROOT } from '../scripts/project.mjs';
 
 const source = await readFile(resolve(ROOT, 'src/104-favorites-v0157-filter-state-sync.js'), 'utf8');
 const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
+const packageJson = JSON.parse(await readFile(resolve(ROOT, 'package.json'), 'utf8'));
 
 function defaultConfig() {
   return {
@@ -54,14 +55,14 @@ function loadVisualSyncHelper() {
   return context.testApi.sync;
 }
 
-test('0.15.11 state/count semantics stay final until the dedicated render transaction boundary', () => {
+test('state/count semantics stay final until the dedicated render transaction boundary', () => {
   const diagnostics = userscript.indexOf('/src/103-favorites-v0157-diagnostics-fixes.js');
   const stateSync = userscript.indexOf('/src/104-favorites-v0157-filter-state-sync.js');
   const transaction = userscript.indexOf('/src/105-favorites-v01512-atomic-render.js');
   assert.ok(diagnostics >= 0 && stateSync > diagnostics && transaction > stateSync);
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.match(requires.at(-2) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.11$/);
-  assert.match(requires.at(-1) || '', /\/src\/105-favorites-v01512-atomic-render\.js\?v=0\.15\.11$/);
+  assert.equal(requires.at(-2) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`);
+  assert.equal(requires.at(-1) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`);
 });
 
 test('normalized default configuration has no meaningfully active v2 filter binding', () => {
@@ -89,7 +90,6 @@ test('Ships from Anywhere and incomplete country mode stay neutral while real or
   assert.equal(active('ships-country', config), true);
   assert.equal(active('ships-origin:FI', config), true);
   assert.equal(active('ships-origin:SE', config), false);
-
   config.filters.shipsFrom = 'europe';
   config.filters.shipsFromCountry = '';
   assert.equal(active('ships-europe', config), true);
