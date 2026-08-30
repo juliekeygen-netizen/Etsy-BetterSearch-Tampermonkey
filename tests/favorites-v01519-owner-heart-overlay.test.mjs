@@ -7,8 +7,8 @@ import { ROOT } from '../scripts/project.mjs';
 
 const sourcePath = resolve(ROOT, 'src/61eb-favorites-multi-owner-membership.js');
 
-function key(owner) {
-  return [owner, 'items', '', ''].map((part) => encodeURIComponent(String(part))).join('|');
+function key(owner, type = 'items', id = '') {
+  return [owner, type, id, ''].map((part) => encodeURIComponent(String(part))).join('|');
 }
 
 async function context() {
@@ -35,7 +35,11 @@ async function context() {
     favCachePresentationReadyForScope0137:() => true,
     favOwnerScopeIds01510(scopes, owner) {
       const canonical = scopes.find((scope) => scope.owner === owner && scope.type === 'items' && scope.complete && !scope.query);
-      return new Set((canonical?.listingIds || []).map(String));
+      if (canonical) return new Set((canonical.listingIds || []).map(String));
+      return new Set(scopes
+        .filter((scope) => scope.owner === owner && !scope.query)
+        .flatMap((scope) => scope.listingIds || [])
+        .map(String));
     },
     favCanonicalAllScope01510(scopes, owner) {
       return scopes.find((scope) => scope.owner === owner && scope.type === 'items' && scope.complete && !scope.query) || null;
@@ -124,6 +128,53 @@ test('trusted post-snapshot removal is excluded from owner maintenance', async (
   const scope = { owner:'ownerA', type:'items', scopeKey, complete:true, listingIds:['X'], snapshotCommittedAt:100 };
 
   assert.deepEqual(Array.from(ctx.favOwnerActiveListings01519([listing], [scope], 'ownerA')), []);
+});
+
+test('trusted own-heart removal is honored before a canonical All snapshot exists', async () => {
+  const ctx = await context();
+  const collectionKey = key('ownerA', 'collection', 'collection-1');
+  const listing = {
+    listingId:'X',
+    isFavorite:false,
+    favoriteScopes:{
+      [collectionKey]:{ active:false, removedAt:200, removalSource:'viewer-own-native-heart' },
+    },
+  };
+  const collection = {
+    owner:'ownerA',
+    type:'collection',
+    id:'collection-1',
+    query:'',
+    scopeKey:collectionKey,
+    complete:true,
+    listingIds:['X'],
+    snapshotCommittedAt:100,
+  };
+
+  assert.deepEqual(Array.from(ctx.favOwnerActiveListings01519([listing], [collection], 'ownerA')), []);
+});
+
+test('one later positive fallback-scope observation keeps the owner active before All exists', async () => {
+  const ctx = await context();
+  const firstKey = key('ownerA', 'collection', 'collection-1');
+  const secondKey = key('ownerA', 'collection', 'collection-2');
+  const listing = {
+    listingId:'X',
+    isFavorite:true,
+    favoriteScopes:{
+      [firstKey]:{ active:false, removedAt:200, removalSource:'viewer-own-native-heart' },
+      [secondKey]:{ active:true, lastSeenAt:300 },
+    },
+  };
+  const scopes = [
+    { owner:'ownerA', type:'collection', id:'collection-1', query:'', scopeKey:firstKey, complete:true, listingIds:['X'], snapshotCommittedAt:100 },
+    { owner:'ownerA', type:'collection', id:'collection-2', query:'', scopeKey:secondKey, complete:true, listingIds:['X'], snapshotCommittedAt:300 },
+  ];
+
+  assert.deepEqual(
+    Array.from(ctx.favOwnerActiveListings01519([listing], scopes, 'ownerA'), (row) => row.listingId),
+    ['X'],
+  );
 });
 
 test('new positive exact-scope observation clears trusted removal provenance', async () => {
