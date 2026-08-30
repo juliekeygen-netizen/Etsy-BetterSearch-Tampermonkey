@@ -117,17 +117,27 @@ function favApplySimilarListingsOffset0157() {
         return;
     }
 
-    /* Measure the native module without our previous padding, then shift only
-     * its inner content. The Etsy node stays in its original parent/ownership. */
-    favClearSimilarListingsOffset0157(module);
+    /* Padding changes only the module's inner content box; its border-box left
+     * edge is stable. Measure in place so a repeated shell/resize pass never has
+     * to clear then reapply the same offset. Etsy keeps full ownership of the
+     * node and its descendants. */
     const content = favFavoritesContentColumn0120?.();
     const target = content?.querySelector?.('.phase3-listing-cards-section') || content;
-    if (!target) return;
+    if (!target) {
+        favClearSimilarListingsOffset0157(module);
+        return;
+    }
     const moduleRect = module.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    if (!moduleRect.width || !targetRect.width) return;
+    if (!moduleRect.width || !targetRect.width) {
+        favClearSimilarListingsOffset0157(module);
+        return;
+    }
     const offset = Math.max(0, Math.round((targetRect.left - moduleRect.left) * 100) / 100);
-    if (offset < 1) return;
+    if (offset < 1) {
+        favClearSimilarListingsOffset0157(module);
+        return;
+    }
 
     favStyleSet0157(module, 'padding-left', `${offset}px`);
     favStyleSet0157(module, 'box-sizing', 'border-box');
