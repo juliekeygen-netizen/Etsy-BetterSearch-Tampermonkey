@@ -15,6 +15,10 @@ function block(source, startText, endText = '') {
   return source.slice(start, end);
 }
 
+function executable(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+
 test('atomic render transaction is the final runtime integration boundary', () => {
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
   assert.match(requires.at(-2) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.11$/);
@@ -124,8 +128,8 @@ test('stable catalogue identity excludes partial observation timestamps', () => 
     'function favSnapshotRevision01512',
     'function favRecordsRevision01512',
   );
-  assert.doesNotMatch(records, /indexObservedAt|metadataMeta0141|scannedAt|observedAt/);
-  assert.doesNotMatch(snapshot, /lastObservedAt/);
+  assert.doesNotMatch(executable(records), /indexObservedAt|metadataMeta0141|scannedAt|observedAt/);
+  assert.doesNotMatch(executable(snapshot), /lastObservedAt/);
   assert.match(snapshot, /snapshotGeneration/);
   assert.match(snapshot, /snapshotCommittedAt/);
   assert.match(snapshot, /lastCompleteSyncAt/);
