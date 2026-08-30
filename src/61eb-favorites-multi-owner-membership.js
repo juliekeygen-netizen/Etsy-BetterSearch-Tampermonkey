@@ -298,6 +298,27 @@ favCachePresentationReadyForScope0137 = function favCachePresentationReadyForSco
     return favCachePresentationReadyForScopeBefore01519(favCacheOwnerMembershipView01519(snapshot));
 };
 
+function favOwnerMembershipScopes01519(scopes, owner) {
+    const wantedOwner = String(owner || '').trim();
+    if (!wantedOwner) return [];
+    const canonical = favCanonicalAllScope01510(scopes, wantedOwner);
+    if (canonical) return [canonical];
+    return Array.from(scopes || []).filter((scope) =>
+        String(scope?.owner || '').trim() === wantedOwner
+        && !String(scope?.query || '').trim()
+    );
+}
+
+function favOwnerScopeBaselineActive01519(listing, scope) {
+    const listingId = String(listing?.listingId || '');
+    if (!listingId || !scope) return false;
+    const ids = new Set(Array.from(scope?.listingIds || [], String));
+    if (!ids.has(listingId)) return false;
+    const scopeKey = String(scope?.scopeKey || '');
+    if (!scopeKey) return true;
+    return !favTrustedOwnHeartRemoval01519(listing, scopeKey, scope);
+}
+
 function favOwnerActiveListings01519(listings, scopes, owner) {
     const wantedOwner = String(owner || '').trim();
     if (!wantedOwner) {
@@ -305,14 +326,10 @@ function favOwnerActiveListings01519(listings, scopes, owner) {
             listing?.isFavorite === true || favIndexAnyActiveMembership01519(listing?.favoriteScopes)
         );
     }
-    const ids = favOwnerScopeIds01510(scopes, wantedOwner);
-    const canonical = favCanonicalAllScope01510(scopes, wantedOwner);
-    const canonicalScopeKey = String(canonical?.scopeKey || '');
-    return Array.from(listings || []).filter((listing) => {
-        if (!ids.has(String(listing?.listingId || ''))) return false;
-        if (!canonical || !canonicalScopeKey) return true;
-        return !favTrustedOwnHeartRemoval01519(listing, canonicalScopeKey, canonical);
-    });
+    const membershipScopes = favOwnerMembershipScopes01519(scopes, wantedOwner);
+    return Array.from(listings || []).filter((listing) =>
+        membershipScopes.some((scope) => favOwnerScopeBaselineActive01519(listing, scope))
+    );
 }
 
 /* Owner-scoped maintenance/counts derive activity from that owner's committed
