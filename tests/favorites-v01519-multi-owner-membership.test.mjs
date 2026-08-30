@@ -310,11 +310,11 @@ test('repair clears active tombstones and restores positive compatibility summar
   assert.equal(next.unfavoritedAt, 0);
 });
 
-test('module loads between cache bootstrap and immutable snapshot writer at behavior-gate version', async () => {
+test('module loads between cache bootstrap and immutable snapshot writer at release version', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
-  const cache = userscript.indexOf('/src/61e-favorites-cache-bootstrap.js?v=0.15.18');
-  const membership = userscript.indexOf('/src/61eb-favorites-multi-owner-membership.js?v=0.15.18');
-  const snapshot = userscript.indexOf('/src/61ea-favorites-immutable-snapshots.js?v=0.15.18');
+  const cache = userscript.indexOf('/src/61e-favorites-cache-bootstrap.js?v=0.15.19');
+  const membership = userscript.indexOf('/src/61eb-favorites-multi-owner-membership.js?v=0.15.19');
+  const snapshot = userscript.indexOf('/src/61ea-favorites-immutable-snapshots.js?v=0.15.19');
   assert.ok(cache >= 0 && membership > cache && snapshot > membership);
-  assert.match(userscript, /@version\s+0\.15\.18/);
+  assert.match(userscript, /@version\s+0\.15\.19/);
 });
