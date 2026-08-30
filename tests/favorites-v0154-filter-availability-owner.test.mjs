@@ -93,11 +93,11 @@ test('v2 category availability requires positive evidence but keeps an active ca
     FAV_EU_COUNTRY_CODES0120: new Set(),
     favDeepVisibilityReady0110: () => false,
   });
-  vm.runInContext(`${revamp.slice(start, end)}\nglobalThis.testApi={available:favBindingAvailable0120,setActive:(value)=>{active=value}};`, context);
+  vm.runInContext(`${revamp.slice(start, end)}\nglobalThis.testApi={available:favBindingAvailable0120};`, context);
 
   assert.equal(context.testApi.available('category:jewelry'), true);
   assert.equal(context.testApi.available('category:clothing'), false);
-  context.testApi.setActive('category:clothing');
+  active = 'category:clothing';
   assert.equal(context.testApi.available('category:clothing'), true);
 });
 
