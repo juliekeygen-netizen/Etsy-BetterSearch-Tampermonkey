@@ -52,6 +52,7 @@ const diagnosticsBootstrapGuard = await readFile(resolve(diagnosticsRoot, 'boots
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 const diagnosticsControls = await readFile(resolve(diagnosticsRoot, 'controls.js'), 'utf8');
 const diagnosticsExportResumeGuard = await readFile(resolve(diagnosticsRoot, 'export-resume-guard.js'), 'utf8');
+const diagnosticsExportUiPolish = await readFile(resolve(diagnosticsRoot, 'export-ui-polish.js'), 'utf8');
 const diagnosticsExportStreaming = await readFile(resolve(diagnosticsRoot, 'export-streaming.js'), 'utf8');
 const diagnosticsControlsDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'controls-detach-autoexport.js'), 'utf8');
 
@@ -81,6 +82,7 @@ try {
   new Function(diagnosticsContent);
   new Function(diagnosticsControls);
   new Function(diagnosticsExportResumeGuard);
+  new Function(diagnosticsExportUiPolish);
   new Function(diagnosticsExportStreaming);
   new Function(diagnosticsControlsDetachAutoExport);
 } catch (error) {
@@ -124,6 +126,7 @@ const diagnosticsSourceFiles = [
   'content.js',
   'controls.js',
   'export-resume-guard.js',
+  'export-ui-polish.js',
   'export-streaming.js',
   'controls-detach-autoexport.js'
 ];
@@ -143,6 +146,7 @@ await Promise.all([
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls.js'), `${diagnosticsControls.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'export-resume-guard.js'), `${diagnosticsExportResumeGuard.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'export-ui-polish.js'), `${diagnosticsExportUiPolish.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'export-streaming.js'), `${diagnosticsExportStreaming.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls-detach-autoexport.js'), `${diagnosticsControlsDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(
