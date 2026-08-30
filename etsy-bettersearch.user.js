@@ -86,6 +86,7 @@
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/101-favorites-v0141-smoke-fixes.js?v=0.15.7
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/102-favorites-v0155-stable-ownership-final.js?v=0.15.7
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/103-favorites-v0157-diagnostics-fixes.js?v=0.15.7
+// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=0.15.7
 // @downloadURL  https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js
 // @updateURL    https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/etsy-bettersearch.user.js
 // @noframes
