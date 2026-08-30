@@ -11,7 +11,7 @@ const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'u
 function loadHelpers() {
   const end = snapshotSource.indexOf('/* Supersede the v0.15.3 owner-guarded writer');
   const context = vm.createContext({
-    console, Set, Map, Array, String, Number, Date,
+    console, Promise, Set, Map, Array, String, Number, Date, Error,
     FAV_INDEX_METADATA_VERSION:1,
   });
   vm.runInContext(`${snapshotSource.slice(0, end)}\nglobalThis.testApi={
@@ -26,6 +26,7 @@ function loadHelpers() {
 function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async () => null, catalogRefresh = null } = {}) {
   const writes = [];
   const absenceCalls = [];
+  const transactions = [];
   let currentScope = oldScope ? structuredClone(oldScope) : null;
   let currentListings = (currentScope?.listingIds || []).map((id) => ({
     listingId:String(id), isFavorite:true, favoriteScopes:{ scope:{ active:true } },
@@ -44,8 +45,115 @@ function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async ()
     cacheScope0137:{ snapshotGeneration:'old-generation' },
     cachePresentationReady0137:true,
   };
+
+  /* A small IndexedDB transaction model. Readwrite transactions that touch the
+   * same stores are activated in creation order. Crucially, get() producers read
+   * the shared state only when that transaction becomes active, so the second
+   * transaction observes writes committed by the first just like IndexedDB. */
+  const transactionQueue = [];
+  let activeTransaction = null;
+
+  function finishTransaction(tx, aborted = false) {
+    if (activeTransaction !== tx) return;
+    activeTransaction = null;
+    queueMicrotask(() => {
+      if (aborted) tx.onabort?.();
+      else tx.oncomplete?.();
+      pumpTransactions();
+    });
+  }
+
+  function pumpTransactions() {
+    if (activeTransaction || !transactionQueue.length) return;
+    const tx = transactionQueue.shift();
+    activeTransaction = tx;
+    queueMicrotask(() => {
+      if (tx.aborted) return finishTransaction(tx, true);
+      for (const job of tx.readJobs.splice(0)) {
+        if (tx.aborted) break;
+        try { job(); }
+        catch (error) {
+          tx.error = error;
+          tx.onerror?.();
+          tx.aborted = true;
+          break;
+        }
+      }
+      if (tx.aborted) finishTransaction(tx, true);
+    });
+  }
+
+  function createRequest(tx, producer) {
+    const request = { result:undefined, error:null, onsuccess:null, onerror:null };
+    tx.readJobs.push(() => {
+      try {
+        request.result = structuredClone(producer());
+        request.onsuccess?.();
+      } catch (error) {
+        request.error = error;
+        request.onerror?.();
+        throw error;
+      }
+    });
+    return request;
+  }
+
+  const db = {
+    transaction(storeNames, mode) {
+      assert.equal(mode, 'readwrite', 'snapshot observation must use one readwrite transaction');
+      const tx = {
+        mode,
+        storeNames:[...storeNames],
+        readJobs:[],
+        aborted:false,
+        error:null,
+        oncomplete:null,
+        onerror:null,
+        onabort:null,
+        abort() {
+          if (this.aborted) return;
+          this.aborted = true;
+          if (activeTransaction === this) finishTransaction(this, true);
+        },
+        objectStore(name) {
+          if (name === 'listings') return {
+            getAll:() => createRequest(tx, () => currentListings),
+            get:(id) => createRequest(tx, () => currentListings.find((listing) => String(listing.listingId) === String(id))),
+            put:(value) => {
+              const saved = structuredClone(value);
+              writes.push({ store:'listings', value:saved });
+              const index = currentListings.findIndex((listing) => String(listing.listingId) === String(saved.listingId));
+              if (index >= 0) currentListings[index] = saved;
+              else currentListings.push(saved);
+            },
+          };
+          if (name === 'shops') return {
+            get:() => createRequest(tx, () => undefined),
+            put:(value) => writes.push({ store:'shops', value:structuredClone(value) }),
+          };
+          if (name === 'scopes') return {
+            get:() => createRequest(tx, () => currentScope),
+            put:(value) => {
+              const saved = structuredClone(value);
+              writes.push({ store:'scopes', value:saved });
+              currentScope = saved;
+              queueMicrotask(() => {
+                if (!tx.aborted) finishTransaction(tx, false);
+              });
+            },
+          };
+          throw new Error(`Unexpected store ${name}`);
+        },
+      };
+      transactions.push(tx);
+      transactionQueue.push(tx);
+      pumpTransactions();
+      return tx;
+    },
+  };
+
   const context = vm.createContext({
-    console, Promise, Set, Map, Array, String, Number, Date,
+    console, Promise, Set, Map, Array, String, Number, Date, Error,
     FAV_INDEX_METADATA_VERSION:1,
     favState:state,
     favIndexObserveRecordsNow: async () => [],
@@ -55,23 +163,13 @@ function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async ()
     favScopeOwner0153: (scope) => String(scope?.owner || '').trim(),
     favIndexScopeKey: (scope) => String(scope?.scopeKey || 'scope'),
     favIndexPatchFromRecord: (record) => ({ listingId:String(record.id), title:String(record.title || ''), favoriteScopes:{} }),
-    favIndexReadObservation: async () => ({
-      listings:currentListings.map((listing) => structuredClone(listing)), shops:[], shopIds:[],
-      scope:currentScope ? structuredClone(currentScope) : null,
-    }),
     favIndexMergeListing: (existing, patch) => ({ ...(existing || {}), ...patch, isFavorite:true, favoriteScopes:existing?.favoriteScopes || {} }),
     favIndexMergeShop: (_existing, patch) => patch,
     favIndexApplyScopeCompletion: (listings) => {
       absenceCalls.push(listings.map((listing) => String(listing.listingId)));
       return listings.map((listing) => ({ ...listing, removed:true }));
     },
-    favIndexWrite: async (_stores, writer) => {
-      const put = (store) => (value) => {
-        writes.push({ store, value:structuredClone(value) });
-        return value;
-      };
-      return writer({ objectStore:(name) => ({ put:put(name) }) });
-    },
+    favIndexOpen: async () => db,
     favCatalogStates0141:new Map([['dataset', { expectedTotal }]]),
     favCatalogKey0141: (scope) => String(scope?.datasetKey || 'dataset'),
     favCatalogDescriptor0141: (scope) => ({ ...scope, datasetKey:String(scope?.datasetKey || 'dataset'), scopeKey:String(scope?.scopeKey || 'scope') }),
@@ -88,6 +186,7 @@ function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async ()
   };`, context);
   context.testApi.writes = writes;
   context.testApi.absenceCalls = absenceCalls;
+  context.testApi.transactions = transactions;
   context.testApi.setOldScope = (value) => {
     currentScope = value ? structuredClone(value) : null;
     currentListings = (currentScope?.listingIds || []).map((id) => ({
@@ -182,6 +281,8 @@ test('final writer preserves old committed membership during running observation
   assert.deepEqual(saved.pendingListingIds, ['new-a']);
   assert.equal(saved.complete, true);
   assert.equal(saved.snapshotGeneration, 'committed-1');
+  assert.equal(api.transactions.length, 1);
+  assert.equal(api.transactions[0].mode, 'readwrite');
 });
 
 test('expected-total mismatch rejects a complete commit before any database write or absence reconciliation', async () => {
@@ -220,11 +321,47 @@ test('accepted complete generation reconciles absence only at the commit boundar
   assert.equal(saved.complete, true);
 });
 
+test('overlapping cross-tab-style observations cannot let a stale partial writer regress a newer committed generation', async () => {
+  const old = {
+    owner:'owner', type:'items', scopeKey:'scope', datasetKey:'dataset', authoritativeFavoriteScope:true,
+    complete:true, listingIds:['old'], snapshotGeneration:'committed-1', snapshotCommittedAt:100,
+    lastCompleteSyncAt:100, lastSyncState:'completed',
+  };
+
+  for (const staleFirst of [true, false]) {
+    const api = loadBoundary({ oldScope:old, expectedTotal:1 });
+    const stale = () => api.observe([{ id:'stale-page' }], {
+      scope:{ owner:'owner', type:'items', scopeKey:'scope', datasetKey:'dataset', authoritativeFavoriteScope:true },
+      complete:false, syncState:'running', snapshotGeneration:'stale-refresh', snapshotStartedAt:150, observedAt:160,
+    });
+    const commit = () => api.observe([{ id:'current' }], {
+      scope:{ owner:'owner', type:'items', scopeKey:'scope', datasetKey:'dataset', authoritativeFavoriteScope:true },
+      complete:true, syncState:'completed', snapshotGeneration:'current-refresh', snapshotStartedAt:200, observedAt:250,
+    });
+    await Promise.all(staleFirst ? [stale(), commit()] : [commit(), stale()]);
+    const saved = lastScopeWrite(api);
+    assert.equal(saved.snapshotGeneration, 'current-refresh', `current generation must win with staleFirst=${staleFirst}`);
+    assert.equal(saved.snapshotCommittedAt, 250);
+    assert.deepEqual(saved.listingIds, ['current']);
+    assert.ok(api.transactions.every((tx) => tx.mode === 'readwrite'));
+  }
+});
+
+test('atomic observation path never calls the old separate readonly-snapshot/write helpers', () => {
+  const start = snapshotSource.indexOf('async function favSnapshotObserveAtomic0159');
+  const end = snapshotSource.indexOf('/* Supersede the v0.15.3 owner-guarded writer', start);
+  const block = snapshotSource.slice(start, end);
+  assert.match(block, /db\.transaction\(\['listings', 'shops', 'scopes'\], 'readwrite'\)/);
+  assert.doesNotMatch(block, /favIndexReadObservation/);
+  assert.doesNotMatch(block, /favIndexWrite/);
+});
+
 test('ownerless observations remain rejected after the final snapshot writer override', async () => {
   const api = loadBoundary();
   const result = await api.observe([{ id:'1' }], { scope:{ owner:'', type:'items', scopeKey:'scope', datasetKey:'dataset' } });
   assert.deepEqual(Array.from(result), []);
   assert.equal(api.writes.length, 0);
+  assert.equal(api.transactions.length, 0);
 });
 
 test('cache rejects unsafe mutable legacy running snapshots but accepts immutable v2 pending refreshes', async () => {
