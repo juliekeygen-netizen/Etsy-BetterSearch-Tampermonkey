@@ -377,3 +377,383 @@ requestAnimationFrame(() => {
     favApplyExactSearchWidth0135?.();
     if (favEnhancementActive()) favScheduleRenderIntegrity0142(120);
 });
+
+/* ------------------------------------------------------------------------- *
+ * v0.15.12 atomic local render ownership
+ * -------------------------------------------------------------------------
+ *
+ * Historical renderers treated entering local mode as permission to hide Etsy.
+ * That made ownership a sequence of side effects: hide native grid/pager, then
+ * discover whether the local result/signature was actually current. The browser
+ * capture proved the failure mode: Etsy had already restored useful cards while
+ * a stale empty local grid reclaimed visibility.
+ *
+ * From here on, local rendering is a transaction:
+ *   prepare hidden BetterSearch grid + pager -> sign current state -> validate ->
+ *   synchronously switch grid/pager/count/status together.
+ * Any failed/stale transaction releases to Etsy native content.
+ */
+favState.renderToken01512 = String(favState.renderToken01512 || '');
+favState.renderRequestSignature01512 = String(favState.renderRequestSignature01512 || '');
+favState.renderTransactionSequence01512 = Math.max(0, Number(favState.renderTransactionSequence01512) || 0);
+favState.renderClaimApproved01512 = false;
+
+function favHashText01512(value) {
+    const text = String(value || '');
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+
+function favNormalizedConfigText01512() {
+    try { return JSON.stringify(favNormalizeConfig(favCfg)); }
+    catch (_) { return JSON.stringify(favCfg || {}); }
+}
+
+function favCurrentMetadataCapabilities01512() {
+    try {
+        return Array.from(favMetadataRequirements0141?.(favCfg) || [], String).sort();
+    } catch (_) {
+        return [];
+    }
+}
+
+function favMetadataCoverageCurrent01512() {
+    const coverage = favState.metadataCoverage0141 || null;
+    const datasetKey = favDatasetKey();
+    const required = favCurrentMetadataCapabilities01512();
+    const covered = Array.from(coverage?.capabilities || [], String).sort();
+    return Boolean(
+        coverage
+        && String(coverage.datasetKey || '') === String(datasetKey)
+        && Number(coverage.pending) <= 0
+        && JSON.stringify(covered) === JSON.stringify(required)
+    );
+}
+
+function favNativeViewFingerprint01512(nativeGrid = favNativeMainGrid0141?.()) {
+    if (!nativeGrid?.isConnected) return 'missing';
+    const ids = Array.from(nativeGrid.children || [])
+        .map((node) => String(favListingIdFromNode(node) || ''))
+        .filter(Boolean);
+    const view = typeof favViewKey0137 === 'function' ? favViewKey0137() : '';
+    return favHashText01512(`${view}|${ids.join(',')}`);
+}
+
+function favRecordRevision01512(record) {
+    let metadataAt = 0;
+    for (const meta of Object.values(record?.metadataMeta0141 || {})) {
+        metadataAt = Math.max(metadataAt, Number(meta?.observedAt) || 0);
+    }
+    return [
+        record?.id || '',
+        Number(record?.order) || 0,
+        Number(record?.indexObservedAt) || 0,
+        Number(record?.deepMetadata?.scannedAt) || 0,
+        metadataAt,
+    ].join(':');
+}
+
+function favRecordsRevision01512(records = favState.records) {
+    return favHashText01512(Array.from(records || [], favRecordRevision01512).join('|'));
+}
+
+function favSnapshotRevision01512() {
+    const scope = favState.cacheScope0137 || {};
+    return [
+        scope.snapshotGeneration || '',
+        Number(scope.snapshotCommittedAt) || 0,
+        Number(scope.lastCompleteSyncAt) || 0,
+        Number(scope.lastObservedAt) || 0,
+    ].join(':');
+}
+
+function favRenderRequestSignature01512() {
+    const destination = typeof favMetadataDestination0141 === 'function'
+        ? favMetadataDestination0141()?.contextKey || ''
+        : '';
+    return [
+        favDatasetKey(),
+        favState.loadKey || '',
+        favState.nativeQueryGeneration01511 || 0,
+        favSnapshotRevision01512(),
+        favHashText01512(favNormalizedConfigText01512()),
+        destination,
+        favCurrentMetadataCapabilities01512().join(','),
+    ].join('|');
+}
+
+/* Keep the historical public signature API useful for diagnostics/count code,
+ * but make it include every request-side generation that can invalidate a local
+ * render before the DOM transaction is committed. */
+favRequestedRenderSignature0143 = function favRequestedRenderSignature01512() {
+    return favRenderRequestSignature01512();
+};
+
+function favRenderTransactionToken01512(nativeGrid = favNativeMainGrid0141?.()) {
+    const filtered = Array.isArray(favState.filtered) ? favState.filtered : [];
+    const pageSize = Math.max(1, Number(favState.pageSize) || 20);
+    const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    const page = Math.min(pages, Math.max(1, Number(favState.localPage) || 1));
+    const coverage = favState.metadataCoverage0141 || {};
+    return [
+        favRenderRequestSignature01512(),
+        favMetadataCoverageCurrent01512() ? 'metadata:ready' : 'metadata:stale',
+        Number(coverage.unresolved) || 0,
+        favRecordsRevision01512(),
+        favNativeViewFingerprint01512(nativeGrid),
+        favHashText01512(filtered.map((record) => String(record?.id || '')).join(',')),
+        filtered.length,
+        pageSize,
+        page,
+        pages,
+    ].join('|');
+}
+
+function favStagedPaginationReady01512(pages) {
+    const totalPages = Math.max(1, Number(pages) || 1);
+    const pager = document.querySelector('[data-ebsf-local-pagination]');
+    if (totalPages <= 1) return !pager;
+    return Boolean(
+        pager?.isConnected
+        && pager.dataset.ebsfPaginationPresentation === 'etsy-native'
+        && pager.dataset.ebsfLocalPageCount === String(totalPages)
+        && pager.dataset.ebsfLocalCurrentPage === String(favState.localPage)
+        && pager.hidden === true
+        && pager.inert === true
+        && pager.getAttribute('aria-hidden') === 'true'
+        && pager.hasAttribute('data-ebsf-local-staged')
+    );
+}
+
+var favApplyLocalVisualOwnershipBefore01512 = favApplyLocalVisualOwnership0150;
+favApplyLocalVisualOwnership0150 = function favApplyLocalVisualOwnership01512() {
+    /* Entering local mode is no longer sufficient authority. Only the atomic
+     * commit/verified repair boundary may suppress Etsy-owned content. */
+    if (favState.renderClaimApproved01512 !== true) return false;
+    return favApplyLocalVisualOwnershipBefore01512();
+};
+
+var favRenderPaginationBefore01512 = favRenderPagination;
+favRenderPagination = function favRenderPagination01512(pages) {
+    if (favState.renderMode0141 !== 'bettersearch-staged') {
+        return favRenderPaginationBefore01512(pages);
+    }
+
+    const localGrid = favState.localGrid0141;
+    if (!localGrid?.isConnected) return false;
+    const previousMode = favState.renderMode0141;
+    try {
+        /* Module 95's builder is still the sole pager presentation owner. Give
+         * it its expected local-mode input while the visual-ownership guard above
+         * prevents native suppression, then hide/inert the prepared local pager. */
+        favState.renderMode0141 = 'bettersearch-local';
+        favRenderPaginationBefore01512(pages);
+    } finally {
+        favState.renderMode0141 = previousMode;
+    }
+
+    const pager = document.querySelector('[data-ebsf-local-pagination]');
+    if (pager) {
+        pager.hidden = true;
+        pager.inert = true;
+        pager.setAttribute('aria-hidden', 'true');
+        pager.setAttribute('data-ebsf-local-staged', '1');
+    }
+    return favStagedPaginationReady01512(pages);
+};
+
+function favAbortStagedRender01512(status = 'native-fallback') {
+    favState.renderToken01512 = '';
+    favState.renderRequestSignature01512 = '';
+    favState.renderClaimApproved01512 = false;
+    const result = favRestoreNative();
+    favSetRenderStatus0143(status);
+    return result;
+}
+
+function favCommitStagedRender01512(token, pages, nativeGrid) {
+    if (!token || token !== favRenderTransactionToken01512(nativeGrid)) return false;
+    if (!favMetadataCoverageCurrent01512()) return false;
+    if (!favStagedPaginationReady01512(pages)) return false;
+    const localGrid = favState.localGrid0141;
+    if (!nativeGrid?.isConnected || !localGrid?.isConnected) return false;
+    if (localGrid.hidden !== true || localGrid.inert !== true || !localGrid.hasAttribute('data-ebsf-local-staged')) return false;
+
+    favState.renderClaimApproved01512 = true;
+    try {
+        /* All visual writes happen in one synchronous JS turn: browsers cannot
+         * paint or deliver MutationObserver callbacks halfway through the switch. */
+        favState.renderMode0141 = 'bettersearch-local';
+        if (!favApplyLocalVisualOwnership0150()) return false;
+        localGrid.inert = false;
+        localGrid.removeAttribute('aria-hidden');
+        localGrid.removeAttribute('data-ebsf-local-staged');
+        const pager = document.querySelector('[data-ebsf-local-pagination]');
+        if (pager) {
+            pager.hidden = false;
+            pager.inert = false;
+            pager.removeAttribute('aria-hidden');
+            pager.removeAttribute('data-ebsf-local-staged');
+        }
+        favState.rendered = true;
+        favState.renderToken01512 = token;
+        favState.renderRequestSignature01512 = favRenderRequestSignature01512();
+        favState.renderSignature0143 = favState.renderRequestSignature01512;
+        document.body?.classList.add('ebsf-results-active');
+        favSetRenderStatus0143('bettersearch-local');
+        favUpdateScopeHeader0120?.();
+        return true;
+    } finally {
+        favState.renderClaimApproved01512 = false;
+    }
+}
+
+/* Final renderer: prepare BetterSearch-owned nodes while Etsy remains visible,
+ * validate a signed transaction, then claim both grid and pager together. */
+favRenderCurrent = function favRenderCurrent01512() {
+    const nativeGrid = favNativeMainGrid0141?.();
+    if (!nativeGrid?.isConnected) return false;
+    if (!favEnhancementActive() || !favState.loadComplete || favState.loadKey !== favDatasetKey()) {
+        favAbortStagedRender01512('native-fallback');
+        return false;
+    }
+    if (!favMetadataCoverageCurrent01512()) {
+        favAbortStagedRender01512(Number(favState.metadataCoverage0141?.pending) > 0 ? 'metadata-pending' : 'native-fallback');
+        return false;
+    }
+
+    favCaptureNativeGrid();
+    const matched = favFilteredRecords();
+    favState.filtered = matched;
+    const pageSize = Math.max(1, Number(favState.pageSize) || 20);
+    const pages = Math.max(1, Math.ceil(matched.length / pageSize));
+    favState.localPage = Math.min(pages, Math.max(1, Number(favState.localPage) || 1));
+    const start = (favState.localPage - 1) * pageSize;
+    const page = matched.slice(start, start + pageSize);
+    const localGrid = favEnsureLocalGrid0141(nativeGrid);
+    const fragment = document.createDocumentFragment();
+    if (!page.length) {
+        const empty = document.createElement('li');
+        empty.className = 'ebsf-empty';
+        empty.textContent = 'No favorites match these filters.';
+        fragment.append(empty);
+    } else {
+        for (const record of page) fragment.append(favNodeForRecord(record));
+    }
+
+    favState.rendering = true;
+    try {
+        localGrid.hidden = true;
+        localGrid.inert = true;
+        localGrid.setAttribute('aria-hidden', 'true');
+        localGrid.setAttribute('data-ebsf-local-staged', '1');
+        localGrid.replaceChildren(fragment);
+        favState.renderMode0141 = 'bettersearch-staged';
+        favState.rendered = false;
+        document.body?.classList.remove('ebsf-results-active');
+
+        if (!favRenderPagination(pages)) {
+            favAbortStagedRender01512('native-fallback');
+            return false;
+        }
+
+        const token = favRenderTransactionToken01512(nativeGrid);
+        /* Re-read all generation-bearing state after staging. A stale async
+         * reapply cannot claim merely because it managed to build DOM nodes. */
+        if (token !== favRenderTransactionToken01512(nativeGrid)) {
+            favAbortStagedRender01512('native-fallback');
+            return false;
+        }
+        if (!favCommitStagedRender01512(token, pages, nativeGrid)) {
+            favAbortStagedRender01512('native-fallback');
+            return false;
+        }
+        return true;
+    } catch (error) {
+        favAbortStagedRender01512('error');
+        console.warn('[Etsy BetterSearch] Local Favorites render transaction failed; restored Etsy results.', error);
+        return false;
+    } finally {
+        queueMicrotask(() => { favState.rendering = false; });
+    }
+};
+
+favLocalGridAuthoritative0142 = function favLocalGridAuthoritative01512() {
+    if (!favLocalGridMounted0143()) return false;
+    if (!favState.renderToken01512) return false;
+    if (favState.renderRequestSignature01512 !== favRenderRequestSignature01512()) return false;
+    return favState.renderToken01512 === favRenderTransactionToken01512();
+};
+
+/* Integrity repair is proof-first. Never hide native content merely because a
+ * local grid exists. If the token is stale, release immediately and let the
+ * authoritative catalogue/metadata pipeline rebuild a new transaction. */
+favRepairLocalOwnership0142 = function favRepairLocalOwnership01512(datasetKey) {
+    if (!favRenderIntegrityReady0142(datasetKey)) {
+        if (favState.renderMode0141 !== 'native') favAbortStagedRender01512('native-fallback');
+        return;
+    }
+
+    if (favLocalGridAuthoritative0142()) {
+        favState.renderClaimApproved01512 = true;
+        try {
+            if (!favApplyLocalVisualOwnership0150()) {
+                favAbortStagedRender01512('native-fallback');
+                return;
+            }
+        } finally {
+            favState.renderClaimApproved01512 = false;
+        }
+        favUpdateScopeHeader0120?.();
+        favEnsurePermanentRail0142();
+        favWatchNativeHydration0143();
+        return;
+    }
+
+    if (favState.renderMode0141 !== 'native' || favState.localGrid0141?.isConnected) {
+        favAbortStagedRender01512('native-fallback');
+    }
+    void Promise.resolve(favReapply()).catch((error) => {
+        console.debug?.('[EBSF] local Favorites render repair deferred', error);
+    });
+};
+
+/* A changed request must never leave the previous local result visible while
+ * asynchronous catalogue/metadata work catches up. Same-request refreshes may
+ * keep their already-authoritative local result until the new transaction is
+ * prepared. */
+var favReapplyBefore01512 = favReapply;
+favReapply = async function favReapply01512(...args) {
+    const requestSignature = favRenderRequestSignature01512();
+    favState.renderTransactionSequence01512 += 1;
+    if (
+        favState.renderMode0141 === 'bettersearch-local'
+        && favState.renderRequestSignature01512
+        && favState.renderRequestSignature01512 !== requestSignature
+    ) {
+        favAbortStagedRender01512('loading');
+    }
+    return favReapplyBefore01512(...args);
+};
+
+var favRestoreNativeBefore01512 = favRestoreNative;
+favRestoreNative = function favRestoreNative01512() {
+    favState.renderToken01512 = '';
+    favState.renderRequestSignature01512 = '';
+    favState.renderClaimApproved01512 = false;
+    const local = favState.localGrid0141;
+    if (local?.isConnected) {
+        local.removeAttribute('data-ebsf-local-staged');
+        local.inert = false;
+    }
+    const pager = document.querySelector('[data-ebsf-local-pagination]');
+    if (pager) {
+        pager.removeAttribute('data-ebsf-local-staged');
+        pager.inert = false;
+    }
+    return favRestoreNativeBefore01512();
+};
