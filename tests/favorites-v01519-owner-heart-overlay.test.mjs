@@ -123,7 +123,7 @@ test('trusted post-snapshot removal is excluded from owner maintenance', async (
   };
   const scope = { owner:'ownerA', type:'items', scopeKey, complete:true, listingIds:['X'], snapshotCommittedAt:100 };
 
-  assert.deepEqual(ctx.favOwnerActiveListings01519([listing], [scope], 'ownerA'), []);
+  assert.deepEqual(Array.from(ctx.favOwnerActiveListings01519([listing], [scope], 'ownerA')), []);
 });
 
 test('new positive exact-scope observation clears trusted removal provenance', async () => {
