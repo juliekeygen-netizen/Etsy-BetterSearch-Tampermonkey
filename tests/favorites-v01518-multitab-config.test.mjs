@@ -194,6 +194,49 @@ test('stale tabs changing unrelated UI preference leaves both survive', async ()
   assert.deepEqual(Array.from(tabC.favUiPrefs.filterSectionOrder), ['price', 'search']);
 });
 
+test('late UI preference schema expansion overlays existing canonical leaves before seeding', async () => {
+  const source = await readFile(modulePath, 'utf8');
+  const configKey = 'etsy-bettersearch.favorites.config.v1';
+  const prefsKey = 'etsy-bettersearch.favorites.ui-prefs.v1';
+  const staleAggregate = normalizePrefs({ filterAvailabilityMode:'filtered' });
+  const bus = makeBus({
+    [configKey]: normalizeConfig({}),
+    [prefsKey]: staleAggregate,
+    [fieldKey(prefsKey, 'filterAvailabilityMode')]: 'disabled',
+  });
+  const transport = bus.api('late-schema');
+  const baseNormalizePrefs = (raw = {}) => ({
+    autoOpenActiveSections: raw?.autoOpenActiveSections !== false,
+    autoSyncIntervalHours: [1, 3, 6, 12, 24].includes(Number(raw?.autoSyncIntervalHours)) ? Number(raw.autoSyncIntervalHours) : 12,
+  });
+  const context = vm.createContext({
+    ...transport,
+    structuredClone: globalThis.structuredClone,
+    FAV_STORAGE_KEY: configKey,
+    FAV_UI_PREFS_STORAGE_KEY: prefsKey,
+    favNormalizeConfig: normalizeConfig,
+    favNormalizeUiPrefs: baseNormalizePrefs,
+    fullNormalizePrefs: normalizePrefs,
+    favCfg: normalizeConfig(transport.GM_getValue(configKey, {})),
+    favUiPrefs: baseNormalizePrefs(transport.GM_getValue(prefsKey, {})),
+    favState: { localPage:1, settingsModal:null, layoutModal:null, filterOpen:false, rail:null },
+    requestAnimationFrame: (callback) => { callback(); return 1; },
+    setTimeout,
+    isFavoritesPage: () => false,
+    console,
+  });
+  vm.runInContext(source, context);
+
+  vm.runInContext(`
+    favNormalizeUiPrefs = fullNormalizePrefs;
+    favUiPrefs = favNormalizeUiPrefs(GM_getValue(FAV_UI_PREFS_STORAGE_KEY, {}));
+    favSaveUiPrefs();
+  `, context);
+
+  assert.equal(context.favUiPrefs.filterAvailabilityMode, 'disabled');
+  assert.equal(bus.storage.get(fieldKey(prefsKey, 'filterAvailabilityMode')), 'disabled');
+});
+
 test('userscript and extension expose the shared remote-value listener contract in the correct load order', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
   const prelude = await readFile(resolve(ROOT, 'extension/platform-prelude.js'), 'utf8');
