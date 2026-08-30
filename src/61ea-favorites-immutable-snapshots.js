@@ -1,6 +1,6 @@
 'use strict';
 
-/* v0.15.6 immutable Favorites catalogue snapshots.
+/* v0.15.6/v0.15.9 immutable Favorites catalogue snapshots.
  *
  * Before this boundary, every partial crawler page rewrote scope.listingIds and
  * inherited oldScope.complete=true. Cache bootstrap could therefore observe a
@@ -13,6 +13,14 @@
  *
  * Listing/shop metadata can still be refreshed incrementally, but only a
  * verified complete observation may atomically replace committed membership.
+ *
+ * v0.15.9 additionally keeps the read/merge/write observation inside one
+ * IndexedDB readwrite transaction. The previous v0.15.6 implementation read in
+ * a readonly transaction, computed in JavaScript, then opened a later write
+ * transaction. Two tabs could therefore interleave around that gap and let a
+ * stale observation overwrite a newer committed generation. IndexedDB serializes
+ * overlapping readwrite transactions, so reading the latest state from the same
+ * transaction that writes it closes that cross-tab stale-write window.
  */
 var FAV_SCOPE_SNAPSHOT_SEMANTICS_VERSION0156 = 2;
 
@@ -100,7 +108,7 @@ function favSnapshotScopeRecord0156(oldScope, scope, scopeKey, observedIds, obse
             pendingStartedAt:0,
             pendingObservedAt:0,
             pendingTotal:0,
-            lastObservedAt:observedAt,
+            lastObservedAt:Math.max(Math.max(0, Number(oldScope?.lastObservedAt) || 0), observedAt),
             lastCompleteSyncAt:observedAt,
             lastSyncState:'completed',
             schemaVersion:FAV_INDEX_METADATA_VERSION,
@@ -117,7 +125,7 @@ function favSnapshotScopeRecord0156(oldScope, scope, scopeKey, observedIds, obse
         if (pendingGeneration !== transaction.generation) pendingIds = [];
         pendingGeneration = transaction.generation;
         pendingStartedAt = transaction.startedAt || observedAt;
-        pendingObservedAt = observedAt;
+        pendingObservedAt = Math.max(pendingObservedAt, observedAt);
         pendingIds = favSnapshotIds0156([...pendingIds, ...observedIds]);
     }
 
@@ -139,16 +147,146 @@ function favSnapshotScopeRecord0156(oldScope, scope, scopeKey, observedIds, obse
         pendingStartedAt,
         pendingObservedAt,
         pendingTotal:pendingIds.length,
-        lastObservedAt:observedAt,
+        lastObservedAt:Math.max(Math.max(0, Number(oldScope?.lastObservedAt) || 0), observedAt),
         lastCompleteSyncAt:Math.max(0, Number(oldScope?.lastCompleteSyncAt) || 0),
         lastSyncState:syncState || oldScope?.lastSyncState || 'partial',
         schemaVersion:FAV_INDEX_METADATA_VERSION,
     };
 }
 
+function favSnapshotRequestGroup0159(requests, complete) {
+    if (!requests.length) {
+        complete([]);
+        return;
+    }
+    const values = new Array(requests.length);
+    let remaining = requests.length;
+    requests.forEach((request, index) => {
+        request.onsuccess = () => {
+            values[index] = request.result;
+            remaining -= 1;
+            if (!remaining) complete(values);
+        };
+    });
+}
+
+/* Read, merge and persist through one readwrite transaction. Because every
+ * observation touches the same scopes store (and listing/shop stores as needed),
+ * IndexedDB serializes competing transactions across tabs before these reads are
+ * allowed to run. The state used to build scopeRecord is therefore the latest
+ * state owned by this transaction, never a stale snapshot captured before a
+ * newer tab's commit. */
+async function favSnapshotObserveAtomic0159(patches, scope, scopeKey, observedAt, options, completeRequested) {
+    const expectedTotal = completeRequested ? favSnapshotExpectedTotal0156(scope) : 0;
+    const observedIds = patches.map((patch) => patch.listingId);
+    const db = await favIndexOpen();
+
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['listings', 'shops', 'scopes'], 'readwrite');
+        const listingStore = transaction.objectStore('listings');
+        const shopStore = transaction.objectStore('shops');
+        const scopeStore = transaction.objectStore('scopes');
+        const shopIds = Array.from(new Set(patches.map((patch) => patch.shop?.shopId).filter(Boolean)));
+        const listingRequests = completeRequested
+            ? [listingStore.getAll()]
+            : patches.map((patch) => listingStore.get(patch.listingId));
+        const shopRequests = shopIds.map((shopId) => shopStore.get(shopId));
+        const scopeRequest = scopeStore.get(scopeKey);
+        let listingRows = [];
+        let shopRows = [];
+        let oldScope;
+        let readGroupsRemaining = 3;
+        let mergedResult = [];
+        let failure = null;
+        let settled = false;
+
+        function rejectOnce(error) {
+            if (settled) return;
+            settled = true;
+            reject(error || new Error('Favorites snapshot transaction failed.'));
+        }
+
+        transaction.oncomplete = () => {
+            if (settled) return;
+            settled = true;
+            resolve(mergedResult);
+        };
+        transaction.onerror = () => {
+            failure = failure || transaction.error || new Error('Favorites snapshot transaction failed.');
+        };
+        transaction.onabort = () => rejectOnce(failure || transaction.error || new Error('Favorites snapshot transaction aborted.'));
+
+        function abortWith(error) {
+            failure = error instanceof Error ? error : new Error(String(error || 'Favorites snapshot transaction failed.'));
+            try { transaction.abort(); }
+            catch (_) { rejectOnce(failure); }
+        }
+
+        function finalizeReads() {
+            if (--readGroupsRemaining) return;
+            try {
+                const transactionState = favSnapshotTransaction0156(oldScope, scopeKey, options, observedAt, completeRequested);
+                const oldCommittedAt = Math.max(0, Number(oldScope?.snapshotCommittedAt) || Number(oldScope?.lastCompleteSyncAt) || 0);
+                const staleComplete = completeRequested
+                    && oldCommittedAt > 0
+                    && transactionState.startedAt > 0
+                    && transactionState.startedAt < oldCommittedAt;
+
+                if (completeRequested && !staleComplete && expectedTotal > 0 && observedIds.length !== expectedTotal) {
+                    throw new Error(`Favorites complete snapshot count mismatch (${observedIds.length} crawled, ${expectedTotal} expected).`);
+                }
+
+                const commitSnapshot = completeRequested && !staleComplete;
+                const flattenedListings = completeRequested ? (listingRows[0] || []) : listingRows;
+                const existingById = new Map(flattenedListings.filter(Boolean).map((listing) => [String(listing.listingId), listing]));
+                const merged = patches.map((patch) => favIndexMergeListing(existingById.get(patch.listingId), patch, observedAt));
+                const shops = new Map();
+                for (const patch of patches) if (patch.shop) shops.set(patch.shop.shopId, patch.shop);
+                const existingShops = new Map(shopIds.map((shopId, index) => [shopId, shopRows[index]]));
+                const mergedShops = Array.from(shops.values(), (patch) => favIndexMergeShop(existingShops.get(patch.shopId), patch));
+
+                const observedSet = new Set(observedIds);
+                let absentUpdates = [];
+                if (commitSnapshot && oldScope?.complete === true && oldScope?.listingIds?.length) {
+                    const absent = oldScope.listingIds
+                        .map(String)
+                        .filter((idValue) => !observedSet.has(idValue))
+                        .map((idValue) => existingById.get(idValue))
+                        .filter(Boolean);
+                    absentUpdates = favIndexApplyScopeCompletion(absent, { ...scope, scopeKey }, observedSet, observedAt);
+                }
+
+                const scopeRecord = favSnapshotScopeRecord0156(
+                    oldScope, scope, scopeKey, observedIds, observedAt, options, transactionState, commitSnapshot,
+                );
+
+                for (const listing of [...merged, ...absentUpdates]) listingStore.put(listing);
+                for (const shop of mergedShops) shopStore.put(shop);
+                scopeStore.put(scopeRecord);
+                mergedResult = merged;
+            } catch (error) {
+                abortWith(error);
+            }
+        }
+
+        favSnapshotRequestGroup0159(listingRequests, (values) => {
+            listingRows = values;
+            finalizeReads();
+        });
+        favSnapshotRequestGroup0159(shopRequests, (values) => {
+            shopRows = values;
+            finalizeReads();
+        });
+        scopeRequest.onsuccess = () => {
+            oldScope = scopeRequest.result;
+            finalizeReads();
+        };
+    });
+}
+
 /* Supersede the v0.15.3 owner-guarded writer at the persistence boundary while
- * preserving the same owner requirement. This is intentionally implemented at
- * the index transaction layer rather than as a cache/UI workaround. */
+ * preserving the same owner requirement. v0.15.9 keeps the complete observation
+ * atomic rather than splitting the read and write transactions. */
 var favIndexObserveRecordsNowBefore0156 = favIndexObserveRecordsNow;
 favIndexObserveRecordsNow = async function favIndexObserveRecordsNow0156(records, options = {}) {
     const observedAt = Number(options.observedAt) || Date.now();
@@ -165,50 +303,7 @@ favIndexObserveRecordsNow = async function favIndexObserveRecordsNow0156(records
         if (patch.listingId) patchMap.set(patch.listingId, patch);
     }
     const patches = Array.from(patchMap.values());
-    const completeRequested = options.complete === true;
-    const snapshot = await favIndexReadObservation(patches, scopeKey, completeRequested);
-    const oldScope = snapshot.scope;
-    const transaction = favSnapshotTransaction0156(oldScope, scopeKey, options, observedAt, completeRequested);
-    const oldCommittedAt = Math.max(0, Number(oldScope?.snapshotCommittedAt) || Number(oldScope?.lastCompleteSyncAt) || 0);
-    const staleComplete = completeRequested && oldCommittedAt > 0 && transaction.startedAt > 0 && transaction.startedAt < oldCommittedAt;
-
-    const observedIds = patches.map((patch) => patch.listingId);
-    const expectedTotal = completeRequested ? favSnapshotExpectedTotal0156(scope) : 0;
-    if (completeRequested && !staleComplete && expectedTotal > 0 && observedIds.length !== expectedTotal) {
-        throw new Error(`Favorites complete snapshot count mismatch (${observedIds.length} crawled, ${expectedTotal} expected).`);
-    }
-
-    const commitSnapshot = completeRequested && !staleComplete;
-    const existingById = new Map(snapshot.listings.filter(Boolean).map((listing) => [String(listing.listingId), listing]));
-    const merged = patches.map((patch) => favIndexMergeListing(existingById.get(patch.listingId), patch, observedAt));
-    const shops = new Map();
-    for (const patch of patches) if (patch.shop) shops.set(patch.shop.shopId, patch.shop);
-    const existingShops = new Map(snapshot.shopIds.map((shopId, index) => [shopId, snapshot.shops[index]]));
-    const mergedShops = Array.from(shops.values(), (patch) => favIndexMergeShop(existingShops.get(patch.shopId), patch));
-
-    const observedSet = new Set(observedIds);
-    let absentUpdates = [];
-    if (commitSnapshot && oldScope?.complete === true && oldScope?.listingIds?.length) {
-        const absent = oldScope.listingIds
-            .map(String)
-            .filter((idValue) => !observedSet.has(idValue))
-            .map((idValue) => existingById.get(idValue))
-            .filter(Boolean);
-        absentUpdates = favIndexApplyScopeCompletion(absent, { ...scope, scopeKey }, observedSet, observedAt);
-    }
-
-    const scopeRecord = favSnapshotScopeRecord0156(
-        oldScope, scope, scopeKey, observedIds, observedAt, options, transaction, commitSnapshot,
-    );
-
-    await favIndexWrite(['listings', 'shops', 'scopes'], (writeTransaction) => {
-        const listingStore = writeTransaction.objectStore('listings');
-        for (const listing of [...merged, ...absentUpdates]) listingStore.put(listing);
-        const shopStore = writeTransaction.objectStore('shops');
-        for (const shop of mergedShops) shopStore.put(shop);
-        writeTransaction.objectStore('scopes').put(scopeRecord);
-    });
-    return merged;
+    return favSnapshotObserveAtomic0159(patches, scope, scopeKey, observedAt, options, options.complete === true);
 };
 
 /* Cache compatibility: legacy scopes that say complete while also recording an
