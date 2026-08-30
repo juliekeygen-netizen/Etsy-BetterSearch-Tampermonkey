@@ -16,6 +16,8 @@
  * v0.15.11 extends this final semantics layer to Favorites counts. Current,
  * query-aligned Etsy page evidence is distinct from BetterSearch's committed
  * dataset/cache size, and an authoritative Etsy zero is distinct from unknown.
+ * v0.15.15 tightens that authority boundary so coercion-only values and an
+ * unidentifiable current dataset can never masquerade as current count truth.
  */
 
 function favFilterValuePresent0157(value) {
@@ -279,6 +281,22 @@ function favRawCountProps01511(scope, root = document) {
     return candidate;
 }
 
+/* Raw server count evidence is authoritative only when the field itself carries
+ * an explicit non-negative integer. JavaScript coercion must never turn null,
+ * blank text, booleans or fractions into an authoritative count. Decimal digit
+ * strings remain accepted for compatibility with payloads that serialize counts
+ * as text. */
+function favExplicitCountValue01515(raw) {
+    if (typeof raw === 'number') {
+        return Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+    }
+    if (typeof raw !== 'string') return null;
+    const text = raw.trim();
+    if (!/^\d+$/.test(text)) return null;
+    const value = Number(text);
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
 function favEtsyCountEvidence01511(scope = favCurrentCountScope01511(), root = document) {
     if (!scope) return { known:false, value:0, source:'unknown', authoritative:false };
     if (typeof favCatalogIsCurrent0141 === 'function' && !favCatalogIsCurrent0141(scope)) {
@@ -294,11 +312,11 @@ function favEtsyCountEvidence01511(scope = favCurrentCountScope01511(), root = d
 
     for (const field of ['totalListings', 'itemCount']) {
         if (!Object.prototype.hasOwnProperty.call(props, field)) continue;
-        const value = Number(props[field]);
-        if (!Number.isFinite(value) || value < 0) continue;
+        const value = favExplicitCountValue01515(props[field]);
+        if (value === null) continue;
         return {
             known:true,
-            value:Math.max(0, Math.trunc(value)),
+            value,
             source:`etsy-props.${field}`,
             authoritative:true,
         };
@@ -307,13 +325,19 @@ function favEtsyCountEvidence01511(scope = favCurrentCountScope01511(), root = d
 }
 
 function favDatasetCountEvidence01511() {
-    const currentKey = typeof favDatasetKey === 'function' ? favDatasetKey() : '';
+    const currentKey = String(typeof favDatasetKey === 'function' ? favDatasetKey() : '').trim();
     const loadKey = String(favState.loadKey || '');
     const total = Number(favState.total);
-    if (favState.loadComplete === true && (!currentKey || loadKey === currentKey) && Number.isFinite(total) && total >= 0) {
+    if (
+        favState.loadComplete === true
+        && currentKey
+        && loadKey === currentKey
+        && Number.isSafeInteger(total)
+        && total >= 0
+    ) {
         return {
             known:true,
-            value:Math.max(0, Math.trunc(total)),
+            value:total,
             source:favState.loadSource0137 === 'cache' ? 'committed-cache' : 'bettersearch-dataset',
             authoritative:false,
         };
