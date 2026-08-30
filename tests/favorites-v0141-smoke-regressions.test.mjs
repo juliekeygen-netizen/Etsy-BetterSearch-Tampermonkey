@@ -8,7 +8,7 @@ const packageJson = JSON.parse(await readFile(new URL('../package.json', import.
 const shell = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const legacyPagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 
-test('current release cache-busts every userscript module and keeps stable ownership immediately before final diagnostics hardening', () => {
+test('current release cache-busts every userscript module and keeps final hardening layers in order', () => {
   assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   if (!userscript) return;
   const metaVersion = userscript.match(/^\/\/ @version\s+(\S+)$/m)?.[1] || '';
@@ -19,10 +19,12 @@ test('current release cache-busts every userscript module and keeps stable owner
   const smoke = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/101-favorites-v0141-smoke-fixes.js?v=${packageJson.version}`;
   const finalOwnership = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/102-favorites-v0155-stable-ownership-final.js?v=${packageJson.version}`;
   const finalDiagnostics = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/103-favorites-v0157-diagnostics-fixes.js?v=${packageJson.version}`;
+  const finalFilterState = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`;
   assert.ok(requires.indexOf(smoke) >= 0, 'historical browser smoke hardening remains loaded');
   assert.ok(requires.indexOf(finalOwnership) > requires.indexOf(smoke), 'stable ownership finalizer must run after historical smoke hardening');
-  assert.equal(requires.at(-2) || '', finalOwnership, 'stable ownership must remain immediately before the diagnostics-driven final boundary');
-  assert.equal(requires.at(-1) || '', finalDiagnostics, 'v0.15.7 diagnostics-driven hardening must remain the final userscript module');
+  assert.equal(requires.at(-3) || '', finalOwnership, 'stable ownership must precede both v0.15.7 final boundaries');
+  assert.equal(requires.at(-2) || '', finalDiagnostics, 'diagnostics-driven geometry/availability fixes must remain after stable ownership');
+  assert.equal(requires.at(-1) || '', finalFilterState, 'filter-state semantics must remain the final userscript boundary');
 });
 
 test('shown count follows the current signed local-grid ownership', () => {
@@ -59,27 +61,29 @@ test('v0.15 module 95 owns local pagination without replacing the authoritative 
   assert.doesNotMatch(legacyPagination, /favRenderCurrentBefore0122/);
 });
 
-test('ready enhanced results repair only through current reapply pipeline', () => {
-  assert.match(hardening, /favRepairEnhancedState0142/);
-  assert.match(hardening, /favScheduleReapply\?\.\(20\)/);
+test('ready enhanced results repair only through the current reapply pipeline', () => {
+  assert.match(hardening, /function favRepairLocalOwnership0142/);
+  assert.match(hardening, /void Promise\.resolve\(favReapply\(\)\)/);
+  assert.match(hardening, /function favScheduleRenderIntegrity0142/);
   assert.doesNotMatch(hardening, /favRenderCurrent\?\.\(\)/);
 });
 
 test('unknown filter capabilities remain visible until their absence is known', () => {
   assert.match(hardening, /function favBindingKnowledgeComplete0143/);
-  assert.match(hardening, /if \(!favBindingKnowledgeComplete0143\(bindingKey\)\) return true/);
+  assert.match(hardening, /return !favBindingKnowledgeComplete0143\(bindingKey, records\)/);
   assert.match(hardening, /favDeepVisibilityReady0110/);
 });
 
 test('native-card metadata hydration refresh is narrow and local-mode only', () => {
-  assert.match(hardening, /function favAttachNativeHydration0142/);
+  assert.match(hardening, /function favWatchNativeHydration0143/);
   assert.match(hardening, /favLocalGridAuthoritative0142\(\)/);
-  assert.match(hardening, /favScheduleReapply\?\.\(20\)/);
-  assert.doesNotMatch(hardening, /document\.body[\s\S]*MutationObserver/);
+  assert.match(hardening, /function favScheduleNativeHydrationRefresh0143/);
+  assert.match(hardening, /observer\.observe\(native,/);
+  assert.doesNotMatch(hardening, /observer\.observe\(document\.body/);
 });
 
-test('native restoration clears local render generation and schedules truthful count refresh', () => {
+test('native restoration clears local render generation and schedules truthful header refresh', () => {
   assert.match(hardening, /favRestoreNativeBefore0142/);
   assert.match(hardening, /favState\.renderSignature0143 = ''/);
-  assert.match(hardening, /favScheduleCountSync0142/);
+  assert.match(hardening, /requestAnimationFrame\(\(\) => favUpdateScopeHeader0120\?\.\(\)\)/);
 });
