@@ -10,12 +10,15 @@
  * This layer installs before the final shell/stability modules and before the
  * deferred Favorites runtime is released. From this point onward:
  *  - Etsy keeps its native sidebar subtree structurally untouched;
- *  - BetterSearch owns a sibling rail slot outside that hydrated subtree;
- *  - the native sidebar is only visually suppressed on desktop;
+ *  - BetterSearch owns a body-level portal outside Etsy's component tree;
+ *  - the native sidebar remains in layout and is only visually suppressed;
+ *  - the portal tracks the native sidebar's real viewport rectangle;
  *  - shell repairs reuse the same rail root instead of replacing it.
  */
 
 favState.railSlot0155 = favState.railSlot0155 || null;
+favState.railGeometryFrame0155 = Number(favState.railGeometryFrame0155) || 0;
+favState.railResizeObserver0155 = favState.railResizeObserver0155 || null;
 
 function favNativeSidebar0155() {
     const current = favState.sidebar;
@@ -33,8 +36,6 @@ favCaptureNativeSource0120 = function favCaptureNativeSource0155(sidebar = favNa
     return sidebar;
 };
 
-/* The sibling slot must never be mistaken for the results/content column on a
- * fallback layout where the normal listing-branch lookup is unavailable. */
 favFavoritesContentColumn0120 = function favFavoritesContentColumn0155(sidebar = favNativeSidebar0155()) {
     const parent = sidebar?.parentElement;
     if (!parent) return null;
@@ -42,71 +43,81 @@ favFavoritesContentColumn0120 = function favFavoritesContentColumn0155(sidebar =
     if (listing && parent.contains(listing)) {
         let branch = listing;
         while (branch.parentElement && branch.parentElement !== parent) branch = branch.parentElement;
-        if (branch.parentElement === parent && branch !== sidebar && !branch.matches?.('[data-ebsf-rail-slot]')) return branch;
+        if (branch.parentElement === parent && branch !== sidebar) return branch;
     }
     return Array.from(parent.children).find((child) =>
-        child !== sidebar
-        && !child.matches?.('[data-testid="sidebar"],[data-ebsf-rail-slot]')
+        child !== sidebar && !child.matches?.('[data-testid="sidebar"]')
     ) || null;
 };
 
-function favRailSlotClassName0155(sidebar) {
-    const native = Array.from(sidebar?.classList || []).filter((name) => !name.startsWith('ebsf-'));
-    return [...native, 'ebsf-rail-slot', 'ebsf-sidebar-permanent'].join(' ');
+function favSyncRailPortalGeometry0155() {
+    favState.railGeometryFrame0155 = 0;
+    const slot = favState.railSlot0155;
+    const sidebar = favNativeSidebar0155();
+    if (!slot?.isConnected || !sidebar?.isConnected || !favDesktopShell0120() || !isFavoritesPage()) return;
+    const rect = sidebar.getBoundingClientRect?.();
+    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top) || rect.width <= 0) return;
+    slot.style.left = `${rect.left}px`;
+    slot.style.top = `${rect.top}px`;
+    slot.style.width = `${rect.width}px`;
+    slot.style.maxWidth = `${rect.width}px`;
+    slot.style.setProperty('--ebsf-native-sidebar-width', `${rect.width}px`);
 }
 
-function favSyncRailSlotGeometry0155(slot, sidebar) {
-    if (!slot || !sidebar) return;
-    slot.className = favRailSlotClassName0155(sidebar);
-    const width = sidebar.getBoundingClientRect?.().width;
-    if (Number.isFinite(width) && width > 0) {
-        slot.style.setProperty('--ebsf-native-sidebar-width', `${width}px`);
-    }
+function favScheduleRailPortalGeometry0155() {
+    if (favState.railGeometryFrame0155) return;
+    favState.railGeometryFrame0155 = requestAnimationFrame(favSyncRailPortalGeometry0155);
+}
+
+function favObserveRailAnchor0155(sidebar) {
+    if (favState.railResizeObserver0155?.__ebsfTarget === sidebar) return;
+    favState.railResizeObserver0155?.disconnect?.();
+    favState.railResizeObserver0155 = null;
+    if (typeof ResizeObserver !== 'function' || !sidebar) return;
+    const observer = new ResizeObserver(() => favScheduleRailPortalGeometry0155());
+    observer.__ebsfTarget = sidebar;
+    observer.observe(sidebar);
+    favState.railResizeObserver0155 = observer;
 }
 
 function favEnsureRailSlot0155(sidebar = favNativeSidebar0155()) {
-    if (!sidebar?.parentElement) return null;
-    const parent = sidebar.parentElement;
+    if (!sidebar?.isConnected || !document.body) return null;
     let slot = favState.railSlot0155?.isConnected ? favState.railSlot0155 : null;
-    if (slot?.parentElement !== parent) {
-        slot?.remove();
-        slot = null;
-    }
-    if (!slot) slot = parent.querySelector(':scope > [data-ebsf-rail-slot]');
+    if (!slot) slot = document.body.querySelector(':scope > [data-ebsf-rail-slot]');
     if (!slot) {
-        slot = document.createElement('div');
+        slot = document.createElement('aside');
+        slot.className = 'ebsf-rail-slot ebsf-sidebar-permanent';
         slot.dataset.ebsfRailSlot = '';
         slot.setAttribute('aria-label', 'BetterSearch Favorites filters');
-        parent.insertBefore(slot, sidebar);
-    } else if (slot.nextSibling !== sidebar) {
-        parent.insertBefore(slot, sidebar);
+        document.body.append(slot);
     }
-
-    for (const duplicate of parent.querySelectorAll(':scope > [data-ebsf-rail-slot]')) {
+    for (const duplicate of document.body.querySelectorAll(':scope > [data-ebsf-rail-slot]')) {
         if (duplicate !== slot) duplicate.remove();
     }
 
-    favSyncRailSlotGeometry0155(slot, sidebar);
     favState.railSlot0155 = slot;
     favState.sidebar = sidebar;
     favState.nativeSource0120 = sidebar;
     sidebar.classList.add('ebsf-native-sidebar-suppressed');
     sidebar.classList.remove('ebsf-sidebar-active', 'ebsf-sidebar-permanent');
+    favObserveRailAnchor0155(sidebar);
+    favScheduleRailPortalGeometry0155();
     return slot;
 }
 
-function favReleasePermanentRail0155({ removeRail = true } = {}) {
+function favReleasePermanentRail0155() {
     const sidebar = favNativeSidebar0155();
     sidebar?.classList.remove('ebsf-native-sidebar-suppressed', 'ebsf-sidebar-active', 'ebsf-sidebar-permanent');
+    if (favState.railGeometryFrame0155) cancelAnimationFrame(favState.railGeometryFrame0155);
+    favState.railGeometryFrame0155 = 0;
+    favState.railResizeObserver0155?.disconnect?.();
+    favState.railResizeObserver0155 = null;
     const slot = favState.railSlot0155?.isConnected
         ? favState.railSlot0155
         : document.querySelector('[data-ebsf-rail-slot]');
-    if (removeRail) slot?.remove();
-    else slot?.classList.remove('ebsf-sidebar-permanent');
-    if (removeRail) {
-        favState.railSlot0155 = null;
-        if (favState.rail?.closest?.('[data-ebsf-rail-slot]')) favState.rail = null;
-    }
+    slot?.remove();
+    favState.railSlot0155 = null;
+    if (favState.rail?.closest?.('[data-ebsf-rail-slot]')) favState.rail = null;
 }
 
 favInstallPermanentRail0120 = function favInstallPermanentRail0155() {
@@ -124,6 +135,7 @@ favInstallPermanentRail0120 = function favInstallPermanentRail0155() {
     }
     favState.rail = rail;
     favState.filterOpen = true;
+    favScheduleRailPortalGeometry0155();
     return rail;
 };
 
@@ -150,6 +162,7 @@ favRefreshRail = function favRefreshRail0155() {
     }
     favState.rail = rail;
     favState.filterOpen = true;
+    favScheduleRailPortalGeometry0155();
     return rail;
 };
 
@@ -167,9 +180,7 @@ favTeardownPageShell0121 = function favTeardownPageShell0155() {
     favReleaseAllHeader0121();
     document.querySelectorAll('[data-ebsf-collection-strip]').forEach((node) => node.remove());
     favReleasePermanentRail0155();
-    document.querySelectorAll('[data-ebsf-rail]').forEach((node) => {
-        if (!node.closest?.('[data-ebsf-filter-overlay]')) node.remove();
-    });
+    document.querySelectorAll('[data-ebsf-rail]').forEach((node) => node.remove());
     favState.nativeSource0120 = null;
     favState.collectionStrip0120 = null;
     favState.rail = null;
@@ -177,19 +188,24 @@ favTeardownPageShell0121 = function favTeardownPageShell0155() {
     favState.filterOpen = false;
 };
 
+window.addEventListener('scroll', favScheduleRailPortalGeometry0155, { passive:true });
+window.addEventListener('resize', favScheduleRailPortalGeometry0155, { passive:true });
+
 GM_addStyle(`
-  /* The hydrated Etsy sidebar remains intact but does not occupy a second
-   * desktop column while the BetterSearch sibling slot is active. */
+  /* Keep Etsy's hydrated sidebar in its original layout position so its parent
+   * geometry never changes. Only its pixels/interactions are suppressed. */
   [data-testid="sidebar"].ebsf-native-sidebar-suppressed{
-    display:none!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
   }
   [data-ebsf-rail-slot]{
+    position:fixed!important;
+    z-index:20!important;
     box-sizing:border-box!important;
-    min-width:min(var(--ebsf-native-sidebar-width,220px),100%)!important;
-    width:var(--ebsf-native-sidebar-width,220px)!important;
-    max-width:var(--ebsf-native-sidebar-width,260px)!important;
-    flex:0 0 var(--ebsf-native-sidebar-width,220px)!important;
+    margin:0!important;
+    padding:0!important;
     overflow:visible!important;
+    pointer-events:auto!important;
   }
   [data-ebsf-rail-slot] > [data-ebsf-rail]{
     display:block!important;
@@ -199,6 +215,9 @@ GM_addStyle(`
   }
   @media(max-width:760px){
     [data-ebsf-rail-slot]{display:none!important}
-    [data-testid="sidebar"].ebsf-native-sidebar-suppressed{display:block!important}
+    [data-testid="sidebar"].ebsf-native-sidebar-suppressed{
+      visibility:visible!important;
+      pointer-events:auto!important;
+    }
   }
 `);
