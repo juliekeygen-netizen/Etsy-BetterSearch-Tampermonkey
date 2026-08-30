@@ -198,35 +198,94 @@ favBuildDrawer0120 = function favBuildDrawer0157(drawer) {
  * v0.15.11 count authority
  * ------------------------------------------------------------------------- */
 
+favState.nativeQueryGeneration01511 = Math.max(0, Number(favState.nativeQueryGeneration01511) || 0);
+var favCountPropsScopeStamp01511 = new WeakMap();
+
 function favNormalizeCountQuery01511(value) {
     if (typeof normalize === 'function') return normalize(value);
     return String(value || '').trim().toLowerCase();
 }
 
-/* favProps() deliberately derives totalListings from weaker fallbacks for older
- * Etsy payloads. Count authority must know whether Etsy actually supplied a
- * total/count field, so inspect the current props payload without synthesizing a
- * total from the first page's listings array. */
-function favRawCountProps01511(root = document) {
-    for (const script of root?.querySelectorAll?.('script[type="text/props"]') || []) {
-        const text = script.textContent || '';
-        if (!text.includes('"profileOwnerUserId"')) continue;
-        try {
-            const data = JSON.parse(text);
-            if (!data || !data.profileOwnerUserId) continue;
-            return data;
-        } catch (_) {}
-    }
-    return null;
+function favCountScopeIdentity01511(scope) {
+    return [scope?.owner || '', scope?.type || 'items', scope?.id || '']
+        .map((value) => String(value))
+        .join('|');
 }
 
-function favEtsyCountEvidence01511(scope = typeof favCatalogCurrentDescriptor0141 === 'function' ? favCatalogCurrentDescriptor0141() : null, root = document) {
+function favCurrentCountScope01511() {
+    if (typeof favCatalogCurrentDescriptor0141 === 'function') return favCatalogCurrentDescriptor0141();
+    return typeof favScope === 'function' ? favScope() : null;
+}
+
+function favCountPropsStamp01511(script, currentScope = favCurrentCountScope01511()) {
+    let stamp = favCountPropsScopeStamp01511.get(script);
+    if (stamp) return stamp;
+    stamp = {
+        scopeIdentity:favCountScopeIdentity01511(currentScope),
+        queryGeneration:favState.nativeQueryGeneration01511,
+    };
+    favCountPropsScopeStamp01511.set(script, stamp);
+    return stamp;
+}
+
+/* Stamp the initial SSR props before any soft navigation can reuse those same
+ * DOM nodes under a different Favorites scope. Newly inserted props scripts are
+ * stamped lazily the first time they are observed in their new scope. */
+for (const script of document.querySelectorAll?.('script[type="text/props"]') || []) {
+    const text = String(script?.textContent || '');
+    if (text.includes('"profileOwnerUserId"')) favCountPropsStamp01511(script);
+}
+
+/* Module 99 models native Search as committed client state because Etsy often
+ * leaves the URL/SSR props unchanged. Increment a generation only after that
+ * state machine actually commits a new native query. Old SSR count evidence is
+ * then permanently stale for the new generation, even if the user later clears
+ * Search back to the same text that the original SSR payload happened to use. */
+if (typeof favMaybeCommitSubmittedNativeQuery0140 === 'function') {
+    var favMaybeCommitSubmittedNativeQueryBefore01511 = favMaybeCommitSubmittedNativeQuery0140;
+    favMaybeCommitSubmittedNativeQuery0140 = function favMaybeCommitSubmittedNativeQuery01511() {
+        const before = String(typeof favCommittedNativeQuery0138 === 'function' ? favCommittedNativeQuery0138() : '');
+        const changed = favMaybeCommitSubmittedNativeQueryBefore01511();
+        const after = String(typeof favCommittedNativeQuery0138 === 'function' ? favCommittedNativeQuery0138() : '');
+        if (changed === true || before !== after) favState.nativeQueryGeneration01511 += 1;
+        return changed;
+    };
+}
+
+/* favProps() deliberately derives totalListings from weaker fallbacks for older
+ * Etsy payloads. Count authority must know whether Etsy actually supplied a
+ * total/count field, so inspect raw props without synthesizing a total from the
+ * first page's listings array. Scope/query-generation stamps prevent stale SSR
+ * scripts from becoming authority after a soft route or client-search change. */
+function favRawCountProps01511(scope, root = document) {
+    const wantedIdentity = favCountScopeIdentity01511(scope);
+    const wantedOwner = String(scope?.owner || '').trim();
+    let candidate = null;
+    for (const script of root?.querySelectorAll?.('script[type="text/props"]') || []) {
+        const text = String(script?.textContent || '');
+        if (!text.includes('"profileOwnerUserId"')) continue;
+        const stamp = favCountPropsStamp01511(script);
+        if (
+            stamp.scopeIdentity !== wantedIdentity
+            || stamp.queryGeneration !== favState.nativeQueryGeneration01511
+        ) continue;
+        try {
+            const data = JSON.parse(text);
+            const propsOwner = String(data?.profileOwnerUserId || '').trim();
+            if (!propsOwner || (wantedOwner && propsOwner !== wantedOwner)) continue;
+            candidate = data;
+        } catch (_) {}
+    }
+    return candidate;
+}
+
+function favEtsyCountEvidence01511(scope = favCurrentCountScope01511(), root = document) {
     if (!scope) return { known:false, value:0, source:'unknown', authoritative:false };
     if (typeof favCatalogIsCurrent0141 === 'function' && !favCatalogIsCurrent0141(scope)) {
-        return { known:false, value:0, source:'unknown', authoritative:false };
+        return { known:false, value:0, source:'not-current', authoritative:false };
     }
 
-    const props = favRawCountProps01511(root);
+    const props = favRawCountProps01511(scope, root);
     if (!props) return { known:false, value:0, source:'unknown', authoritative:false };
     const liveQuery = String(props.query || '').trim();
     if (favNormalizeCountQuery01511(scope.query) !== favNormalizeCountQuery01511(liveQuery)) {
@@ -264,9 +323,7 @@ function favDatasetCountEvidence01511() {
 }
 
 favScopeCounts0120 = function favScopeCounts01511() {
-    const scope = typeof favCatalogCurrentDescriptor0141 === 'function'
-        ? favCatalogCurrentDescriptor0141()
-        : null;
+    const scope = favCurrentCountScope01511();
     const etsy = favEtsyCountEvidence01511(scope);
     const fallback = favDatasetCountEvidence01511();
     const evidence = etsy.known ? etsy : fallback;
@@ -274,12 +331,20 @@ favScopeCounts0120 = function favScopeCounts01511() {
     const shown = favEnhancementActive() && Array.isArray(favState.filtered)
         ? favState.filtered.length
         : total;
-    favState.scopeCountAuthority01511 = {
+    const nextAuthority = {
         total,
         source:evidence.source,
         authoritative:evidence.authoritative === true,
         etsyKnown:etsy.known === true,
     };
+    const previous = favState.scopeCountAuthority01511;
+    if (
+        !previous
+        || previous.total !== nextAuthority.total
+        || previous.source !== nextAuthority.source
+        || previous.authoritative !== nextAuthority.authoritative
+        || previous.etsyKnown !== nextAuthority.etsyKnown
+    ) favState.scopeCountAuthority01511 = nextAuthority;
     return {
         total,
         shown,
@@ -300,14 +365,28 @@ var favCatalogPublishBefore01511 = favCatalogPublish0141;
 favCatalogPublish0141 = function favCatalogPublish01511(scope, patch = {}) {
     const next = { ...patch };
     if (Object.prototype.hasOwnProperty.call(next, 'expectedTotal')) {
-        const evidence = favEtsyCountEvidence01511(scope);
+        const previous = typeof favCatalogState0141 === 'function' ? favCatalogState0141(scope) : null;
         const expected = Number(next.expectedTotal);
-        next.expectedTotalKnown = Boolean(
-            evidence.known
-            && Number.isFinite(expected)
-            && Math.max(0, Math.trunc(expected)) === evidence.value
-        );
-        if (next.expectedTotalKnown) next.expectedTotalSource = evidence.source;
+        const normalizedExpected = Number.isFinite(expected) ? Math.max(0, Math.trunc(expected)) : 0;
+        const startsNewRun = String(next.status || '') === 'running'
+            && Math.max(0, Number(next.startedAt) || 0) > 0
+            && Math.max(0, Number(next.processed) || 0) === 0;
+        const preserveKnownRun = !startsNewRun
+            && previous?.expectedTotalKnown === true
+            && Math.max(0, Math.trunc(Number(previous.expectedTotal) || 0)) === normalizedExpected;
+
+        if (preserveKnownRun) {
+            next.expectedTotalKnown = true;
+            next.expectedTotalSource = previous.expectedTotalSource || 'etsy-props';
+        } else {
+            const evidence = favEtsyCountEvidence01511(scope);
+            next.expectedTotalKnown = Boolean(
+                evidence.known
+                && Number.isFinite(expected)
+                && normalizedExpected === evidence.value
+            );
+            next.expectedTotalSource = next.expectedTotalKnown ? evidence.source : '';
+        }
     }
     return favCatalogPublishBefore01511(scope, next);
 };
@@ -322,9 +401,8 @@ favCatalogProgressText0141 = function favCatalogProgressText01511(state) {
 };
 
 /* v0.15.6's snapshot validator historically checked expectedTotal > 0 because
- * zero also meant "unknown". The final writer can now enforce known zero before
- * delegating to the existing immutable/atomic snapshot writer. Positive known
- * totals continue to be checked by that existing boundary as well. */
+ * zero also meant "unknown". The final writer enforces every known count,
+ * including zero, before delegating to the immutable/atomic snapshot writer. */
 var favIndexObserveRecordsNowBefore01511 = favIndexObserveRecordsNow;
 favIndexObserveRecordsNow = async function favIndexObserveRecordsNow01511(records, options = {}) {
     if (options.complete === true) {
