@@ -8,22 +8,22 @@ const boundary = await readFile(new URL('../src/61aa-favorites-owner-boundary.js
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
 function loadIdentityFixture() {
-  let login = 'alice';
-  let directOwner = '111';
-  const context = vm.createContext({
-    console,
-    Map,
-    favProfileLogin: () => login,
-    favScope: () => ({ type:'items', id:'', login, owner:directOwner }),
-  });
-  vm.runInContext(`${identity}\nglobalThis.testApi={
-    scope:()=>favScope(),
-    identity:(scope)=>favOwnerIdentity0153(scope),
-    setLogin:(value)=>{login=String(value)},
-    setDirectOwner:(value)=>{directOwner=String(value || '')},
-    remembered:(value)=>favOwnerByLogin0153.get(value) || '',
-    last:()=>({...favLastOwnerIdentity0153}),
-  };`, context);
+  const context = vm.createContext({ console, Map });
+  vm.runInContext(`
+    globalThis.fixtureLogin = 'alice';
+    globalThis.fixtureDirectOwner = '111';
+    globalThis.favProfileLogin = () => fixtureLogin;
+    globalThis.favScope = () => ({ type:'items', id:'', login:fixtureLogin, owner:fixtureDirectOwner });
+    ${identity}
+    globalThis.testApi={
+      scope:()=>favScope(),
+      identity:(scope)=>favOwnerIdentity0153(scope),
+      setLogin:(value)=>{fixtureLogin=String(value)},
+      setDirectOwner:(value)=>{fixtureDirectOwner=String(value || '')},
+      remembered:(value)=>favOwnerByLogin0153.get(value) || '',
+      last:()=>({...favLastOwnerIdentity0153}),
+    };
+  `, context);
   return context.testApi;
 }
 
@@ -61,12 +61,12 @@ function loadBoundaryFixture() {
     observe:(records, options)=>favIndexObserveRecordsNow(records, options),
     api:(scope, offset=0, limit=20, query='')=>favApiUrlForScope(scope, offset, limit, query),
     open:()=>favIndexOpen(),
-    setCurrentScope:(scope)=>{currentScope=scope},
     resetOpen:(fn)=>{favIndexOpenBefore0153=fn;favIndexOwnerRepairPromise0153=null},
     setRepair:(fn)=>{favIndexRepairOwnerlessScopes0153=fn;favIndexOwnerRepairPromise0153=null},
     repairDone:()=>favOwnerRepairDone0153(),
-    calls,
   };`, context);
+  context.testApi.calls = calls;
+  context.testApi.setCurrentScope = (scope) => { currentScope = scope; };
   return context.testApi;
 }
 
