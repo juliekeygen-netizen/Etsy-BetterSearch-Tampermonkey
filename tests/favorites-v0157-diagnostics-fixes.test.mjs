@@ -90,10 +90,13 @@ test('recommendation observer is narrowly triggered only by similar-listings nod
   assert.doesNotMatch(source, /attributes:true/);
 });
 
-test('toolbar alignment compensates for its current transform mathematically instead of clearing it before measurement', () => {
+test('toolbar alignment compensates for its current transform mathematically instead of clearing it on the normal measurement path', () => {
   const body = source.slice(source.indexOf('function favAlignToolbarX0157'), source.indexOf('/* Final toolbar owner'));
   assert.match(body, /const currentShift = favOwnedToolbarTranslate0157\(right\)/);
   assert.match(body, /const baseRight = rightRect\.right - currentShift/);
-  const beforeMeasure = body.slice(0, body.indexOf('const rightRect = right.getBoundingClientRect()'));
-  assert.doesNotMatch(beforeMeasure, /favClearCollectionToolbarX0136\(right\)/);
+  const normalMeasurement = body.slice(
+    body.indexOf('const target = favCollectionToolbarTarget0136(header)'),
+    body.indexOf('const currentShift = favOwnedToolbarTranslate0157(right)'),
+  );
+  assert.doesNotMatch(normalMeasurement, /favClearCollectionToolbarX0136\(right\)/);
 });
