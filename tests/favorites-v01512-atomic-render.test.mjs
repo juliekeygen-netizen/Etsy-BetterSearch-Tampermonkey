@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const transaction = await readFile(new URL('../src/105-favorites-v01512-atomic-render.js', import.meta.url), 'utf8');
 const smoke = await readFile(new URL('../src/101-favorites-v0141-smoke-fixes.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
+const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 
 function block(source, startText, endText = '') {
   const start = source.indexOf(startText);
@@ -21,8 +22,8 @@ function executable(source) {
 
 test('atomic render transaction is the final runtime integration boundary', () => {
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.match(requires.at(-2) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.11$/);
-  assert.match(requires.at(-1) || '', /\/src\/105-favorites-v01512-atomic-render\.js\?v=0\.15\.11$/);
+  assert.equal(requires.at(-2) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`);
+  assert.equal(requires.at(-1) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`);
   assert.doesNotMatch(smoke, /01512/, 'the rejected first draft must not remain appended to module 101');
 });
 
