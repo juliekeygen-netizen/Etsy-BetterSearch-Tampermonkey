@@ -227,6 +227,10 @@ async function favRefreshRouteData(){
 }
 
 function favRemoveLocalFavorite(idValue) {
+    /* A heart on another profile's Favorites page is the current viewer's
+     * personal heart state, not membership in that profile. Never remove that
+     * profile's BetterSearch catalogue row because the viewer unfavorited it. */
+    if(!favIsOwnFavoritesPage())return false;
     const idString=String(idValue||'');if(!idString||!favState.recordsById.has(idString))return false;
     favState.recordsById.delete(idString);
     favState.records=favState.records.filter((item)=>item.id!==idString);
@@ -266,11 +270,11 @@ function favHandleTransplantedClick(event) {
                 const stillFavorited=isFavoritedButton(nativeAction.button);
                 setFavoriteWorking(favorite,false);
                 setFavoriteVisual(favorite,stillFavorited);
-                if(!stillFavorited){favRemoveLocalFavorite(card.dataset.ebsfId);favRenderCurrent();}
+                if(!stillFavorited&&favRemoveLocalFavorite(card.dataset.ebsfId))favRenderCurrent();
             },900);
             return;
         }
-        bridgeFavorite(card,favorite).then(()=>{if(!isFavoritedButton(favorite)){favRemoveLocalFavorite(card.dataset.ebsfId);favRenderCurrent();}});
+        bridgeFavorite(card,favorite).then(()=>{if(!isFavoritedButton(favorite)&&favRemoveLocalFavorite(card.dataset.ebsfId))favRenderCurrent();});
         return;
     }
     const button=event.target?.closest?.('button');
