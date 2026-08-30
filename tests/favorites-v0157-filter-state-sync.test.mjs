@@ -54,12 +54,14 @@ function loadVisualSyncHelper() {
   return context.testApi.sync;
 }
 
-test('0.15.11 keeps the final state-semantics boundary after diagnostics geometry', () => {
+test('0.15.11 state/count semantics stay final until the dedicated render transaction boundary', () => {
   const diagnostics = userscript.indexOf('/src/103-favorites-v0157-diagnostics-fixes.js');
   const stateSync = userscript.indexOf('/src/104-favorites-v0157-filter-state-sync.js');
-  assert.ok(diagnostics >= 0 && stateSync > diagnostics);
+  const transaction = userscript.indexOf('/src/105-favorites-v01512-atomic-render.js');
+  assert.ok(diagnostics >= 0 && stateSync > diagnostics && transaction > stateSync);
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.match(requires.at(-1) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.11$/);
+  assert.match(requires.at(-2) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.11$/);
+  assert.match(requires.at(-1) || '', /\/src\/105-favorites-v01512-atomic-render\.js\?v=0\.15\.11$/);
 });
 
 test('normalized default configuration has no meaningfully active v2 filter binding', () => {
