@@ -83,7 +83,12 @@ function favShellMutationRelevant0155(record) {
         node.matches?.('[data-ebsf-rail-slot]') || node.querySelector?.('[data-ebsf-rail-slot]')
     )) return true;
 
-    const structural = '[data-testid="sidebar"],.phase3-listing-cards-section,.favorites-landing-phase3-header,#collections-landing-right-side-header-container';
+    /* Keep one body-level shell observer as the structural lifecycle owner.
+     * v0.15.7 used a second body-wide observer only to notice Etsy's zero-result
+     * recommendation module. Treat both of Etsy's known module identities as a
+     * normal native structural change so the final shell pass can schedule the
+     * offset without another observer watching the same subtree. */
+    const structural = '[data-testid="sidebar"],.phase3-listing-cards-section,.favorites-landing-phase3-header,#collections-landing-right-side-header-container,#favorites_similar_listings,[data-favorites-similar-listings]';
     if (changed.some((node) => node.matches?.(structural) || node.querySelector?.(structural))) return true;
 
     /* Do not run a full shell repair for every native sidebar text/wrapper
