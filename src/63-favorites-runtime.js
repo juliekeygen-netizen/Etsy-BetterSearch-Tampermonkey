@@ -13,6 +13,8 @@ favState.wasFavoritesPage0137 = favState.wasFavoritesPage0137 === true;
 favState.nativeCaptureViewKey0137 = favState.nativeCaptureViewKey0137 || '';
 favState.localGrid0141 = favState.localGrid0141 || null;
 favState.renderMode0141 = favState.renderMode0141 || 'native';
+favState.syncDelay0137 = Math.max(0, Number(favState.syncDelay0137) || 0);
+favState.observeDelay0137 = Math.max(0, Number(favState.observeDelay0137) || 0);
 
 function favRequestedRoutePage0137() {
     try {
@@ -148,7 +150,8 @@ function favRenderCount(totalShown) {
     if(!favState.countNode){const node=document.createElement('div');node.className='ebsf-result-count wt-text-body-small';section.prepend(node);favState.countNode=node;}
     const base=favState.total||favState.records.length;
     const unresolved=Math.max(0,Number(favState.metadataCoverage0141?.unresolved)||0);
-    favState.countNode.textContent=`${base} favorites · ${totalShown} shown${unresolved ? ` · ${unresolved} metadata values unknown` : ''}`;
+    const text=`${base} favorites · ${totalShown} shown${unresolved ? ` · ${unresolved} metadata values unknown` : ''}`;
+    if(favState.countNode.textContent!==text)favState.countNode.textContent=text;
 }
 
 function favRenderPagination(totalPages) {
@@ -370,8 +373,17 @@ function favRefreshAfterReentry0137() {
 }
 
 function favScheduleSync(delay=250){
+    const wait=Math.max(0,Number(delay)||0);
+    /* Keep the existing debounce for equal-priority lifecycle noise, but never
+     * let a generic 250 ms body mutation postpone an already queued explicit
+     * 0/80 ms route/search signal. A more urgent request may still pre-empt a
+     * slower pending one. */
+    if(favState.syncTimer&&favState.syncDelay0137<wait)return favState.syncTimer;
     clearTimeout(favState.syncTimer);
+    favState.syncDelay0137=wait;
     favState.syncTimer=setTimeout(()=>{
+        favState.syncTimer=0;
+        favState.syncDelay0137=0;
         if(!isFavoritesPage()){
             favState.wasFavoritesPage0137=false;
             favState.nativeCaptureViewKey0137='';
@@ -396,24 +408,88 @@ function favScheduleSync(delay=250){
         if(datasetChanged){favResetForDatasetChange0137();return;}
         if(viewChanged){favRefreshForViewChange0137();return;}
         favEnsureToolbar();favBindNativeSearch();
-    },delay);
+    },wait);
+    return favState.syncTimer;
 }
 
 function favScheduleCurrentPageObservation(delay=1000){
+    const wait=Math.max(0,Number(delay)||0);
+    /* Preserve urgent 0/350 ms native-query/view observations. Repeated generic
+     * 1000 ms mutations still debounce normally, but cannot push an already
+     * scheduled higher-priority observation farther into the future. */
+    if(favState.observeTimer&&favState.observeDelay0137<wait)return favState.observeTimer;
     clearTimeout(favState.observeTimer);
+    favState.observeDelay0137=wait;
     favState.observeTimer=setTimeout(()=>{
+        favState.observeTimer=0;
+        favState.observeDelay0137=0;
         if(!isFavoritesPage()||favState.rendering)return;
         const recaptured=favMaybeCaptureSettledNativePage0137();
         favIndexObserveCurrentPage().catch(()=>{});
         if(recaptured&&favEnhancementActive()&&favState.loadKey===favDatasetKey()&&favState.loadComplete){
             requestAnimationFrame(()=>{if(isFavoritesPage()&&favEnhancementActive())void favReapply();});
         }
-    },delay);
+    },wait);
+    return favState.observeTimer;
+}
+
+var FAV_RUNTIME_OWNED_SURFACE0137 = [
+    '[data-ebsf-owned]',
+    '[data-ebsf-owned-card="1"]',
+    '[data-ebsf-local-grid]',
+    '[data-ebsf-local-pagination]',
+    '[data-ebsf-rail-slot]',
+    '[data-ebsf-rail]',
+    '[data-ebsf-all-header]',
+    '[data-ebsf-toolbar-row]',
+    '[data-ebsf-collection-strip]',
+    '[data-ebsf-scope-count]',
+    '.ebsf-result-count',
+].join(',');
+var FAV_RUNTIME_CRITICAL_REMOVAL0137 = '[data-ebsf-local-grid],[data-ebsf-local-pagination],[data-ebsf-rail-slot]';
+
+function favRuntimeMutationElement0137(node){
+    if(!node)return null;
+    return node.nodeType===1?node:node.parentElement||null;
+}
+
+function favRuntimeOwnedSurface0137(node){
+    const element=favRuntimeMutationElement0137(node);
+    if(!element)return false;
+    return Boolean(element.matches?.(FAV_RUNTIME_OWNED_SURFACE0137)||element.closest?.(FAV_RUNTIME_OWNED_SURFACE0137));
+}
+
+function favRuntimeCriticalRemoval0137(node){
+    const element=favRuntimeMutationElement0137(node);
+    if(!element)return false;
+    return Boolean(element.matches?.(FAV_RUNTIME_CRITICAL_REMOVAL0137)||element.querySelector?.(FAV_RUNTIME_CRITICAL_REMOVAL0137));
+}
+
+function favRuntimeMutationNeedsLifecycle0137(record){
+    if(!record||record.type!=='childList')return true;
+    const removed=Array.from(record.removedNodes||[]);
+    /* If Etsy/another actor removes a committed local grid/pager or rail portal,
+     * keep the lifecycle signal so final ownership/shell repair can fail safe. */
+    if(removed.some(favRuntimeCriticalRemoval0137))return true;
+    if(favRuntimeOwnedSurface0137(record.target))return false;
+    const changed=[...Array.from(record.addedNodes||[]),...removed];
+    if(changed.length&&changed.every(favRuntimeOwnedSurface0137))return false;
+    return true;
+}
+
+function favRuntimeHandleMutations0137(records){
+    if(favState.rendering)return false;
+    if(!Array.from(records||[]).some(favRuntimeMutationNeedsLifecycle0137))return false;
+    favScheduleSync();
+    favScheduleCurrentPageObservation();
+    return true;
 }
 
 function favStartRuntime() {
     if(!favState.runtimeObserverBound0121){
-        favState.observer?.disconnect();favState.observer=new MutationObserver(()=>{if(!favState.rendering){favScheduleSync();favScheduleCurrentPageObservation();}});favState.observer.observe(document.body,{childList:true,subtree:true});
+        favState.observer?.disconnect();
+        favState.observer=new MutationObserver(favRuntimeHandleMutations0137);
+        favState.observer.observe(document.body,{childList:true,subtree:true});
         window.addEventListener('popstate',()=>favScheduleSync(80));window.addEventListener('pageshow',(event)=>{if(event.persisted)favScheduleSync(0);});favState.runtimeObserverBound0121=true;
     }
     if(!isFavoritesPage()){favState.wasFavoritesPage0137=false;return;}
