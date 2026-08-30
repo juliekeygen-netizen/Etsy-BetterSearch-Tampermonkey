@@ -118,6 +118,69 @@ test('authoritative Etsy zero is not collapsed into unknown or stale cache count
   assert.equal(api.counts().total, 0);
 });
 
+test('coercion-only or non-integral raw counts never become authoritative Etsy zero/count evidence', () => {
+  const invalidValues = [null, '', '   ', false, true, 1.5, -1, '1.5', '-1'];
+  for (const totalListings of invalidValues) {
+    const api = loadFixture({
+      scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', totalListings })],
+    });
+    assert.equal(api.evidence().known, false, `must reject ${JSON.stringify(totalListings)}`);
+    const result = api.counts();
+    assert.equal(result.total, 107);
+    assert.equal(result.totalSource, 'committed-cache');
+    assert.equal(result.totalAuthoritative, false);
+  }
+});
+
+test('invalid totalListings falls through to a valid explicit itemCount, including zero', () => {
+  const positive = loadFixture({
+    scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', totalListings:null, itemCount:108 })],
+  });
+  assert.deepEqual({ ...positive.evidence() }, {
+    known:true, value:108, source:'etsy-props.itemCount', authoritative:true,
+  });
+
+  const zero = loadFixture({
+    scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', totalListings:'', itemCount:0 })],
+  });
+  assert.deepEqual({ ...zero.evidence() }, {
+    known:true, value:0, source:'etsy-props.itemCount', authoritative:true,
+  });
+});
+
+test('decimal digit strings remain valid explicit count payloads without accepting general coercion', () => {
+  const api = loadFixture({
+    scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', totalListings:'108' })],
+  });
+  assert.deepEqual({ ...api.evidence() }, {
+    known:true, value:108, source:'etsy-props.totalListings', authoritative:true,
+  });
+});
+
+test('missing current dataset identity cannot label a complete cache as current', () => {
+  const scope = { owner:'owner-1', type:'items', id:'', query:'', datasetKey:'' };
+  const api = loadFixture({
+    scope,
+    scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', listings:[] })],
+    cachedTotal:107,
+  });
+  const result = api.counts();
+  assert.equal(result.total, 107);
+  assert.equal(result.totalSource, 'records');
+  assert.equal(result.totalAuthoritative, false);
+});
+
+test('mismatched complete dataset identity falls back to records instead of committed-current provenance', () => {
+  const api = loadFixture({
+    scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', listings:[] })],
+  });
+  api.setLoadKey('different-dataset');
+  const result = api.counts();
+  assert.equal(result.total, 107);
+  assert.equal(result.totalSource, 'records');
+  assert.equal(result.totalAuthoritative, false);
+});
+
 test('missing server count means unknown zero and falls back to the committed dataset', () => {
   const api = loadFixture({
     scripts:[propsScript({ profileOwnerUserId:'owner-1', query:'', listings:[] })],
