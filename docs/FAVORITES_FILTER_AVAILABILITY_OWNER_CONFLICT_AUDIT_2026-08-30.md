@@ -1,69 +1,46 @@
-# Favorites filter-availability ownership conflict audit — 2026-08-30
+# Favorites filter-availability ownership and hidden-state audit — 2026-08-30
 
-**Status:** focused source audit triggered by the Diagnostics observation that `Hide unavailable catalogue filters` appears ineffective in both `Current catalogue` and `Current filtered items` modes.
+**Status:** corrected/finalized focused audit after re-checking the Diagnostics recording, the companion IndexedDB export, the final module load order, the v2 rail DOM shape, and the CSS presentation contract.
 
-This is a source-proven patch-chain ownership conflict. The raw capture/IndexedDB evidence increases confidence that it is user-visible, but the conclusion below comes from current code, not only from screenshots.
+The earlier first-pass version of this note correctly identified split ownership between the legacy v0.11 availability layer and the v2 rail, but it overstated one mechanism: the legacy writer does **not** generally walk v2 option instances and re-show them, because the v2 rail no longer uses the legacy section/option identity model. The final root cause is more concrete and is recorded below.
 
 ## Executive summary
 
-Two different generations of the filter system still believe they own live option visibility:
+The user-visible failure had two cooperating defects:
+
+1. **v2 correctly set unavailable option roots to `hidden`, but v2 CSS declared `.ebsf-v2-option { display:grid }` without an authoritative `[hidden] { display:none }` rule.** Author CSS therefore defeated the visual effect of the HTML `hidden` state, so options that the availability predicate had correctly marked unavailable could remain visibly rendered.
+2. **Settings and older reapply wrappers still targeted the legacy v0.11 availability writer rather than one final rail-version-aware dispatcher.** On a v2 rail that path is semantically the wrong owner and is largely ineffective/no-op because v2 uses drawer-instance and binding-instance identity rather than the old section-option model.
+
+The correct bounded release is therefore:
 
 ```text
-legacy v0.11 availability owner
-  76-favorites-layout-state.js
-  78-favorites-filter-layout-runtime.js
-  82-favorites-layout-settings.js
-
-new v2 filter-rail owner
-  85-favorites-filter-revamp.js
+v2 availability predicate
+  -> one v2 facet refresh owner
+  -> root.hidden = true/false
+  -> CSS guarantees [hidden] means display:none
 ```
 
-The v2 rail has the more precise per-binding availability logic, especially for categories. However, old v0.11 wrappers remain installed around `favSaveAndApply()` and `favReapply()` and run a second legacy availability pass afterward.
-
-That later legacy pass can re-show controls that the v2 owner deliberately hid.
-
-The correct fix is to establish **one final availability writer for the live v2 rail**, not to add a third visibility pass.
+while old pre-v2 fixtures may continue to use the legacy availability writer through a dispatcher.
 
 ---
 
-## 1. Legacy availability layer remains active
+## 1. Capture and IndexedDB evidence
 
-`src/76-favorites-layout-state.js` defines:
+The Diagnostics session recorded `Hide unavailable catalogue filters` set to `Current filtered items`, yet categories with no matching Favorites remained visible. The user then compared modes and observed that the drawers/options appeared effectively unchanged.
 
-```text
-filterAvailabilityMode
-favAvailabilityRecords0110(sectionKey)
-favAvailabilityCaps0110(...)
-favOptionAvailable0110(...)
-favDeepVisibilityReady0110()
-```
+The companion IndexedDB export materially narrows the explanation:
 
-Its model predates the current v2 binding/drawer architecture.
+- exported active listings had category metadata present;
+- only a subset of Etsy top-level categories was represented by those records;
+- therefore the simple explanation “category is unknown, so fail open” is insufficient for the observed full category catalogue.
 
-`src/78-favorites-filter-layout-runtime.js` then defines:
-
-```text
-favApplyFilterLayoutAndAvailability0110(rail)
-```
-
-which walks `[data-ebsf-section]` and old option units and directly mutates `element.hidden`.
-
-More importantly, module 78 wraps both:
-
-```text
-favSaveAndApply
-favReapply
-```
-
-and schedules another call to the legacy availability writer after the underlying operation completes.
-
-Those wrappers remain part of the final runtime even though a later filter architecture has taken over the rail.
+This motivated the source-level recheck of the final v2 visibility path.
 
 ---
 
-## 2. The v2 rail has a separate, newer availability owner
+## 2. The v2 predicate itself is already category-specific
 
-`src/85-favorites-filter-revamp.js` introduced the current drawer/binding model:
+`src/85-favorites-filter-revamp.js` owns the current drawer/binding model:
 
 ```text
 favRecordsForBinding0120(bindingKey)
@@ -72,190 +49,230 @@ favBuildDrawer0120(...)
 favRefreshFacetAvailability0120(...)
 ```
 
-This model understands the actual v2 binding identity rather than trying to infer availability from old section option units.
+For `Current filtered items`, `favRecordsForBinding0120()` evaluates a faceted record universe with the current binding removed from the active config.
 
-For `Current filtered items`, it creates a facet-like record set by evaluating filters with the current binding/section removed.
-
-That is the behavior the UI setting promises.
-
----
-
-## 3. Category behavior proves the semantic difference
-
-The v2 category logic explicitly says:
-
-> Unknown category metadata is not evidence that every category is available.
-
-For a category binding, `favBindingAvailable0120()` requires a positive category match in the relevant records.
-
-By contrast, the earlier availability path was designed around broader capability/completeness checks. It can preserve options while broad deep metadata is unresolved, even when category itself is known well enough to decide that a specific category has no matches.
-
-The companion IndexedDB export contains known category metadata for every exported active listing and only a limited set of top-level categories are represented.
-
-Therefore the Diagnostics observation that many unsupported categories remain visible cannot be explained merely by category metadata being absent.
-
----
-
-## 4. Final writer order is the core bug
-
-The problematic effective sequence can be:
+For categories, `favBindingAvailable0120()` deliberately requires positive evidence:
 
 ```text
-user changes filter / reapply completes
--> v2 rail computes precise per-binding availability
--> v2 hides unsupported option
--> legacy module-78 finally/RAF callback runs
--> legacy availability function walks the same live rail
--> legacy rule decides the option is allowed/unknown
--> element.hidden is cleared again
+records.some(record => favCategoryMatch(record.deepMetadata?.category, categoryKey))
 ```
 
-Even when both layers happen to agree, the duplicate writers create redundant DOM mutations and make the behavior dependent on callback/RAF ordering.
+It does not globally treat unrelated unknown deep metadata as evidence that every category is available.
 
-This violates the broader architectural rule established by the audit:
+An already-active binding remains available so the user can still clear it.
 
-> one state concept should have one final runtime owner.
+That is the correct semantic direction.
 
 ---
 
-## 5. Settings currently talks to the legacy writer directly
+## 3. The decisive presentation bug: CSS overrode `hidden`
 
-`src/82-favorites-layout-settings.js` implements the Settings selector for:
+The v2 build/refresh path writes visibility using the HTML property:
 
 ```text
-Disabled
-Current catalogue
-Current filtered items
+option.hidden = !favBindingAvailable0120(...)
+root.hidden = found.option.hidden || !favBindingAvailable0120(...)
 ```
 
-On change it persists the preference and directly calls:
+But the v2 stylesheet contained:
+
+```css
+.ebsf-v2-option { display:grid; gap:6px }
+```
+
+without an explicit v2 `[hidden]` rule.
+
+The HTML `hidden` attribute is normally implemented by the user-agent stylesheet through `display:none`. An author stylesheet that explicitly sets `display:grid` on the same element can override that default presentation.
+
+So the runtime could reach the logically correct state:
 
 ```text
-favApplyFilterLayoutAndAvailability0110(favState.rail)
+root.hidden === true
 ```
 
-It also calls that legacy writer again after catalogue/extra-info loading.
+while the option remained visibly laid out as a grid.
 
-So even if the v2 rail itself is correct, the settings UI still targets the pre-v2 mutation owner.
+This is the strongest source-level explanation for the exact capture behavior and is the primary correctness bug fixed by v0.15.4.
 
-The setting should dispatch to the final rail availability owner, which can choose the correct implementation for the current rail revision.
+Required invariant:
 
----
+```css
+.ebsf-v2-option[hidden] { display:none !important }
+```
 
-## 6. Required bounded fix
-
-Do not add module 102 merely to patch module 85.
-
-Prefer a small cleanup in the existing ownership modules:
-
-1. define one final `refresh live Favorites filter availability` entry point;
-2. when the mounted rail is the v2 drawer/binding rail, only `favRefreshFacetAvailability0120()` may decide option visibility;
-3. keep legacy module-78 behavior only for any genuinely still-supported pre-v2 fixture/path, or retire it if no production path needs it;
-4. change Settings to call the final entry point rather than the legacy writer directly;
-5. stop the old post-`favSaveAndApply` / post-`favReapply` callback from mutating v2 option visibility;
-6. preserve user-custom hidden/reordered options and active controls while availability changes;
-7. update in place — no full rail replacement for ordinary availability changes.
-
-This release should not include the larger stable-sidebar mount refactor.
+The same principle should be applied whenever BetterSearch uses the HTML `hidden` state on elements that also receive explicit author `display` rules.
 
 ---
 
-## 7. Correct semantics
+## 4. Split refresh ownership is still real, but its effect is different than first assumed
+
+The legacy v0.11 layer remains in:
+
+```text
+76-favorites-layout-state.js
+78-favorites-filter-layout-runtime.js
+82-favorites-layout-settings.js
+```
+
+It owns the old model:
+
+```text
+section key
+legacy option units
+favApplyFilterLayoutAndAvailability0110(...)
+```
+
+The current v2 rail in module 85 instead uses:
+
+```text
+drawer instance IDs
+option instance IDs
+binding keys
+favRefreshFacetAvailability0120(...)
+```
+
+Because these identity models differ, the old writer generally does not correctly own v2 visibility. It is not accurate to describe it as reliably finding every v2 option and unhiding it after the v2 pass.
+
+The actual defect is architectural:
+
+- Settings directly called the legacy writer after changing availability mode;
+- older save/reapply wrappers also scheduled the legacy writer;
+- module 85 separately scheduled the real v2 facet refresh;
+- behavior therefore depended on two different refresh APIs, one of which was the wrong semantic owner for the mounted rail.
+
+This creates redundant work, makes Settings refresh behavior inconsistent with normal v2 reapply behavior, and obscures which function is authoritative.
+
+---
+
+## 5. v0.15.4 ownership boundary
+
+The bounded fix establishes one dispatcher:
+
+```text
+favRefreshFilterAvailability0110(rail)
+```
+
+Its contract is:
+
+```text
+if mounted rail is v2
+    schedule v2 facet availability owner
+else
+    run legacy v0.11 availability owner
+```
+
+Settings, legacy save/reapply wrappers, and the old catalogue-pruner compatibility hook call the dispatcher instead of directly mutating a v2 rail through the legacy model.
+
+The v2 implementation remains in module 85. No new module is added solely to override module 85.
+
+---
+
+## 6. Correct availability semantics
 
 ### Disabled
 
-Availability does not hide otherwise configured controls.
+Availability does not hide otherwise user-visible configured controls.
 
 ### Current catalogue
 
-For each binding, visibility is determined from the complete/current catalogue record universe appropriate to that scope.
+For each binding, availability is calculated from the current catalogue universe for the active Favorites scope.
 
 ### Current filtered items
 
 Use faceted semantics:
 
 ```text
-records = current filter result with this binding/section removed
+records = current result with this binding removed
 ```
 
-Then show an option if applying that option could match at least one record, subject to metadata-known rules.
+Then show the option only if applying it could match at least one record, subject to that binding's metadata requirements.
 
-An already-active option must stay visible so the user can turn it off even if the current result set would otherwise make it unavailable.
+### Active binding
+
+An active binding remains visible even if the current record universe otherwise says it is unavailable, so the user can turn it off.
 
 ### Metadata uncertainty
 
-Unknown for one unrelated metadata family must not automatically force every category or other independently-known binding visible.
-
-Availability should be decided per dependency/binding, not from one global `deep complete` boolean.
+Availability should be dependency-specific. Unknown shipping/gift-wrap/etc metadata must not automatically force all categories visible when category metadata itself is known.
 
 ---
 
-## 8. Required regression tests
+## 7. Regression requirements implemented for v0.15.4
 
-### Category with known metadata but unrelated deep fields unknown
+### Rail-version dispatch
 
-Fixture:
-
-```text
-records have known category metadata
-only Accessories + Art & Collectibles are represented
-shipping/gift-wrap/etc may remain unknown
-mode = Current filtered items
-```
-
-Assert:
+For a v2 rail:
 
 ```text
-represented categories visible
-unsupported categories hidden
-unrelated metadata uncertainty does not unhide all categories
+v2 facet scheduler called
+legacy availability writer not called
 ```
 
-### Final-writer test
-
-Simulate the completion sequence used by `favReapply()`.
-
-Assert:
+For a legacy rail:
 
 ```text
-v2 availability hides unsupported option
-legacy post-reapply callback cannot unhide it
+legacy writer remains available
 ```
 
-### Current catalogue vs current filtered items
+### Settings/reapply ownership
 
-Construct a small catalogue where an active price/seller filter removes one category.
+Settings and legacy reapply wrappers must call the final dispatcher rather than directly calling the legacy writer on the mounted v2 rail.
 
-Assert:
+### Hidden-state presentation
+
+The source must maintain both:
 
 ```text
-Current catalogue -> category remains available if catalogue contains it
-Current filtered items -> category hidden if no record matches other active filters
+runtime: root.hidden = ...
+CSS: .ebsf-v2-option[hidden] { display:none !important }
 ```
 
-### Active unavailable option remains controllable
+so the logical state and visible state cannot diverge.
 
-An active category/filter must remain visible until the user clears it.
+### Category positive evidence
 
-### No rail replacement
-
-Availability-only refresh must retain:
+Fixture with known categories:
 
 ```text
-rail root identity
-focused control
-open drawer state
-scroll position
+Jewelry present
+Art & Collectibles present
+Clothing absent
 ```
 
-### Settings selector
+must produce:
 
-Changing availability mode must invoke the final owner exactly once and produce the same result as an ordinary reapply.
+```text
+Jewelry visible
+Clothing hidden
+```
+
+while an active Clothing binding remains visible until cleared.
+
+### In-place update
+
+`favRefreshFacetAvailability0120()` must mutate option visibility in place and must not rebuild/replace/remove the rail merely to update availability.
+
+This protects rail identity, focus, open drawer state, and scroll state.
 
 ---
 
-## 9. Priority
+## 8. What this release intentionally does not solve
 
-This is a **small P1 correctness/UI release** and is a good candidate immediately after v0.15.3 A2.
+v0.15.4 does not include:
 
-It is lower architectural risk than moving the rail out of Etsy's hydrated sidebar, but it directly addresses a user-observed feature that currently appears nonfunctional and removes one concrete multi-writer conflict before the larger lifecycle consolidation.
+- the stable-sidebar mount refactor;
+- Etsy/Preact ownership separation for the persistent rail;
+- immutable catalogue snapshot generations;
+- signed render-generation transactions;
+- grid/pager atomic ownership;
+- global reconciliation/no-op-write consolidation.
+
+Those remain separate releases so this fix stays low-risk and directly attributable to the recorded availability failure.
+
+---
+
+## 9. Priority after correction
+
+This remains a **P1 correctness/UI release immediately after v0.15.3**.
+
+The next higher-impact lifecycle task remains the stable rail ownership refactor because the raw Diagnostics mutation stream directly proved Etsy reconciliation entering and deleting BetterSearch rail children while the rail is mounted inside Etsy's hydrated sidebar boundary.
