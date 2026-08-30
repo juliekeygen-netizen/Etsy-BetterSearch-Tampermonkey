@@ -12,6 +12,11 @@
  * Sort has one shared measured width and Search gets one shared responsive width
  * derived from the complete header. Loading progress is removed from document
  * flow and rendered on the metadata baseline at the far right of the header.
+ *
+ * The v0.15.17 Phase 2F follow-up keeps the same geometry formulas and lifecycle
+ * hooks but makes these older shared custom-property writes compare-before-write.
+ * Module 103 still owns the later exact desktop geometry; this layer now stops
+ * generating redundant style mutations while feeding that final owner.
  */
 
 var FAV_SHARED_SEARCH_RATIO0134 = 0.5;
@@ -171,6 +176,20 @@ favEnsureAllHeader0120 = function favEnsureAllHeader0133(content) {
     return header;
 };
 
+function favSetSharedToolbarStyle01517(node, property, value) {
+    if (!node?.style) return false;
+    const text = String(value ?? '');
+    if (node.style.getPropertyValue(property) === text) return false;
+    node.style.setProperty(property, text);
+    return true;
+}
+
+function favRemoveSharedToolbarStyle01517(node, property) {
+    if (!node?.style?.getPropertyValue(property)) return false;
+    node.style.removeProperty(property);
+    return true;
+}
+
 function favSharedToolbarGeometry0134() {
     const root = favState.sortRoot || document.querySelector('[data-ebsf-sort]');
     const row = root?.closest?.('[data-ebsf-toolbar-row]') || document.querySelector('[data-ebsf-toolbar-row]');
@@ -181,12 +200,12 @@ function favSharedToolbarGeometry0134() {
     favMeasureSortTrigger?.(root);
     const measured = root.style.getPropertyValue('--ebsf-sort-trigger-width').trim();
     if (measured) {
-        document.documentElement.style.setProperty('--ebsf-shared-sort-width0134', measured);
-        row.style.setProperty('--ebsf-narrow-sort-width', measured);
+        favSetSharedToolbarStyle01517(document.documentElement, '--ebsf-shared-sort-width0134', measured);
+        favSetSharedToolbarStyle01517(row, '--ebsf-narrow-sort-width', measured);
     }
 
     if (innerWidth <= 760) {
-        row.style.removeProperty('--ebsf-shared-search-width0134');
+        favRemoveSharedToolbarStyle01517(row, '--ebsf-shared-search-width0134');
         return;
     }
 
@@ -196,7 +215,11 @@ function favSharedToolbarGeometry0134() {
     const availableForSearch = Math.max(0, rowWidth - sortWidth - 40 - 12);
     const sharedSearchWidth = Math.min(headerWidth * FAV_SHARED_SEARCH_RATIO0134, availableForSearch);
     if (sharedSearchWidth > 0) {
-        row.style.setProperty('--ebsf-shared-search-width0134', `${Math.round(sharedSearchWidth * 100) / 100}px`);
+        favSetSharedToolbarStyle01517(
+            row,
+            '--ebsf-shared-search-width0134',
+            `${Math.round(sharedSearchWidth * 100) / 100}px`,
+        );
     }
 }
 
