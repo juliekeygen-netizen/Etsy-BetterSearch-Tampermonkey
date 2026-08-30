@@ -128,7 +128,7 @@ function favRepairListingIntegrity01510(listing, invalidScopeKeys = new Set()) {
         const membership = membershipValue && typeof membershipValue === 'object'
             ? membershipValue
             : {};
-        if (membership.active === true && Object.prototype.hasOwnProperty.call(membership, 'removedAt')) {
+        if (listing?.isFavorite === true && membership.active === true && Object.prototype.hasOwnProperty.call(membership, 'removedAt')) {
             const next = { ...membership };
             delete next.removedAt;
             nextScopes[scopeKey] = next;
@@ -244,9 +244,10 @@ function favIndexRepairOwnerlessScopes0153(db) {
  * unverifiable legacy query rows and their exact membership keys while keeping
  * listing/shop metadata. New verified query scopes remain bounded by TTL/LRU.
  *
- * This pass also clears contradictory active+removedAt tombstones. It does not
- * rewrite complete scope listingIds from listing-side state; committed snapshot
- * membership remains immutable until a verified replacement commit. */
+ * This pass clears stale active-scope tombstones only on listings that are
+ * currently globally favorite. It does not rewrite complete scope listingIds
+ * from listing-side state; committed snapshot membership remains immutable
+ * until a verified replacement commit. */
 function favIndexRepairStorageIntegrity01510(db, now = Date.now()) {
     const currentTime = Math.max(0, Number(now) || Date.now());
     const migrationNeeded = !favIndexIntegrityRepairDone01510();
