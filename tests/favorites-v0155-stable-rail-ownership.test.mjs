@@ -9,6 +9,32 @@ async function source(path) {
   return readFile(resolve(ROOT, path), 'utf8');
 }
 
+function loadRailGeometryHelpers(boundary) {
+  const start = boundary.indexOf('function favSetRailGeometryStyle01516');
+  const end = boundary.indexOf('function favSyncRailPortalGeometry0155', start);
+  assert.ok(start >= 0 && end > start, 'rail geometry helper block must exist');
+  const context = vm.createContext({ String });
+  vm.runInContext(`${boundary.slice(start, end)}\nglobalThis.testApi={apply:favApplyRailPortalRect01516};`, context);
+  return context.testApi;
+}
+
+function geometrySlot() {
+  const values = new Map();
+  const writes = [];
+  return {
+    writes,
+    slot:{
+      style:{
+        getPropertyValue(property) { return values.get(property) || ''; },
+        setProperty(property, value) {
+          writes.push([property, value]);
+          values.set(property, String(value));
+        },
+      },
+    },
+  };
+}
+
 test('stable rail modules load before shell repair and after the final smoke layer', async () => {
   const userscript = await source('etsy-bettersearch.user.js');
   const style = userscript.indexOf('/src/87-favorites-revamp-style.js');
@@ -52,10 +78,50 @@ test('native sidebar keeps its layout footprint while the body portal follows it
   assert.doesNotMatch(boundary, /\[data-testid="sidebar"\]\.ebsf-native-sidebar-suppressed\{[^}]*display:none/s);
   assert.match(boundary, /\[data-ebsf-rail-slot\]\{\s*position:fixed!important;/s);
   assert.match(boundary, /const rect = sidebar\.getBoundingClientRect/);
-  assert.match(boundary, /slot\.style\.left = `\$\{rect\.left\}px`/);
-  assert.match(boundary, /slot\.style\.top = `\$\{rect\.top\}px`/);
+  assert.match(boundary, /favApplyRailPortalRect01516\(slot, rect\)/);
   assert.match(boundary, /ResizeObserver/);
   assert.match(boundary, /window\.addEventListener\('scroll', favScheduleRailPortalGeometry0155/);
+});
+
+test('rail geometry writes all five values once, then performs zero writes for an identical rect', async () => {
+  const boundary = await source('src/87a-favorites-stable-rail-ownership.js');
+  const { apply } = loadRailGeometryHelpers(boundary);
+  const fixture = geometrySlot();
+  const rect = { left:24, top:120, width:248 };
+
+  assert.equal(apply(fixture.slot, rect), 5);
+  assert.deepEqual(fixture.writes.map(([property]) => property), [
+    'left', 'top', 'width', 'max-width', '--ebsf-native-sidebar-width',
+  ]);
+  fixture.writes.length = 0;
+  assert.equal(apply(fixture.slot, rect), 0);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test('rail geometry updates only top when scrolling changes vertical position', async () => {
+  const boundary = await source('src/87a-favorites-stable-rail-ownership.js');
+  const { apply } = loadRailGeometryHelpers(boundary);
+  const fixture = geometrySlot();
+  apply(fixture.slot, { left:24, top:120, width:248 });
+  fixture.writes.length = 0;
+
+  assert.equal(apply(fixture.slot, { left:24, top:76, width:248 }), 1);
+  assert.deepEqual(fixture.writes, [['top', '76px']]);
+});
+
+test('rail geometry updates only the three width-owned values when width changes', async () => {
+  const boundary = await source('src/87a-favorites-stable-rail-ownership.js');
+  const { apply } = loadRailGeometryHelpers(boundary);
+  const fixture = geometrySlot();
+  apply(fixture.slot, { left:24, top:120, width:248 });
+  fixture.writes.length = 0;
+
+  assert.equal(apply(fixture.slot, { left:24, top:120, width:264 }), 3);
+  assert.deepEqual(fixture.writes, [
+    ['width', '264px'],
+    ['max-width', '264px'],
+    ['--ebsf-native-sidebar-width', '264px'],
+  ]);
 });
 
 test('rail refresh preserves the permanent root identity', async () => {
