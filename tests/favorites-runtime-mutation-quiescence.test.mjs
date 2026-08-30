@@ -24,9 +24,7 @@ function makeElement({ owned = false, critical = false, parent = null, criticalD
 }
 
 function loadMutationApi() {
-  const code = [
-    block('var FAV_RUNTIME_OWNED_SURFACE0137', 'function favStartRuntime()'),
-  ].join('\n');
+  const code = block('var FAV_RUNTIME_OWNED_SURFACE0137', 'function favStartRuntime()');
   const scheduled = { sync:0, observe:0 };
   const context = vm.createContext({
     Array,
@@ -34,7 +32,7 @@ function loadMutationApi() {
     favScheduleSync:() => { scheduled.sync += 1; },
     favScheduleCurrentPageObservation:() => { scheduled.observe += 1; },
   });
-  vm.runInContext(`${code}\nglobalThis.testApi={needs:favRuntimeMutationNeedsLifecycle0137,handle:favRuntimeHandleMutations0137,scheduled};`, context);
+  vm.runInContext(`${code}\nglobalThis.testApi={needs:favRuntimeMutationNeedsLifecycle0137,handle:favRuntimeHandleMutations0137,scheduled,state:favState};`, context);
   return context.testApi;
 }
 
@@ -103,16 +101,12 @@ test('removing a critical BetterSearch ownership surface remains lifecycle-relev
 });
 
 test('render transaction mutations are ignored while favState.rendering is true', () => {
-  const { handle, scheduled } = loadMutationApi();
+  const { handle, scheduled, state } = loadMutationApi();
   const native = makeElement();
   const card = makeElement();
-  const api = loadMutationApi();
-  const contextState = api;
-  // Exercise the explicit source guard as well as the normal false path.
-  assert.match(block('function favRuntimeHandleMutations0137', 'function favStartRuntime()'), /if\(favState\.rendering\)return false/);
-  assert.equal(handle([{ type:'childList', target:native, addedNodes:[card], removedNodes:[] }]), true);
-  assert.deepEqual({ ...scheduled }, { sync:1, observe:1 });
-  void contextState;
+  state.rendering = true;
+  assert.equal(handle([{ type:'childList', target:native, addedNodes:[card], removedNodes:[] }]), false);
+  assert.deepEqual({ ...scheduled }, { sync:0, observe:0 });
 });
 
 test('urgent route sync cannot be postponed by generic mutation debounce', () => {
