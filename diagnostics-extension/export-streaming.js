@@ -1,11 +1,12 @@
 'use strict';
 
-// v0.2.7 page-side recorder lifecycle + bounded ZIP export.
+// v0.2.8 page-side recorder lifecycle + bounded, compressed ZIP export.
 //
-// The primary record button is visually "Cancel" while recording/paused and is
-// destructive only after confirmation. Stop & Export is transactional: stop,
-// build/download the bounded ZIP, verify backend cleanup, then reload into a
-// clean Ready-to-record state. Export failure keeps the stopped capture for retry.
+// Stop & Export is transactional: stop, build/download the bounded ZIP, verify
+// backend cleanup, then reload into a clean Ready-to-record state. Export
+// failure keeps the stopped capture for retry. Text-heavy forensic files use
+// lossless raw DEFLATE when the browser supports it; incompressible/binary files
+// and any compression failure safely fall back to ZIP STORE.
 (() => {
   const PANEL_ID = '__etsy_bettersearch_diagnostics__';
   const ARM_KEY = 'ebsf-diagnostics:armed:v1';
@@ -14,6 +15,9 @@
   const encoder = new TextEncoder();
   const ZIP32_MAX = 0xffffffff;
   const ZIP16_MAX = 0xffff;
+  const ZIP_DEFLATE_METHOD = 8;
+  const ZIP_STORE_METHOD = 0;
+  const COMPRESS_MIN_BYTES = 1024;
   let busy = false;
 
   function panel() { return document.getElementById(PANEL_ID); }
@@ -208,6 +212,20 @@
     return concatSmall([u16(0x0001), u16(data.length), data]);
   }
 
+  function zipPathCompressible(path) {
+    return /\.(?:json|ndjson|jsonl|har|txt|html?|css|js|mjs|csv|tsv|xml|svg|md|log|map)$/i.test(String(path || ''));
+  }
+
+  async function deflateRawParts(parts) {
+    if (typeof CompressionStream !== 'function') return null;
+    try {
+      const stream = new Blob(parts).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch (_) {
+      return null;
+    }
+  }
+
   class StreamingZipBuilder {
     constructor() {
       this.files = [];
@@ -239,9 +257,37 @@
         path: normalized,
         parts,
         size,
+        compressedSize: size,
+        method: ZIP_STORE_METHOD,
         crc: (crcState ^ 0xffffffff) >>> 0,
         date: new Date()
       });
+    }
+
+    async prepareCompression(onProgress = () => {}) {
+      let rawBytes = 0;
+      let packedBytes = 0;
+      let deflatedFiles = 0;
+      const supported = typeof CompressionStream === 'function';
+
+      for (let index = 0; index < this.files.length; index++) {
+        const file = this.files[index];
+        rawBytes += file.size;
+        onProgress({ index, count:this.files.length, path:file.path, rawBytes, packedBytes, supported });
+
+        if (supported && file.size >= COMPRESS_MIN_BYTES && zipPathCompressible(file.path)) {
+          const compressed = await deflateRawParts(file.parts);
+          if (compressed && compressed.length < file.size) {
+            file.parts = [compressed];
+            file.compressedSize = compressed.length;
+            file.method = ZIP_DEFLATE_METHOD;
+            deflatedFiles += 1;
+          }
+        }
+        packedBytes += file.compressedSize;
+        if (index % 4 === 3) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      return { rawBytes, packedBytes, deflatedFiles, supported };
     }
 
     toBlob() {
@@ -252,30 +298,37 @@
         const name = encoder.encode(file.path);
         const stamp = dosTime(file.date);
         const flags = 0x0800;
-        const largeSize = file.size > ZIP32_MAX;
-        const localExtra = largeSize ? zip64Extra([file.size, file.size]) : new Uint8Array(0);
+        const compressedSize = Number(file.compressedSize) || 0;
+        const uncompressedLarge = file.size > ZIP32_MAX;
+        const compressedLarge = compressedSize > ZIP32_MAX;
+        const largeSize = uncompressedLarge || compressedLarge;
+        const localZip64Values = [];
+        if (uncompressedLarge) localZip64Values.push(file.size);
+        if (compressedLarge) localZip64Values.push(compressedSize);
+        const localExtra = zip64Extra(localZip64Values);
         const localVersion = largeSize ? 45 : 20;
         const local = concatSmall([
-          u32(0x04034b50), u16(localVersion), u16(flags), u16(0), u16(stamp.time), u16(stamp.date),
-          u32(file.crc), u32(largeSize ? ZIP32_MAX : file.size), u32(largeSize ? ZIP32_MAX : file.size),
+          u32(0x04034b50), u16(localVersion), u16(flags), u16(file.method), u16(stamp.time), u16(stamp.date),
+          u32(file.crc), u32(compressedLarge ? ZIP32_MAX : compressedSize), u32(uncompressedLarge ? ZIP32_MAX : file.size),
           u16(name.length), u16(localExtra.length), name, localExtra
         ]);
         localParts.push(local, ...file.parts);
 
         const largeOffset = offset > ZIP32_MAX;
         const centralZip64Values = [];
-        if (largeSize) centralZip64Values.push(file.size, file.size);
+        if (uncompressedLarge) centralZip64Values.push(file.size);
+        if (compressedLarge) centralZip64Values.push(compressedSize);
         if (largeOffset) centralZip64Values.push(offset);
         const centralExtra = zip64Extra(centralZip64Values);
         const centralVersion = largeSize || largeOffset ? 45 : 20;
         centralParts.push(concatSmall([
-          u32(0x02014b50), u16(centralVersion), u16(centralVersion), u16(flags), u16(0),
+          u32(0x02014b50), u16(centralVersion), u16(centralVersion), u16(flags), u16(file.method),
           u16(stamp.time), u16(stamp.date), u32(file.crc),
-          u32(largeSize ? ZIP32_MAX : file.size), u32(largeSize ? ZIP32_MAX : file.size),
+          u32(compressedLarge ? ZIP32_MAX : compressedSize), u32(uncompressedLarge ? ZIP32_MAX : file.size),
           u16(name.length), u16(centralExtra.length), u16(0), u16(0), u16(0), u32(0),
           u32(largeOffset ? ZIP32_MAX : offset), name, centralExtra
         ]));
-        offset += local.length + file.size;
+        offset += local.length + compressedSize;
         if (!Number.isSafeInteger(offset)) throw new Error('ZIP grew beyond JavaScript safe-integer addressing.');
       }
 
@@ -380,6 +433,19 @@
     const zip = new StreamingZipBuilder();
     for (let index = 0; index < files.length; index++) {
       await loadPreparedFile(zip, sessionId, files[index], index, files.length);
+    }
+
+    setStatus('Compressing ZIP losslessly…');
+    const compression = await zip.prepareCompression(({ index, count, path }) => {
+      setStatus(`Compressing ZIP ${index + 1}/${count} · ${path}`);
+    });
+    if (compression.deflatedFiles) {
+      const percent = compression.rawBytes > 0
+        ? Math.max(0, Math.round((1 - compression.packedBytes / compression.rawBytes) * 100))
+        : 0;
+      appendActivity(`Lossless ZIP compression: ${compression.deflatedFiles} file(s) deflated; payload reduced by about ${percent}% before ZIP headers.`);
+    } else if (!compression.supported) {
+      appendActivity('Browser raw-DEFLATE support unavailable; ZIP safely fell back to uncompressed STORE entries.');
     }
 
     setStatus('Packing ZIP from bounded byte parts…');
