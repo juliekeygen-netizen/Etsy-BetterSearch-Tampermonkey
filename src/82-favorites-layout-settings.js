@@ -33,10 +33,10 @@ favOpenSettingsModal = function favOpenSettingsModal0110(event) {
         favUiPrefs.filterAvailabilityMode = changeEvent.target.value;
         favUiPrefs.hideUnavailableCatalogFilters = changeEvent.target.value !== 'disabled';
         favSaveUiPrefs();
-        if (favState.filterOpen && favState.rail) favApplyFilterLayoutAndAvailability0110(favState.rail);
+        if (favState.filterOpen && favState.rail) favRefreshFilterAvailability0110(favState.rail);
         if (changeEvent.target.value !== 'disabled') {
             void favLoadAll(false).then(() => favEnsureExtraInfo()).finally(() => {
-                if (favState.filterOpen && favState.rail) favApplyFilterLayoutAndAvailability0110(favState.rail);
+                if (favState.filterOpen && favState.rail) favRefreshFilterAvailability0110(favState.rail);
             });
         }
     });
@@ -60,7 +60,7 @@ if (isFavoritesPage()) {
     favEnsureVisibleActiveSort0110();
     requestAnimationFrame(() => {
         favRebuildSortControl0110();
-        if (favState.filterOpen && favState.rail) favApplyFilterLayoutAndAvailability0110(favState.rail);
+        if (favState.filterOpen && favState.rail) favRefreshFilterAvailability0110(favState.rail);
     });
 }
 
