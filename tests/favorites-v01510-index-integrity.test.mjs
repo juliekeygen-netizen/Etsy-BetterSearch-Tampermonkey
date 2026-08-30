@@ -133,8 +133,8 @@ test('query retention never prunes canonical scopes and applies trust, TTL, zero
   const api = loadBoundaryHelpers();
   const DAY = 24 * 60 * 60 * 1000;
   const now = 100 * DAY;
-  const verified = (key, query, observedAt, listingIds=['1']) => ({
-    scopeKey:key, owner:'owner', type:'items', id:'', query,
+  const verified = (key, query, observedAt, listingIds=['1'], id='') => ({
+    scopeKey:key, owner:'owner', type:'items', id, query,
     queryCommitVerified:true, queryCommitSource:'favorites-search-commit',
     lastObservedAt:observedAt, listingIds,
   });
@@ -143,7 +143,7 @@ test('query retention never prunes canonical scopes and applies trust, TTL, zero
     { scopeKey:'legacy-unverified', owner:'owner', type:'items', id:'', query:'legacy', lastObservedAt:now, listingIds:['1'] },
     verified('zero-old', 'zero', now - 2 * DAY, []),
     verified('stale', 'stale', now - 31 * DAY, ['1']),
-    verified('recent-zero', 'recent-zero', now - 2 * 60 * 60 * 1000, []),
+    verified('recent-zero', 'recent-zero', now - 2 * 60 * 60 * 1000, [], 'other-base'),
   ];
   for (let index = 0; index < 14; index++) {
     scopes.push(verified(`lru-${index}`, `q-${index}`, now - index * 1000, ['1']));
@@ -184,6 +184,13 @@ test('reactivation clears stale removedAt and integrity cleanup removes only inv
   const repaired = api.repairListing(merged, new Set(['invalid']));
   assert.equal(Object.hasOwn(repaired.favoriteScopes, 'invalid'), false);
   assert.equal(repaired.favoriteScopes.keep.active, true);
+
+  const unfavorited = api.repairListing({
+    listingId:'2',
+    isFavorite:false,
+    favoriteScopes:{ keep:{ active:true, removedAt:300, lastSeenAt:200 } },
+  }, new Set());
+  assert.equal(unfavorited.favoriteScopes.keep.removedAt, 300, 'global unfavorite evidence must not be erased by a scope contradiction');
 });
 
 test('owner maintenance uses latest complete canonical All membership instead of query or collection unions', () => {
