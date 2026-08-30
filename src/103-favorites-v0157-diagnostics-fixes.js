@@ -99,7 +99,10 @@ favBindingAvailable0120 = function favBindingAvailable0157(bindingKey) {
 };
 
 function favSimilarListingsModule0157() {
-    return document.getElementById('favorites_similar_listings');
+    /* Etsy has used both identities in live/diagnostic markup. The original
+     * v0.15.7 observer recognized both, but the actual offset writer only looked
+     * up the id and silently skipped a data-attribute-only module. */
+    return document.querySelector('#favorites_similar_listings,[data-favorites-similar-listings]');
 }
 
 function favClearSimilarListingsOffset0157(module = favSimilarListingsModule0157()) {
@@ -141,7 +144,7 @@ function favApplySimilarListingsOffset0157() {
 
     favStyleSet0157(module, 'padding-left', `${offset}px`);
     favStyleSet0157(module, 'box-sizing', 'border-box');
-    module.dataset.ebsfRailOffset0157 = '1';
+    if (module.dataset.ebsfRailOffset0157 !== '1') module.dataset.ebsfRailOffset0157 = '1';
 }
 
 function favScheduleSimilarListingsOffset0157() {
@@ -151,21 +154,6 @@ function favScheduleSimilarListingsOffset0157() {
         favApplySimilarListingsOffset0157();
     });
 }
-
-function favNodeTouchesSimilarListings0157(node) {
-    const element = node?.nodeType === 1 ? node : node?.parentElement || null;
-    return Boolean(element && (
-        element.matches?.('#favorites_similar_listings,[data-favorites-similar-listings]')
-        || element.querySelector?.('#favorites_similar_listings,[data-favorites-similar-listings]')
-    ));
-}
-
-var favSimilarListingsObserver0157 = new MutationObserver((records) => {
-    if (records.some((record) => [...record.addedNodes, ...record.removedNodes].some(favNodeTouchesSimilarListings0157))) {
-        favScheduleSimilarListingsOffset0157();
-    }
-});
-favSimilarListingsObserver0157.observe(document.body, { childList:true, subtree:true });
 
 function favSetDynamicToolbarStack0157(header, enabled) {
     if (!header) return;

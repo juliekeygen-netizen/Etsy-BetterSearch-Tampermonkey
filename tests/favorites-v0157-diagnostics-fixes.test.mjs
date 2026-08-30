@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { ROOT } from '../scripts/project.mjs';
 
 const source = await readFile(resolve(ROOT, 'src/103-favorites-v0157-diagnostics-fixes.js'), 'utf8');
+const stableOwner = await readFile(resolve(ROOT, 'src/102-favorites-v0155-stable-ownership-final.js'), 'utf8');
 const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
 
 function loadPureHelpers() {
@@ -75,19 +76,20 @@ test('885px resize path deliberately releases desktop width ownership for the re
   assert.match(source, /innerWidth < 900[\s\S]*removeProperty\('--ebsf-shared-search-width0134'\)/);
 });
 
-test('zero-result Etsy recommendations are offset in place and never reparented into the BetterSearch rail', () => {
-  assert.match(source, /getElementById\('favorites_similar_listings'\)/);
+test('zero-result Etsy recommendations accept both live identities, are offset in place, and are never reparented', () => {
+  assert.match(source, /querySelector\('#favorites_similar_listings,\[data-favorites-similar-listings\]'\)/);
   assert.match(source, /targetRect\.left - moduleRect\.left/);
   assert.match(source, /padding-left/);
   assert.match(source, /box-sizing/);
   assert.doesNotMatch(source, /favorites_similar_listings[\s\S]{0,500}(appendChild|replaceChildren|insertBefore)\(/);
 });
 
-test('recommendation observer is narrowly triggered only by similar-listings node additions/removals', () => {
-  assert.match(source, /record\.addedNodes, \.\.\.record\.removedNodes/);
-  assert.match(source, /#favorites_similar_listings,\[data-favorites-similar-listings\]/);
-  assert.match(source, /observe\(document\.body, \{ childList:true, subtree:true \}\)/);
-  assert.doesNotMatch(source, /attributes:true/);
+test('recommendation lifecycle reuses the final shell observer instead of installing a second body-wide observer', () => {
+  assert.match(stableOwner, /#favorites_similar_listings,\[data-favorites-similar-listings\]/);
+  assert.match(stableOwner, /favScheduleShellRepair0123\(\)/);
+  assert.match(stableOwner, /observe\(document\.body, \{ childList:true, subtree:true \}\)/);
+  assert.doesNotMatch(source, /new MutationObserver/);
+  assert.doesNotMatch(source, /observe\(document\.body/);
 });
 
 test('toolbar alignment compensates for its current transform mathematically instead of clearing it on the normal measurement path', () => {

@@ -50,7 +50,33 @@ async function loadZipBuilder() {
   return context.testApi.StreamingZipBuilder;
 }
 
-test('Diagnostics 0.2.8 loads resumable guard, visual export lock, then streaming exporter', () => {
+function loadLockHelpers() {
+  const start = polish.indexOf('function lockPanel(root)');
+  const end = polish.indexOf('function exportOverlayVisible()', start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({
+    OWNED_ARIA_DISABLED:'data-ebsf-export-aria-disabled-owned',
+    OWNED_ARIA_BUSY:'data-ebsf-export-aria-busy-owned',
+    installStyle:() => {},
+    freezeElapsed:() => {},
+  });
+  vm.runInContext(`${polish.slice(start, end)}\nglobalThis.testApi={lockPanel,unlockPanel};`, context);
+  return context.testApi;
+}
+
+function fakeElement(initial = {}) {
+  const attrs = new Map(Object.entries(initial));
+  return {
+    dataset:{},
+    getAttribute:(name) => attrs.has(name) ? attrs.get(name) : null,
+    setAttribute:(name, value) => attrs.set(name, String(value)),
+    removeAttribute:(name) => attrs.delete(name),
+    querySelectorAll:() => [],
+    attrs,
+  };
+}
+
+test('Diagnostics 0.2.8+ loads resumable guard, visual export lock, then streaming exporter', () => {
   const scripts = manifest.content_scripts.find((entry) => entry.run_at === 'document_start')?.js || [];
   const guard = scripts.indexOf('export-resume-guard.js');
   const ui = scripts.indexOf('export-ui-polish.js');
@@ -67,6 +93,39 @@ test('export lock shows Exporting, freezes elapsed presentation and blocks stale
   assert.match(polish, /aria-disabled/);
   assert.match(polish, /event\.isTrusted !== true/);
   assert.match(polish, /readStopped\(\)\?\.sessionId.*location\.reload/s);
+});
+
+test('export lock preserves controls that were already aria-disabled and restores only state it owns', () => {
+  const { lockPanel, unlockPanel } = loadLockHelpers();
+  const alreadyDisabled = fakeElement({ 'aria-disabled':'true' });
+  const enabled = fakeElement();
+  const root = fakeElement();
+  root.querySelectorAll = (selector) => selector.startsWith('button')
+    ? [alreadyDisabled, enabled]
+    : selector.includes('data-ebsf-export-aria-disabled-owned')
+      ? [enabled]
+      : [];
+
+  lockPanel(root);
+  assert.equal(alreadyDisabled.getAttribute('aria-disabled'), 'true');
+  assert.equal(alreadyDisabled.getAttribute('data-ebsf-export-aria-disabled-owned'), null);
+  assert.equal(enabled.getAttribute('aria-disabled'), 'true');
+  assert.equal(enabled.getAttribute('data-ebsf-export-aria-disabled-owned'), '1');
+  assert.equal(root.getAttribute('aria-busy'), 'true');
+  assert.equal(root.getAttribute('data-ebsf-export-aria-busy-owned'), '1');
+
+  unlockPanel(root);
+  assert.equal(alreadyDisabled.getAttribute('aria-disabled'), 'true');
+  assert.equal(enabled.getAttribute('aria-disabled'), null);
+  assert.equal(enabled.getAttribute('data-ebsf-export-aria-disabled-owned'), null);
+  assert.equal(root.getAttribute('aria-busy'), null);
+});
+
+test('export UI observes only the overlay lifecycle and has no 120ms whole-page polling loop', () => {
+  assert.match(polish, /rootObserver\.observe\(document\.documentElement, \{ childList:true \}\)/);
+  assert.match(polish, /overlayObserver\.observe\(root, \{ attributes:true, attributeFilter:\['hidden'\] \}\)/);
+  assert.doesNotMatch(polish, /subtree:\s*true/);
+  assert.doesNotMatch(polish, /setInterval\(sync,\s*120\)/);
 });
 
 test('streaming ZIP losslessly DEFLATEs compressible forensic text', async () => {

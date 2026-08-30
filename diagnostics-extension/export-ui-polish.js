@@ -1,21 +1,27 @@
 'use strict';
 
-// v0.2.8 visible export-state ownership.
+// v0.2.9 visible export-state ownership hardening.
 //
 // The resumable-export guard is the authoritative signal that a protected ZIP
 // export owns the page. The older recorder controls keep their own in-memory
 // recording state, so stopping from the guard can otherwise leave the panel
 // looking live while the backend is already stopped. Mirror the guard overlay
 // into a hard visual/interaction state without changing capture semantics.
+//
+// This layer must also be diagnostically quiet: observe only the export overlay,
+// compare before writing, and remove only accessibility state that this layer
+// itself introduced. Diagnostics must not create another page-wide mutation loop.
 (() => {
   const PANEL_ID = '__etsy_bettersearch_diagnostics__';
   const OVERLAY_ID = '__ebsf_diagnostics_exporting_overlay__';
   const STOPPED_KEY = 'ebsf-diagnostics:stopped:v1';
   const STYLE_ID = `${PANEL_ID}-export-ui-v028-style`;
+  const OWNED_ARIA_DISABLED = 'data-ebsf-export-aria-disabled-owned';
+  const OWNED_ARIA_BUSY = 'data-ebsf-export-aria-busy-owned';
   let exporting = false;
   let lastFrozen = '';
-  let observer = null;
-  let pollTimer = 0;
+  let rootObserver = null;
+  let overlayObserver = null;
 
   function panel() { return document.getElementById(PANEL_ID); }
   function overlay() { return document.getElementById(OVERLAY_ID); }
@@ -85,27 +91,36 @@
     }
     lastFrozen = frozen;
     for (const node of root.querySelectorAll('[data-role="elapsed-v2"], [data-role="elapsed-core"], [data-role="elapsed"]')) {
-      node.dataset.ebsfExportFrozen = frozen;
+      if (node.dataset.ebsfExportFrozen !== frozen) node.dataset.ebsfExportFrozen = frozen;
     }
   }
 
   function lockPanel(root) {
     if (!root) return;
     installStyle();
-    root.dataset.ebsfExporting = '1';
-    root.setAttribute('aria-busy', 'true');
+    if (root.dataset.ebsfExporting !== '1') root.dataset.ebsfExporting = '1';
+    if (root.getAttribute('aria-busy') !== 'true') {
+      root.setAttribute('aria-busy', 'true');
+      root.setAttribute(OWNED_ARIA_BUSY, '1');
+    }
     freezeElapsed(root);
     for (const node of root.querySelectorAll('button,input,select,textarea')) {
+      if (node.getAttribute('aria-disabled') === 'true') continue;
       node.setAttribute('aria-disabled', 'true');
+      node.setAttribute(OWNED_ARIA_DISABLED, '1');
     }
   }
 
   function unlockPanel(root) {
     if (!root) return;
-    delete root.dataset.ebsfExporting;
-    root.removeAttribute('aria-busy');
-    for (const node of root.querySelectorAll('button,input,select,textarea')) {
+    if (root.dataset.ebsfExporting === '1') delete root.dataset.ebsfExporting;
+    if (root.getAttribute(OWNED_ARIA_BUSY) === '1') {
+      root.removeAttribute('aria-busy');
+      root.removeAttribute(OWNED_ARIA_BUSY);
+    }
+    for (const node of root.querySelectorAll(`[${OWNED_ARIA_DISABLED}="1"]`)) {
       node.removeAttribute('aria-disabled');
+      node.removeAttribute(OWNED_ARIA_DISABLED);
     }
   }
 
@@ -133,16 +148,28 @@
     if (readStopped()?.sessionId) setTimeout(() => location.reload(), 180);
   }
 
+  function bindOverlayObserver() {
+    const root = overlay();
+    if (!root) return false;
+    rootObserver?.disconnect();
+    rootObserver = null;
+    overlayObserver?.disconnect();
+    overlayObserver = new MutationObserver(sync);
+    overlayObserver.observe(root, { attributes:true, attributeFilter:['hidden'] });
+    sync();
+    return true;
+  }
+
   function installObserver() {
-    if (observer) return;
-    observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['hidden']
+    if (bindOverlayObserver()) return;
+
+    // export-resume-guard appends the overlay directly to documentElement. Watch
+    // only that direct child list until the overlay exists, then disconnect and
+    // observe the overlay's single authoritative `hidden` state attribute.
+    rootObserver = new MutationObserver(() => {
+      if (overlay()) bindOverlayObserver();
     });
-    pollTimer = setInterval(sync, 120);
+    rootObserver.observe(document.documentElement, { childList:true });
     sync();
   }
 
