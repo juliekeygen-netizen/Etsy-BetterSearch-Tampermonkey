@@ -10,8 +10,8 @@ const exporter = await readFile(new URL('../diagnostics-extension/export-streami
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 const check = await readFile(new URL('../scripts/check.mjs', import.meta.url), 'utf8');
 
-test('v0.2.8 installs the resume guard before the existing bounded ZIP exporter', () => {
-  assert.equal(manifest.version, '0.2.8');
+test('Diagnostics 0.2.9 keeps the 0.2.8 resume guard before the bounded ZIP exporter', () => {
+  assert.equal(manifest.version, '0.2.9');
   const scripts = manifest.content_scripts[0].js;
   assert.ok(scripts.indexOf('export-resume-guard.js') > scripts.indexOf('controls.js'));
   assert.ok(scripts.indexOf('export-resume-guard.js') < scripts.indexOf('export-streaming.js'));
