@@ -27,6 +27,12 @@ function extractAssignment(source, functionName) {
   return match[0];
 }
 
+function extractRemovalSource(source) {
+  const match = source.match(/var FAV_OWNER_HEART_REMOVAL_SOURCE01519\s*=\s*(['"])(.*?)\1;/);
+  assert.ok(match, 'expected v0.15.19 owner-heart removal source in real module');
+  return match[2];
+}
+
 test('final userscript order reasserts owner maintenance after 61h at behavior-gate identity', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
   const membership = userscript.indexOf('/src/61eb-favorites-multi-owner-membership.js?v=0.15.20');
@@ -47,6 +53,7 @@ test('61h stale global gate is inverted by the final owner-aware maintenance bou
 
   const owner = 'ownerA';
   const key = scopeKey(owner);
+  const removalSource = extractRemovalSource(membershipSource);
   const scope = {
     owner,
     type:'items',
@@ -70,7 +77,7 @@ test('61h stale global gate is inverted by the final owner-aware maintenance bou
       listingId:'Y',
       isFavorite:true,
       favoriteScopes:{
-        [key]:{ active:false, removedAt:200, removalSource:'viewer-own-native-heart' },
+        [key]:{ active:false, removedAt:200, removalSource },
       },
     },
   ];
@@ -102,6 +109,7 @@ test('61h stale global gate is inverted by the final owner-aware maintenance bou
 
   const context = vm.createContext({
     console,
+    FAV_OWNER_HEART_REMOVAL_SOURCE01519:removalSource,
     favIndexOpen:async () => db,
     favIndexRequest:async (request) => request.result,
     favIndexScopeKey:(value) => scopeKey(value.owner, value.type, value.id, value.query),
@@ -121,6 +129,8 @@ test('61h stale global gate is inverted by the final owner-aware maintenance bou
 
   vm.runInContext(extractFunction(membershipSource, 'favScopeCommittedAt01519'), context);
   vm.runInContext(extractFunction(membershipSource, 'favTrustedOwnHeartRemoval01519'), context);
+  vm.runInContext(extractFunction(membershipSource, 'favOwnerMembershipScopes01519'), context);
+  vm.runInContext(extractFunction(membershipSource, 'favOwnerScopeBaselineActive01519'), context);
   vm.runInContext(extractFunction(membershipSource, 'favOwnerActiveListings01519'), context);
   vm.runInContext(extractAssignment(coordinatorSource, 'favIndexGetActiveListings0141'), context);
 
