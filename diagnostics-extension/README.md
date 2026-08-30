@@ -26,7 +26,23 @@ Every event includes an ISO/wall-clock timestamp and monotonic timing relative t
    - press Chrome's debugger-banner **Cancel** control. Diagnostics treats Chrome's `canceled_by_user` detach as Stop + Export and requests the same retained ZIP export automatically.
 8. Upload the resulting ZIP for analysis. It contains `network/network.har` plus the richer raw timeline/DOM/marker data, so a separate DevTools HAR should normally not be necessary.
 
-If a banner-Cancel export is interrupted or fails, the stopped recording remains available through **Export ZIP**. It is not automatically rebuilt on later Etsy page loads, so merely enabling Diagnostics or reopening Etsy stays passive.
+## Diagnostics 0.2.8 export lifecycle
+
+`Stop & Export ZIP` is protected and resumable rather than being a best-effort page task:
+
+- the export job is durably secured before the normal ZIP exporter is replayed;
+- the backend recording is stopped and retained before the potentially long ZIP build;
+- a full-page **Exporting…** overlay makes the protected state obvious and installs browser unload protection;
+- the recorder panel mirrors that ownership state: elapsed time is visually frozen at the stopped duration, the primary status remains **Exporting…**, and recorder/settings controls are visibly locked so stale in-memory `Recording` UI cannot be operated;
+- detailed `Reading…`, `Compressing…`, `Packing…`, and cleanup progress remains available in the overlay/activity log without replacing the panel's primary Exporting state;
+- if the tab/page disappears, the durable job and stopped raw capture survive and can resume from another Etsy document or after a browser restart;
+- a failed export keeps the stopped recording for retry instead of silently discarding it.
+
+The final ZIP is also **losslessly compressed**. Text-heavy forensic entries (`.har`, JSON/NDJSON, HTML and text response bodies, logs, etc.) use ZIP raw DEFLATE when available; already-compressed/binary entries such as screenshots remain STORE when appropriate. Compression failure never makes the export fail—the affected entry safely falls back to STORE.
+
+This changes archive size only, not diagnostic content. For the 2026-08-30 validation captures, offline DEFLATE of the exact same entries reduced the larger ~363 MB STORE archive to about ~58 MB and the ~74.6 MB resize archive to about ~10.3 MB, with no events/files removed.
+
+If a banner-Cancel or protected export still fails, the stopped recording remains available through **Export ZIP**. Diagnostics will not discard it until the download path and final cleanup complete.
 
 ## Build output
 
