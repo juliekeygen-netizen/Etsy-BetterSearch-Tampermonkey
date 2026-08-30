@@ -120,15 +120,14 @@ function favIndexRepairOwnerlessScopes0153(db) {
  * by cache bootstrap before the repair transaction removes it. */
 var favIndexOpenBefore0153 = favIndexOpen;
 favIndexOpen = function favIndexOpen0153() {
+    if (favIndexOwnerRepairPromise0153) return favIndexOwnerRepairPromise0153;
     const database = favIndexOpenBefore0153();
-    if (!favIndexOwnerRepairPromise0153) {
-        favIndexOwnerRepairPromise0153 = database
-            .then((db) => favIndexRepairOwnerlessScopes0153(db).then(() => db))
-            .catch((error) => {
-                favIndexOwnerRepairPromise0153 = null;
-                throw error;
-            });
-    }
+    favIndexOwnerRepairPromise0153 = database
+        .then((db) => favIndexRepairOwnerlessScopes0153(db).then(() => db))
+        .catch((error) => {
+            favIndexOwnerRepairPromise0153 = null;
+            throw error;
+        });
     return favIndexOwnerRepairPromise0153;
 };
 
