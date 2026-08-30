@@ -335,3 +335,73 @@ A mismatch between current trusted native/server count and cached complete-gener
 Diagnostics should record why auto-sync did or did not start (`disabled`, `not-own-profile`, `owner-unresolved`, `throttled`, `fresh`, `integrity-invalid`, `due`, etc.) so future captures can distinguish policy decisions from bugs.
 
 See `FAVORITES_AUDIT_CONTINUATION_2026-08-30.md` for the broader second-pass writer/lifecycle/query/pagination findings.
+
+---
+
+## 13. v0.15.6–v0.15.10 resolution status — 2026-08-30
+
+The later implementation audit converted several findings above from design recommendations into enforced invariants.
+
+### Immutable committed membership — fixed in v0.15.6 and strengthened in v0.15.9
+
+The current persistence model separates committed membership from pending replacement membership. Partial crawler pages may update metadata/pending state but cannot edit committed `listingIds`. A verified complete generation performs the authoritative swap.
+
+v0.15.9 additionally closes the cross-tab stale read/write window by reading the latest scope/listing/shop state, merging it and writing it inside one overlapping-store IndexedDB `readwrite` transaction. Serialized interleaving tests cover both writer orderings and prevent an older observation from regressing a newer committed generation.
+
+### Query-scope provenance and retention — fixed in v0.15.10
+
+Non-empty durable query scopes now require one of three explicit commit sources:
+
+```text
+route
+ssr-props
+favorites-search-commit
+```
+
+The current focused input value is not itself a durable dataset identity. Query strings longer than 512 characters are rejected at the persistence boundary.
+
+Historical non-empty query scopes created before provenance existed are treated as unverifiable caches and removed together with only their exact listing-side membership keys. Listing/shop metadata is retained.
+
+Verified query caches are bounded:
+
+```text
+normal verified query TTL: 30 days
+zero-result query TTL:     24 hours
+per base scope:            12 most recent query scopes
+GC cadence:                at most once per 6 hours per document profile state
+```
+
+Canonical no-query scopes are excluded from query GC.
+
+A regression fixture specifically verifies that arbitrary Diagnostics-note-like free-form text cannot become a durable query while the actual Favorites Search value remains unchanged.
+
+### Active membership tombstones — fixed in v0.15.10
+
+Reactivation clears stale `removedAt` only when the listing is currently globally favorite and the exact membership is active. The one-time logical migration repairs historical active+tombstone rows under that same rule.
+
+A globally unfavorited listing with contradictory active scope state keeps its removal evidence for later reconciliation rather than having that evidence erased automatically.
+
+### Owner-wide stats/maintenance contamination — fixed in v0.15.10
+
+Owner-scoped statistics and active-listing maintenance now prefer the latest complete canonical no-query All scope. Retained query/collection scopes can no longer broaden the owner's current maintenance universe.
+
+If no complete canonical All snapshot exists yet, the migration/fresh-profile fallback uses no-query scopes only; query caches are still excluded.
+
+### Deliberately not repaired by v0.15.10
+
+The migration does **not** reconstruct complete scope `listingIds` from listing-side membership state. Doing so would violate immutable snapshot ownership and could turn stale listing evidence into an authoritative complete generation.
+
+The remaining scope/listing disagreements therefore need a separately specified reconciliation rule or a fresh verified complete replacement crawl.
+
+### Next proven count-authority bug
+
+The page-shell count helper still currently gives `favState.total` precedence over live Etsy prop totals:
+
+```text
+favState.total
+-> props.totalListings
+-> props.itemCount
+-> records.length
+```
+
+Because cache bootstrap can populate `favState.total` from an older committed snapshot, a stale cache count can outrank newer current Etsy count evidence. This is the next bounded correctness fix; server/current-page count, committed-snapshot count, filtered shown count and global indexed-row count must remain semantically distinct.
