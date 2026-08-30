@@ -8,7 +8,7 @@ const packageJson = JSON.parse(await readFile(new URL('../package.json', import.
 const shell = await readFile(new URL('../src/86-favorites-page-shell.js', import.meta.url), 'utf8');
 const legacyPagination = await readFile(new URL('../src/95-favorites-responsive-pagination.js', import.meta.url), 'utf8');
 
-test('current release cache-busts every userscript module and keeps browser hardening last', () => {
+test('current release cache-busts every userscript module and keeps final stable-ownership hardening last', () => {
   assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   if (!userscript) return;
   const metaVersion = userscript.match(/^\/\/ @version\s+(\S+)$/m)?.[1] || '';
@@ -16,10 +16,11 @@ test('current release cache-busts every userscript module and keeps browser hard
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
   assert.ok(requires.length > 50, 'expected the shared module chain');
   assert.ok(requires.every((url) => new URL(url).searchParams.get('v') === packageJson.version), 'every @require must use the current package version as its cache key');
-  assert.equal(
-    requires.at(-1) || '',
-    `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/101-favorites-v0141-smoke-fixes.js?v=${packageJson.version}`,
-  );
+  const smoke = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/101-favorites-v0141-smoke-fixes.js?v=${packageJson.version}`;
+  const finalOwnership = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/102-favorites-v0155-stable-ownership-final.js?v=${packageJson.version}`;
+  assert.ok(requires.indexOf(smoke) >= 0, 'historical browser smoke hardening remains loaded');
+  assert.ok(requires.indexOf(finalOwnership) > requires.indexOf(smoke), 'stable ownership finalizer must run after historical smoke hardening');
+  assert.equal(requires.at(-1) || '', finalOwnership);
 });
 
 test('shown count follows the current signed local-grid ownership', () => {
