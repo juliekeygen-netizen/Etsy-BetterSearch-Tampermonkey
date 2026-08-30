@@ -33,11 +33,14 @@ function normalizeConfig(raw = {}) {
 
 function normalizePrefs(raw = {}) {
   const source = raw && typeof raw === 'object' ? raw : {};
+  const mode = ['disabled', 'catalogue', 'filtered'].includes(source.filterAvailabilityMode)
+    ? source.filterAvailabilityMode
+    : 'filtered';
   return {
     autoOpenActiveSections: source.autoOpenActiveSections !== false,
     autoSyncIntervalHours: [1, 3, 6, 12, 24].includes(Number(source.autoSyncIntervalHours)) ? Number(source.autoSyncIntervalHours) : 12,
-    filterAvailabilityMode: ['disabled', 'catalogue', 'filtered'].includes(source.filterAvailabilityMode) ? source.filterAvailabilityMode : 'filtered',
-    hideUnavailableCatalogFilters: source.filterAvailabilityMode !== 'disabled',
+    filterAvailabilityMode: mode,
+    hideUnavailableCatalogFilters: mode !== 'disabled',
     filterSectionOrder: Array.isArray(source.filterSectionOrder) ? [...source.filterSectionOrder] : ['search', 'price'],
     filterSectionHidden: Array.isArray(source.filterSectionHidden) ? [...source.filterSectionHidden] : [],
     filterOptionOrder: source.filterOptionOrder && typeof source.filterOptionOrder === 'object'
@@ -51,7 +54,7 @@ function normalizePrefs(raw = {}) {
   };
 }
 
-function makeBus(initial = {}) {
+function makeBus(initial = {}, { cloneFallback = false } = {}) {
   const storage = new Map(Object.entries(clone(initial)));
   const tabs = new Map();
   let nextListenerId = 1;
@@ -62,7 +65,8 @@ function makeBus(initial = {}) {
     tabs.set(tabId, listeners);
     return {
       GM_getValue(key, fallback) {
-        return storage.has(key) ? clone(storage.get(key)) : fallback;
+        if (storage.has(key)) return clone(storage.get(key));
+        return cloneFallback ? clone(fallback) : fallback;
       },
       GM_setValue(key, value) {
         const oldValue = storage.has(key) ? clone(storage.get(key)) : undefined;
@@ -145,6 +149,31 @@ test('stale tabs changing unrelated config fields cannot overwrite each other', 
   assert.equal(tabC.favCfg.sort, 'price', 'new tab overlays canonical sort leaf over stale aggregate');
 });
 
+test('correlated strict and multi leaves converge to the historical invariant', async () => {
+  const configKey = 'etsy-bettersearch.favorites.config.v1';
+  const prefsKey = 'etsy-bettersearch.favorites.ui-prefs.v1';
+  const bus = makeBus({
+    [configKey]: normalizeConfig({ strict:false, multi:false }),
+    [prefsKey]: normalizePrefs({}),
+  });
+  const tabA = await createTab(bus, 'A');
+  const tabB = await createTab(bus, 'B');
+
+  bus.deliverRemote = false;
+  tabA.favCfg.strict = true;
+  tabA.favSaveConfig();
+  assert.equal(bus.storage.get(fieldKey(configKey, 'strict')), true);
+
+  tabB.favCfg.multi = true;
+  tabB.favSaveConfig();
+
+  assert.equal(bus.storage.get(fieldKey(configKey, 'strict')), false, 'normalization correction is persisted, not memory-only');
+  assert.equal(bus.storage.get(fieldKey(configKey, 'multi')), true);
+  const tabC = await createTab(bus, 'C');
+  assert.equal(tabC.favCfg.strict, false);
+  assert.equal(tabC.favCfg.multi, true);
+});
+
 test('remote config leaves update live objects in place and worker policy immediately', async () => {
   const configKey = 'etsy-bettersearch.favorites.config.v1';
   const prefsKey = 'etsy-bettersearch.favorites.ui-prefs.v1';
@@ -194,6 +223,22 @@ test('stale tabs changing unrelated UI preference leaves both survive', async ()
   assert.deepEqual(Array.from(tabC.favUiPrefs.filterSectionOrder), ['price', 'search']);
 });
 
+test('derived UI preference leaves are corrected in canonical storage', async () => {
+  const configKey = 'etsy-bettersearch.favorites.config.v1';
+  const prefsKey = 'etsy-bettersearch.favorites.ui-prefs.v1';
+  const bus = makeBus({
+    [configKey]: normalizeConfig({}),
+    [prefsKey]: normalizePrefs({ filterAvailabilityMode:'filtered' }),
+    [fieldKey(prefsKey, 'filterAvailabilityMode')]: 'disabled',
+    [fieldKey(prefsKey, 'hideUnavailableCatalogFilters')]: true,
+  });
+
+  const tab = await createTab(bus, 'derived');
+  assert.equal(tab.favUiPrefs.filterAvailabilityMode, 'disabled');
+  assert.equal(tab.favUiPrefs.hideUnavailableCatalogFilters, false);
+  assert.equal(bus.storage.get(fieldKey(prefsKey, 'hideUnavailableCatalogFilters')), false);
+});
+
 test('late UI preference schema expansion overlays existing canonical leaves before seeding', async () => {
   const source = await readFile(modulePath, 'utf8');
   const configKey = 'etsy-bettersearch.favorites.config.v1';
@@ -234,7 +279,23 @@ test('late UI preference schema expansion overlays existing canonical leaves bef
   `, context);
 
   assert.equal(context.favUiPrefs.filterAvailabilityMode, 'disabled');
+  assert.equal(context.favUiPrefs.hideUnavailableCatalogFilters, false);
   assert.equal(bus.storage.get(fieldKey(prefsKey, 'filterAvailabilityMode')), 'disabled');
+  assert.equal(bus.storage.get(fieldKey(prefsKey, 'hideUnavailableCatalogFilters')), false);
+});
+
+test('missing leaf detection remains correct when a manager clones fallback objects', async () => {
+  const configKey = 'etsy-bettersearch.favorites.config.v1';
+  const prefsKey = 'etsy-bettersearch.favorites.ui-prefs.v1';
+  const bus = makeBus({
+    [configKey]: normalizeConfig({ autoSync:false }),
+    [prefsKey]: normalizePrefs({}),
+  }, { cloneFallback:true });
+
+  const tab = await createTab(bus, 'clone-fallback');
+  assert.equal(tab.favCfg.autoSync, false);
+  assert.equal(bus.storage.get(fieldKey(configKey, 'autoSync')), false);
+  assert.equal(typeof bus.storage.get(fieldKey(configKey, 'autoSync')), 'boolean');
 });
 
 test('userscript and extension expose the shared remote-value listener contract in the correct load order', async () => {
