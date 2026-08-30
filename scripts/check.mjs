@@ -71,9 +71,10 @@ if (!diagnosticsContentScript.js?.includes('controls.js')) {
   throw new Error('Diagnostics recorder must load its controls layer.');
 }
 const resumeGuardIndex = diagnosticsContentScript.js?.indexOf('export-resume-guard.js') ?? -1;
+const exportUiIndex = diagnosticsContentScript.js?.indexOf('export-ui-polish.js') ?? -1;
 const exporterIndex = diagnosticsContentScript.js?.indexOf('export-streaming.js') ?? -1;
-if (resumeGuardIndex < 0 || exporterIndex < 0 || resumeGuardIndex >= exporterIndex) {
-  throw new Error('Diagnostics resumable-export guard must load before the page ZIP exporter.');
+if (resumeGuardIndex < 0 || exportUiIndex < 0 || exporterIndex < 0 || !(resumeGuardIndex < exportUiIndex && exportUiIndex < exporterIndex)) {
+  throw new Error('Diagnostics export order must be resumable guard -> visible export-state lock -> streaming ZIP exporter.');
 }
 if (diagnosticsContentScript.js?.at(-1) !== 'controls-detach-autoexport.js') {
   throw new Error('Diagnostics detach auto-export hardening must load after the controls layer.');
@@ -98,6 +99,7 @@ const checkFiles = [
   'diagnostics-extension/content.js',
   'diagnostics-extension/controls.js',
   'diagnostics-extension/export-resume-guard.js',
+  'diagnostics-extension/export-ui-polish.js',
   'diagnostics-extension/export-streaming.js',
   'diagnostics-extension/controls-detach-autoexport.js',
   'scripts/project.mjs',
@@ -129,4 +131,4 @@ for (const file of checkFiles) {
 console.log(`Syntax checked ${checkFiles.length} files.`);
 console.log(`Verified ${modules.length} userscript modules and v${version} cache-busters.`);
 console.log(`Verified ${defined.size} versioned runtime symbol definitions.`);
-console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, transport, stale-arm guard, resumable export guard, service worker and document_start wiring.`);
+console.log(`Verified Etsy BetterSearch Diagnostics ${diagnosticsManifest.version} manifest, transport, stale-arm guard, resumable export guard, visible export lock, service worker and document_start wiring.`);
