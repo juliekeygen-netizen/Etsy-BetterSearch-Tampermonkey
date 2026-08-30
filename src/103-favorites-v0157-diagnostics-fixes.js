@@ -15,6 +15,14 @@
  *
  * Keep these fixes at the final integration boundary so historical availability
  * and header layers cannot reintroduce the diagnosed behavior.
+ *
+ * v0.15.14 also makes this final integration boundary the semantic owner of
+ * persistent Favorites header/progress writes. Historical module 86 rebuilt
+ * Etsy collection metadata with replaceChildren() on every shell pass and
+ * module 91 then removed/recreated the privacy text node. Because that metadata
+ * lives in Etsy's native header, those no-op child-list writes could wake the
+ * runtime lifecycle observer again. Final reconciliation below preserves native
+ * nodes and changes only values whose semantic content actually changed.
  */
 
 var FAV_TOOLBAR_MIN_SEARCH0157 = 160;
@@ -75,6 +83,143 @@ function favStyleRemove0157(node, property) {
     node.style.removeProperty(property);
     return true;
 }
+
+function favStyleSetValue01514(node, property, value, priority = '') {
+    if (!node?.style) return false;
+    const text = String(value ?? '');
+    if (
+        node.style.getPropertyValue(property) === text
+        && node.style.getPropertyPriority(property) === priority
+    ) return false;
+    node.style.setProperty(property, text, priority);
+    return true;
+}
+
+function favSetElementText01514(node, value) {
+    if (!node) return false;
+    const text = String(value ?? '');
+    if (node.textContent === text) return false;
+    node.textContent = text;
+    return true;
+}
+
+function favSetStrongLabel01514(strong, label) {
+    if (!strong) return false;
+    const expected = strong.childElementCount ? ` ${String(label ?? '')}` : String(label ?? '');
+    const textNodes = Array.from(strong.childNodes || []).filter((node) => node.nodeType === 3);
+    let changed = false;
+    let primary = textNodes[0] || null;
+    if (!primary) {
+        primary = document.createTextNode(expected);
+        strong.append(primary);
+        changed = true;
+    } else if (primary.nodeValue !== expected) {
+        primary.nodeValue = expected;
+        changed = true;
+    }
+    for (const extra of textNodes.slice(1)) {
+        extra.remove();
+        changed = true;
+    }
+    return changed;
+}
+
+/* Final privacy-label writers preserve Etsy/native child elements and the
+ * existing text node. A repeated reconcile with the same label performs zero
+ * child-list writes. */
+favSetStrongLabel0126 = favSetStrongLabel01514;
+favSetPrivateLabel0131 = function favSetPrivateLabel01514(strong) {
+    if (!strong) return false;
+    let changed = false;
+    let icon = strong.querySelector?.('[data-ebsf-scope-privacy-icon]') || null;
+    if (!icon && typeof favPrivateIconMarkup0131 === 'function') {
+        const holder = document.createElement('span');
+        holder.innerHTML = favPrivateIconMarkup0131();
+        icon = holder.firstElementChild;
+        if (icon) {
+            strong.prepend(icon);
+            changed = true;
+        }
+    }
+    return favSetStrongLabel01514(strong, 'Private collection') || changed;
+};
+
+favApplyScopeMetaDensity0131 = function favApplyScopeMetaDensity01514() {
+    const header = document.querySelector('[data-ebsf-all-header]');
+    if (!header?.isConnected) return;
+    if (header.classList.contains('ebsf-scope-meta-compact')) header.classList.remove('ebsf-scope-meta-compact');
+
+    const meta = header.querySelector('[data-ebsf-scope-meta]');
+    const privacy = meta?.querySelector('b');
+    const count = meta?.querySelector('[data-ebsf-scope-count]');
+    if (!meta || !privacy || !count) return;
+
+    const { total, shown } = favScopeCounts0120();
+    favSetPrivateLabel0131(privacy);
+    favSetElementText01514(count, `${total} favorites · ${shown} shown`);
+};
+favApplyScopeMetaDensity0125 = favApplyScopeMetaDensity0131;
+favApplyScopeMetaDensity0126 = favApplyScopeMetaDensity0131;
+
+favApplyCollectionMetaDensity0126 = function favApplyCollectionMetaDensity01514() {
+    if (favScope().type === 'items') return;
+    const meta = document.querySelector('[data-test-id="collections-landing-right-side-header"],[data-testid="collections-landing-right-side-header"]');
+    const strong = meta?.querySelector('b');
+    if (!meta || !strong) return;
+
+    const privacy = /private/i.test(strong.textContent || '') ? 'Private' : 'Public';
+    const { total, shown } = favScopeCounts0120();
+    favSetStrongLabel01514(strong, `${privacy} collection`);
+
+    const countText = `${total} favorites · ${shown} shown`;
+    let countNode = Array.from(meta.childNodes || []).find((node) => node.nodeType === 3 && /\d/.test(node.nodeValue || ''));
+    if (!countNode) {
+        countNode = document.createTextNode(countText);
+        meta.append(countNode);
+    } else if (countNode.nodeValue !== countText) {
+        countNode.nodeValue = countText;
+    }
+};
+
+/* Do not call the historical module-86 updater here: its collection branch uses
+ * meta.replaceChildren(), which destroys Etsy's native metadata subtree even
+ * when the displayed values are unchanged. */
+favUpdateScopeHeader0120 = function favUpdateScopeHeader01514() {
+    if (favScope().type === 'items') favApplyScopeMetaDensity0131();
+    else favApplyCollectionMetaDensity0126();
+
+    if (favState.countNode?.isConnected) favState.countNode.remove();
+    favState.countNode = null;
+    document.querySelectorAll('.ebsf-result-count').forEach((node) => node.remove());
+};
+
+/* The progress node belongs to BetterSearch, but it is still a hot writer. Keep
+ * the established node/ARIA semantics while avoiding same-text replacement. */
+var favProgressBefore01514 = favProgress;
+favProgress = function favProgress01514(text) {
+    const node = favState.progressNode;
+    if (!node) return favProgressBefore01514(text);
+    favSetElementText01514(node, text);
+    if (!favPositionProgress0134(node)) requestAnimationFrame(() => favPositionProgress0134(node));
+};
+
+favPositionProgress0134 = function favPositionProgress01514(node = favState.progressNode) {
+    if (!node) return false;
+    const header = document.querySelector('#collections-landing-phase-3-header-container');
+    const meta = favProgressMeta0134(header);
+    if (!header || !meta) return false;
+
+    if (!node.classList.contains('ebsf-progress-inline0134')) node.classList.add('ebsf-progress-inline0134');
+    if (!Object.prototype.hasOwnProperty.call(node.dataset, 'ebsfProgressInline')) node.dataset.ebsfProgressInline = '';
+    if (node.parentElement !== header) header.append(node);
+
+    const headerRect = header.getBoundingClientRect();
+    const metaRect = meta.getBoundingClientRect();
+    if (!headerRect.width || !metaRect.height) return true;
+    favStyleSetValue01514(node, '--ebsf-progress-top0134', `${Math.max(0, metaRect.top - headerRect.top)}px`);
+    favStyleSetValue01514(node, '--ebsf-progress-height0134', `${Math.max(16, metaRect.height)}px`);
+    return true;
+};
 
 /* Ships-from options require the same positive evidence as the filter that will
  * run after selection. Unknown origin remains unknown, not a promise that every
@@ -157,7 +302,10 @@ function favScheduleSimilarListingsOffset0157() {
 
 function favSetDynamicToolbarStack0157(header, enabled) {
     if (!header) return;
-    header.classList.toggle('ebsf-toolbar-stack0157', Boolean(enabled));
+    const wanted = Boolean(enabled);
+    if (header.classList.contains('ebsf-toolbar-stack0157') !== wanted) {
+        header.classList.toggle('ebsf-toolbar-stack0157', wanted);
+    }
 }
 
 function favOwnedToolbarTranslate0157(right) {
@@ -191,7 +339,7 @@ function favAlignToolbarX0157(header, right) {
     const css = `translateX(${desired}px)`;
     if (right.dataset.ebsfExactXOwns === '1' && right.style.getPropertyValue('transform') === css) return;
     favStyleSet0157(right, 'transform', css);
-    right.dataset.ebsfExactXOwns = '1';
+    if (right.dataset.ebsfExactXOwns !== '1') right.dataset.ebsfExactXOwns = '1';
 }
 
 /* Final toolbar owner. Desktop width is constrained by the actual intrinsic
@@ -212,8 +360,8 @@ favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
     const measured = root.style.getPropertyValue('--ebsf-sort-trigger-width').trim();
     const sortWidth = Number.parseFloat(measured) || 180;
     if (measured) {
-        document.documentElement.style.setProperty('--ebsf-shared-sort-width0134', measured);
-        row.style.setProperty('--ebsf-narrow-sort-width', measured);
+        favStyleSetValue01514(document.documentElement, '--ebsf-shared-sort-width0134', measured);
+        favStyleSetValue01514(row, '--ebsf-narrow-sort-width', measured);
     }
 
     const headerWidth = header.getBoundingClientRect().width;
@@ -223,7 +371,7 @@ favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
         favSetDynamicToolbarStack0157(header, false);
         favClearExactDesktopToolbarWidth0135(right);
         favClearCollectionToolbarX0136(right);
-        row.style.removeProperty('--ebsf-shared-search-width0134');
+        favStyleRemove0157(row, '--ebsf-shared-search-width0134');
         return;
     }
 
@@ -234,21 +382,19 @@ favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
         favSetDynamicToolbarStack0157(header, true);
         favClearExactDesktopToolbarWidth0135(right);
         favClearCollectionToolbarX0136(right);
-        row.style.removeProperty('--ebsf-shared-search-width0134');
+        favStyleRemove0157(row, '--ebsf-shared-search-width0134');
         return;
     }
 
     favSetDynamicToolbarStack0157(header, false);
     const searchCss = `${Math.round(plan.searchWidth * 100) / 100}px`;
     const toolbarCss = `${Math.round(plan.toolbarWidth * 100) / 100}px`;
-    if (row.style.getPropertyValue('--ebsf-shared-search-width0134') !== searchCss) {
-        row.style.setProperty('--ebsf-shared-search-width0134', searchCss);
-    }
+    favStyleSetValue01514(row, '--ebsf-shared-search-width0134', searchCss);
     favStyleSet0157(right, 'flex', `0 0 ${toolbarCss}`);
     favStyleSet0157(right, 'width', toolbarCss);
     favStyleSet0157(right, 'max-width', toolbarCss);
     favStyleSet0157(right, 'min-width', toolbarCss);
-    right.dataset.ebsfExactToolbarOwns = '1';
+    if (right.dataset.ebsfExactToolbarOwns !== '1') right.dataset.ebsfExactToolbarOwns = '1';
     favAlignToolbarX0157(header, right);
 };
 
