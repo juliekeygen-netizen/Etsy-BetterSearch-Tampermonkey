@@ -10,7 +10,7 @@ const stableOwner = await readFile(resolve(ROOT, 'src/102-favorites-v0155-stable
 const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
 
 function loadPureHelpers() {
-  const end = source.indexOf('/* Ships-from options require');
+  const end = source.indexOf('function favStyleSetValue01514');
   const context = vm.createContext({
     Set, Math, Number, String,
     FAV_SETTINGS_WIDTH0135:40,
@@ -73,7 +73,7 @@ test('885px resize path deliberately releases desktop width ownership for the re
   const { toolbar } = loadPureHelpers();
   assert.equal(toolbar({ viewportWidth:885, headerWidth:660, leftWidth:230, sortWidth:180 }).stacked, true);
   assert.match(source, /@media \(min-width:761px\) and \(max-width:899px\)[\s\S]*minmax\(0,1fr\)!important/);
-  assert.match(source, /innerWidth < 900[\s\S]*removeProperty\('--ebsf-shared-search-width0134'\)/);
+  assert.match(source, /innerWidth < 900[\s\S]*favStyleRemove0157\(row, '--ebsf-shared-search-width0134'\)/);
 });
 
 test('zero-result Etsy recommendations accept both live identities, are offset in place, and are never reparented', () => {
