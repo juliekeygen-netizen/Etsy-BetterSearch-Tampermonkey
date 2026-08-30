@@ -115,6 +115,7 @@ const checkFiles = [
   'tests/diagnostics-controls.test.mjs',
   'tests/diagnostics-discard-race.test.mjs',
   'tests/diagnostics-resumable-export.test.mjs',
+  'tests/diagnostics-export-polish.test.mjs',
   'tests/diagnostics-transport.test.mjs'
 ];
 
