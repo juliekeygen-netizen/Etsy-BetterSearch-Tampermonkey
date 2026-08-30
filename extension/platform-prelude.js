@@ -8,6 +8,9 @@ if (!ebsExtApi?.storage?.local) {
 }
 
 const ebsExtStore = new Map();
+const ebsExtValueListeners = new Map();
+const ebsExtPendingLocalValues = new Map();
+let ebsExtNextValueListenerId = 1;
 
 async function ebsExtStorageGetAll() {
   if (globalThis.browser?.storage?.local) {
@@ -35,18 +38,56 @@ function ebsExtStorageSet(values) {
   });
 }
 
+function ebsExtValueToken(value) {
+  if (value === undefined) return 'undefined:';
+  try { return `json:${JSON.stringify(value)}`; } catch (_) { return `string:${String(value)}`; }
+}
+
+function ebsExtMarkLocalValue(key, value) {
+  const token = ebsExtValueToken(value);
+  const queue = ebsExtPendingLocalValues.get(key) || [];
+  queue.push(token);
+  ebsExtPendingLocalValues.set(key, queue);
+  return token;
+}
+
+function ebsExtConsumeLocalValue(key, value) {
+  const queue = ebsExtPendingLocalValues.get(key);
+  if (!queue?.length) return false;
+  const token = ebsExtValueToken(value);
+  const index = queue.indexOf(token);
+  if (index < 0) return false;
+  queue.splice(index, 1);
+  if (!queue.length) ebsExtPendingLocalValues.delete(key);
+  return true;
+}
+
+function ebsExtDispatchValueChange(key, oldValue, newValue, remote) {
+  for (const { key: watchedKey, callback } of ebsExtValueListeners.values()) {
+    if (watchedKey !== key) continue;
+    try { callback(key, oldValue, newValue, remote); }
+    catch (error) { console.error('Etsy BetterSearch: value-change listener failed', key, error); }
+  }
+}
+
 for (const [key, value] of Object.entries(await ebsExtStorageGetAll())) {
   ebsExtStore.set(key, value);
 }
 
 /* Keep the synchronous mirror fresh in every content-script instance. This is
  * especially important for queue pause/resume state: Cancel in one Etsy tab
- * must be visible to a worker that currently owns the queue in another tab. */
+ * must be visible to a worker that currently owns the queue in another tab.
+ * Also mirror Tampermonkey's value-change callback shape so the shared runtime
+ * can subscribe to cross-tab config changes in both delivery targets. */
 ebsExtApi.storage.onChanged?.addListener((changes, areaName) => {
   if (areaName && areaName !== 'local') return;
   for (const [key, change] of Object.entries(changes || {})) {
-    if (Object.prototype.hasOwnProperty.call(change, 'newValue')) ebsExtStore.set(key, change.newValue);
+    const hasNewValue = Object.prototype.hasOwnProperty.call(change, 'newValue');
+    const newValue = hasNewValue ? change.newValue : undefined;
+    const remote = !ebsExtConsumeLocalValue(key, newValue);
+    if (hasNewValue) ebsExtStore.set(key, newValue);
     else ebsExtStore.delete(key);
+    ebsExtDispatchValueChange(key, change?.oldValue, newValue, remote);
   }
 });
 
@@ -56,9 +97,22 @@ function GM_getValue(key, fallback) {
 
 function GM_setValue(key, value) {
   ebsExtStore.set(key, value);
+  ebsExtMarkLocalValue(key, value);
   void ebsExtStorageSet({ [key]: value }).catch((error) => {
+    ebsExtConsumeLocalValue(key, value);
     console.error('Etsy BetterSearch: failed to persist extension setting', key, error);
   });
+}
+
+function GM_addValueChangeListener(key, callback) {
+  if (typeof callback !== 'function') return 0;
+  const id = ebsExtNextValueListenerId++;
+  ebsExtValueListeners.set(id, { key:String(key), callback });
+  return id;
+}
+
+function GM_removeValueChangeListener(id) {
+  ebsExtValueListeners.delete(id);
 }
 
 function GM_addStyle(cssText) {
