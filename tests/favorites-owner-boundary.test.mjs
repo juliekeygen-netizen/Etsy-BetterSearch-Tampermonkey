@@ -193,7 +193,7 @@ test('all index callers wait on one shared owner-repair promise per document', a
   const first = api.open();
   const second = api.open();
   await Promise.resolve();
-  assert.equal(opens, 2, 'base open may be requested twice before its own cached implementation resolves');
+  assert.equal(opens, 1, 'the shared repair gate also shares the underlying open request');
   assert.equal(repairs, 1, 'repair itself must be shared');
 
   releaseRepair();
