@@ -10,8 +10,8 @@
  *
  * Rules:
  *  - normalized leaf values are the cross-tab source of truth;
- *  - a save writes only leaves that changed relative to this tab's canonical
- *    snapshot;
+ *  - saves merge local dirty leaves onto the latest canonical leaf set;
+ *  - normalization corrections are themselves converged back to leaf storage;
  *  - missing leaves are seeded once from the normalized legacy aggregate;
  *  - remote leaf changes update the existing live object in place;
  *  - aggregate writes are compatibility mirrors only and never become the
@@ -89,9 +89,21 @@ function favMissingSetting01518() {
 }
 
 function favReadSettingsField01518(baseKey, path) {
-    const missing = favMissingSetting01518();
-    const value = GM_getValue(favSettingsFieldKey01518(baseKey, path), missing);
-    return value === missing ? { found:false, value:undefined } : { found:true, value };
+    const value = GM_getValue(favSettingsFieldKey01518(baseKey, path), favMissingSetting01518());
+    const missing = Boolean(
+        favPlainSettingObject01518(value)
+        && value.__ebsfMissing01518 === true
+        && Object.keys(value).length === 1
+    );
+    return missing ? { found:false, value:undefined } : { found:true, value };
+}
+
+function favNormalizeStoredConfig01518(value) {
+    const normalized = favNormalizeConfig(value);
+    /* Preserve the historical mutual-exclusion rule as a storage invariant.
+     * Multi-search wins when independently persisted leaves conflict. */
+    if (normalized.strict && normalized.multi) normalized.strict = false;
+    return normalized;
 }
 
 function favSettingsState01518({ name, baseKey, normalize, getLive, onRemote }) {
@@ -109,93 +121,112 @@ function favSettingsState01518({ name, baseKey, normalize, getLive, onRemote }) 
 function favRegisterSettingsField01518(state, path) {
     if (state.listeners.has(path) || typeof GM_addValueChangeListener !== 'function') return;
     const key = favSettingsFieldKey01518(state.baseKey, path);
-    const listenerId = GM_addValueChangeListener(key, (_name, _oldValue, newValue, remote) => {
+    const listenerId = GM_addValueChangeListener(key, (_name, _oldValue, _newValue, remote) => {
         if (remote !== true) return;
-        const live = state.getLive();
-        if (!live) return;
-        const next = favCloneSetting01518(live);
-        if (newValue === undefined) {
-            const defaults = favFlattenSettings01518(state.normalize({}));
-            if (!defaults.has(path)) return;
-            favSetSettingPath01518(next, path, defaults.get(path));
-        } else {
-            favSetSettingPath01518(next, path, newValue);
-        }
-        const normalized = state.normalize(next);
-        favApplySettingsInPlace01518(live, normalized);
-        const normalizedFlat = favFlattenSettings01518(normalized);
-        if (normalizedFlat.has(path)) state.snapshot.set(path, favCloneSetting01518(normalizedFlat.get(path)));
-        state.onRemote?.(path);
+        favRefreshSettingsFromStorage01518(state, path);
     });
     state.listeners.set(path, listenerId);
 }
 
+function favReadCanonicalSettings01518(state, fallbackNormalized) {
+    const fallbackFlat = favFlattenSettings01518(fallbackNormalized);
+    const raw = {};
+    const baseline = new Map();
+
+    for (const [path, fallback] of fallbackFlat) {
+        favRegisterSettingsField01518(state, path);
+        const stored = favReadSettingsField01518(state.baseKey, path);
+        const value = stored.found ? stored.value : fallback;
+        if (!stored.found) {
+            GM_setValue(favSettingsFieldKey01518(state.baseKey, path), favCloneSetting01518(value));
+        }
+        favSetSettingPath01518(raw, path, value);
+        baseline.set(path, favCloneSetting01518(value));
+    }
+    return { raw, baseline };
+}
+
+function favConvergeSettingsState01518(state, normalized, baseline = new Map()) {
+    const flat = favFlattenSettings01518(normalized);
+    for (const [path, value] of flat) {
+        favRegisterSettingsField01518(state, path);
+        if (!baseline.has(path) || !favSettingsValueEqual01518(baseline.get(path), value)) {
+            GM_setValue(favSettingsFieldKey01518(state.baseKey, path), favCloneSetting01518(value));
+        }
+    }
+    state.snapshot = new Map(Array.from(flat, ([path, value]) => [path, favCloneSetting01518(value)]));
+    return flat;
+}
+
+function favMirrorSettingsAggregate01518(state, normalized) {
+    /* Compatibility only. Fixed versions load canonical leaf keys over this
+     * aggregate, so a stale aggregate write cannot erase unrelated leaf data. */
+    GM_setValue(state.baseKey, favCloneSetting01518(normalized));
+}
+
 function favSeedAndOverlaySettings01518(state) {
     const live = state.getLive();
-    const normalized = state.normalize(live);
-    const merged = favCloneSetting01518(normalized);
-    const flat = favFlattenSettings01518(normalized);
-
-    for (const [path, fallback] of flat) {
-        const stored = favReadSettingsField01518(state.baseKey, path);
-        if (stored.found) {
-            favSetSettingPath01518(merged, path, stored.value);
-        } else {
-            GM_setValue(favSettingsFieldKey01518(state.baseKey, path), favCloneSetting01518(fallback));
-        }
-        favRegisterSettingsField01518(state, path);
-    }
-
-    const canonical = state.normalize(merged);
+    const fallback = state.normalize(live);
+    const { raw, baseline } = favReadCanonicalSettings01518(state, fallback);
+    const canonical = state.normalize(raw);
+    favConvergeSettingsState01518(state, canonical, baseline);
     favApplySettingsInPlace01518(live, canonical);
-    state.snapshot = favFlattenSettings01518(canonical);
-    GM_setValue(state.baseKey, favCloneSetting01518(canonical));
+    favMirrorSettingsAggregate01518(state, canonical);
     return live;
 }
 
 function favCommitSettings01518(state) {
     const live = state.getLive();
-    let normalized = state.normalize(live);
-    let flat = favFlattenSettings01518(normalized);
-    let canonical = favCloneSetting01518(normalized);
-    let canonicalChanged = false;
+    const localNormalized = state.normalize(live);
+    const localFlat = favFlattenSettings01518(localNormalized);
+    const dirty = new Map();
+
+    /* Only paths changed relative to this tab's last canonical snapshot are
+     * local intent. Everything else is refreshed from canonical storage first,
+     * so delayed cross-tab notifications cannot make an unrelated stale value
+     * overwrite a newer persisted leaf. */
+    for (const [path, value] of localFlat) {
+        if (!state.snapshot.has(path)) continue;
+        if (!favSettingsValueEqual01518(state.snapshot.get(path), value)) {
+            dirty.set(path, favCloneSetting01518(value));
+        }
+    }
 
     /* Later modules expand the UI-preference schema after this module loads.
-     * Unknown paths therefore re-check canonical leaf storage before deciding
-     * whether the newly visible in-memory value is authoritative. */
-    for (const [path, value] of flat) {
-        favRegisterSettingsField01518(state, path);
-        if (!state.snapshot.has(path)) {
-            const stored = favReadSettingsField01518(state.baseKey, path);
-            if (stored.found) {
-                favSetSettingPath01518(canonical, path, stored.value);
-                canonicalChanged = true;
-                state.snapshot.set(path, favCloneSetting01518(stored.value));
-            } else {
-                GM_setValue(favSettingsFieldKey01518(state.baseKey, path), favCloneSetting01518(value));
-                state.snapshot.set(path, favCloneSetting01518(value));
-            }
-            continue;
-        }
-        const previous = state.snapshot.get(path);
-        if (favSettingsValueEqual01518(previous, value)) continue;
-        GM_setValue(favSettingsFieldKey01518(state.baseKey, path), favCloneSetting01518(value));
-        state.snapshot.set(path, favCloneSetting01518(value));
-    }
+     * Existing canonical leaves beat newly exposed stale aggregate/default
+     * values; genuinely new leaves are seeded from the live normalized schema. */
+    const { raw, baseline } = favReadCanonicalSettings01518(state, localNormalized);
+    for (const [path, value] of dirty) favSetSettingPath01518(raw, path, value);
 
-    if (canonicalChanged) {
-        normalized = state.normalize(canonical);
-        favApplySettingsInPlace01518(live, normalized);
-        flat = favFlattenSettings01518(normalized);
-        for (const [path, value] of flat) state.snapshot.set(path, favCloneSetting01518(value));
-    } else {
-        favApplySettingsInPlace01518(live, normalized);
-    }
-
-    /* Compatibility only. Fixed versions load canonical leaf keys over this
-     * aggregate, so a stale aggregate write cannot erase unrelated leaf data. */
-    GM_setValue(state.baseKey, favCloneSetting01518(state.normalize(live)));
+    const canonical = state.normalize(raw);
+    favConvergeSettingsState01518(state, canonical, baseline);
+    favApplySettingsInPlace01518(live, canonical);
+    favMirrorSettingsAggregate01518(state, canonical);
     return live;
+}
+
+function favChangedSettingPaths01518(before, after) {
+    const left = favFlattenSettings01518(before);
+    const right = favFlattenSettings01518(after);
+    const paths = new Set([...left.keys(), ...right.keys()]);
+    return Array.from(paths).filter((path) =>
+        !favSettingsValueEqual01518(left.get(path), right.get(path))
+    );
+}
+
+function favRefreshSettingsFromStorage01518(state, incomingPath = '') {
+    const live = state.getLive();
+    if (!live) return;
+    const before = state.normalize(live);
+    const { raw, baseline } = favReadCanonicalSettings01518(state, before);
+    const canonical = state.normalize(raw);
+    favConvergeSettingsState01518(state, canonical, baseline);
+    favApplySettingsInPlace01518(live, canonical);
+    favMirrorSettingsAggregate01518(state, canonical);
+
+    const changed = favChangedSettingPaths01518(before, canonical);
+    if (incomingPath && !changed.includes(incomingPath)) changed.push(incomingPath);
+    for (const path of changed) state.onRemote?.(path);
 }
 
 function favScheduleRemoteSettingsReconcile01518(kind, path) {
@@ -261,7 +292,7 @@ function favScheduleRemoteSettingsReconcile01518(kind, path) {
 var favConfigStorageState01518 = favSettingsState01518({
     name:'config',
     baseKey:FAV_STORAGE_KEY,
-    normalize:(value) => favNormalizeConfig(value),
+    normalize:(value) => favNormalizeStoredConfig01518(value),
     getLive:() => favCfg,
     onRemote:(path) => favScheduleRemoteSettingsReconcile01518('config', path),
 });
