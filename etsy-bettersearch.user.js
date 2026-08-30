@@ -3,7 +3,7 @@
 // @namespace    https://github.com/juliekeygen-netizen
 // @version      0.15.19
 // @description  Adds strict title matching, rule-based multi-search, configurable scanning, persistent Etsy filters, and advanced Favorites filtering/sorting while keeping Etsy's native UI.
-// @homepageURL  https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey
+// @homepageURL  https://github.com/juliekeygen-netizen
 // @supportURL   https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/issues
 // @author       juliekeygen-netizen
 // @match        https://www.etsy.com/*
@@ -35,6 +35,7 @@
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61-favorites-data.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61a-favorites-index.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61aa-favorites-owner-boundary.js?v=0.15.19
+// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61ab-favorites-atomic-mutations.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61b-favorites-sync.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61e-favorites-cache-bootstrap.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61eb-favorites-multi-owner-membership.js?v=0.15.19
@@ -56,6 +57,7 @@
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/72-favorites-catalog-category-fix.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/73-favorites-phase5-hardening.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/74-favorites-phase5-runtime-guard.js?v=0.15.19
+// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/74a-favorites-atomic-mutable-rows.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/75-favorites-phase5-multitab-lease.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/63-favorites-runtime.js?v=0.15.19
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/76-favorites-layout-state.js?v=0.15.19
