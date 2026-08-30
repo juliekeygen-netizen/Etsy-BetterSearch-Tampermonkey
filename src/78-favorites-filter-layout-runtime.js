@@ -60,11 +60,29 @@ function favApplyFilterLayoutAndAvailability0110(rail = favState.rail) {
     return rail;
 }
 
+/* v0.15.4 final availability dispatch boundary.
+ *
+ * The legacy v0.11 section model and the v2 drawer/binding model do not share
+ * option identity. Never let the legacy writer walk a v2 rail. Once module 85
+ * is loaded, all v2 refresh requests are coalesced through its facet scheduler;
+ * old fixtures/paths keep the original v0.11 behavior. */
+function favRefreshFilterAvailability0110(rail = favState.rail) {
+    const isV2 = Boolean(
+        rail?.classList?.contains?.('ebsf-rail-v2')
+        || rail?.dataset?.ebsfFilterLayoutVersion === '2'
+    );
+    if (isV2) {
+        if (typeof favScheduleFacetAvailability0121 === 'function') favScheduleFacetAvailability0121();
+        return rail;
+    }
+    return favApplyFilterLayoutAndAvailability0110(rail);
+}
+
 /* Replace the destructive v0.10.1 pruner. Hiding rather than removing nodes is
  * important for the dynamic "current filtered items" mode: controls can return
  * instantly as the result set changes without rebuilding the entire rail. */
 favPruneUnavailableCatalogueFilters0101 = function favPruneUnavailableCatalogueFilters0110(rail) {
-    return favApplyFilterLayoutAndAvailability0110(rail);
+    return favRefreshFilterAvailability0110(rail);
 };
 
 function favVisibleCategoryDefinitions0110() {
@@ -151,7 +169,7 @@ var favSaveAndApplyBefore0110 = favSaveAndApply;
 favSaveAndApply = function favSaveAndApply0110(reapply = true) {
     const result = favSaveAndApplyBefore0110(reapply);
     Promise.resolve(result).finally(() => {
-        if (favState.filterOpen && favState.rail) requestAnimationFrame(() => favApplyFilterLayoutAndAvailability0110(favState.rail));
+        if (favState.filterOpen && favState.rail) requestAnimationFrame(() => favRefreshFilterAvailability0110(favState.rail));
     });
     return result;
 };
@@ -188,6 +206,6 @@ favReapply = async function favReapply0110(...args) {
      * directly so metadata requirements are recalculated before local output. */
     if (favSanitizeMetadataFilters0101()) result = await favReapplyBefore0110(...args);
     favRestoreViewportAnchor0110(viewport);
-    if (favState.filterOpen && favState.rail) requestAnimationFrame(() => favApplyFilterLayoutAndAvailability0110(favState.rail));
+    if (favState.filterOpen && favState.rail) requestAnimationFrame(() => favRefreshFilterAvailability0110(favState.rail));
     return result;
 };
