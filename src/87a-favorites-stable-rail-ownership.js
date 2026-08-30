@@ -14,6 +14,11 @@
  *  - the native sidebar remains in layout and is only visually suppressed;
  *  - the portal tracks the native sidebar's real viewport rectangle;
  *  - shell repairs reuse the same rail root instead of replacing it.
+ *
+ * The Phase 2F geometry follow-up keeps that ownership model unchanged while
+ * making the hot scroll/resize/ResizeObserver geometry path compare-before-
+ * write. A scheduled frame may still measure every time, but it no longer emits
+ * five identical inline-style mutations when the native sidebar rect is stable.
  */
 
 favState.railSlot0155 = favState.railSlot0155 || null;
@@ -50,6 +55,28 @@ favFavoritesContentColumn0120 = function favFavoritesContentColumn0155(sidebar =
     ) || null;
 };
 
+function favSetRailGeometryStyle01516(slot, property, value) {
+    if (!slot?.style) return false;
+    const text = String(value ?? '');
+    if (slot.style.getPropertyValue(property) === text) return false;
+    slot.style.setProperty(property, text);
+    return true;
+}
+
+function favApplyRailPortalRect01516(slot, rect) {
+    if (!slot?.style || !rect) return 0;
+    const left = `${rect.left}px`;
+    const top = `${rect.top}px`;
+    const width = `${rect.width}px`;
+    let writes = 0;
+    if (favSetRailGeometryStyle01516(slot, 'left', left)) writes += 1;
+    if (favSetRailGeometryStyle01516(slot, 'top', top)) writes += 1;
+    if (favSetRailGeometryStyle01516(slot, 'width', width)) writes += 1;
+    if (favSetRailGeometryStyle01516(slot, 'max-width', width)) writes += 1;
+    if (favSetRailGeometryStyle01516(slot, '--ebsf-native-sidebar-width', width)) writes += 1;
+    return writes;
+}
+
 function favSyncRailPortalGeometry0155() {
     favState.railGeometryFrame0155 = 0;
     const slot = favState.railSlot0155;
@@ -57,11 +84,7 @@ function favSyncRailPortalGeometry0155() {
     if (!slot?.isConnected || !sidebar?.isConnected || !favDesktopShell0120() || !isFavoritesPage()) return;
     const rect = sidebar.getBoundingClientRect?.();
     if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top) || rect.width <= 0) return;
-    slot.style.left = `${rect.left}px`;
-    slot.style.top = `${rect.top}px`;
-    slot.style.width = `${rect.width}px`;
-    slot.style.maxWidth = `${rect.width}px`;
-    slot.style.setProperty('--ebsf-native-sidebar-width', `${rect.width}px`);
+    favApplyRailPortalRect01516(slot, rect);
 }
 
 function favScheduleRailPortalGeometry0155() {
