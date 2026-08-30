@@ -26,6 +26,10 @@ function loadHelpers() {
 function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async () => null, catalogRefresh = null } = {}) {
   const writes = [];
   const absenceCalls = [];
+  let currentScope = oldScope ? structuredClone(oldScope) : null;
+  let currentListings = (currentScope?.listingIds || []).map((id) => ({
+    listingId:String(id), isFavorite:true, favoriteScopes:{ scope:{ active:true } },
+  }));
   const state = {
     records:[{ id:'old' }],
     recordsById:new Map([['old', { id:'old' }]]),
@@ -52,17 +56,21 @@ function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async ()
     favIndexScopeKey: (scope) => String(scope?.scopeKey || 'scope'),
     favIndexPatchFromRecord: (record) => ({ listingId:String(record.id), title:String(record.title || ''), favoriteScopes:{} }),
     favIndexReadObservation: async () => ({
-      listings:(globalThis.__oldListings || []), shops:[], shopIds:[], scope:globalThis.__oldScope,
+      listings:currentListings.map((listing) => structuredClone(listing)), shops:[], shopIds:[],
+      scope:currentScope ? structuredClone(currentScope) : null,
     }),
     favIndexMergeListing: (existing, patch) => ({ ...(existing || {}), ...patch, isFavorite:true, favoriteScopes:existing?.favoriteScopes || {} }),
     favIndexMergeShop: (_existing, patch) => patch,
     favIndexApplyScopeCompletion: (listings) => {
-      globalThis.__absenceCalls.push(listings.map((listing) => String(listing.listingId)));
+      absenceCalls.push(listings.map((listing) => String(listing.listingId)));
       return listings.map((listing) => ({ ...listing, removed:true }));
     },
     favIndexWrite: async (_stores, writer) => {
-      const put = (store) => (value) => globalThis.__writes.push({ store, value:structuredClone(value) });
-      writer({ objectStore:(name) => ({ put:put(name) }) });
+      const put = (store) => (value) => {
+        writes.push({ store, value:structuredClone(value) });
+        return value;
+      };
+      return writer({ objectStore:(name) => ({ put:put(name) }) });
     },
     favCatalogStates0141:new Map([['dataset', { expectedTotal }]]),
     favCatalogKey0141: (scope) => String(scope?.datasetKey || 'dataset'),
@@ -72,10 +80,6 @@ function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async ()
     isFavoritesPage: () => true,
     structuredClone,
   });
-  context.__oldScope = oldScope;
-  context.__oldListings = (oldScope?.listingIds || []).map((id) => ({ listingId:String(id), isFavorite:true, favoriteScopes:{ scope:{ active:true } } }));
-  context.__writes = writes;
-  context.__absenceCalls = absenceCalls;
   vm.runInContext(`${snapshotSource}\nglobalThis.testApi={
     observe:(records, options)=>favIndexObserveRecordsNow(records, options),
     readCache:(scope)=>favCacheReadScope0137(scope),
@@ -84,7 +88,12 @@ function loadBoundary({ oldScope = null, expectedTotal = 0, cacheRead = async ()
   };`, context);
   context.testApi.writes = writes;
   context.testApi.absenceCalls = absenceCalls;
-  context.testApi.setOldScope = (value) => { context.__oldScope = value; };
+  context.testApi.setOldScope = (value) => {
+    currentScope = value ? structuredClone(value) : null;
+    currentListings = (currentScope?.listingIds || []).map((id) => ({
+      listingId:String(id), isFavorite:true, favoriteScopes:{ scope:{ active:true } },
+    }));
+  };
   return context.testApi;
 }
 
