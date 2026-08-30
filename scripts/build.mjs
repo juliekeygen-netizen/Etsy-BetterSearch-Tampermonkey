@@ -44,12 +44,15 @@ const diagnosticsBackgroundDetachAutoExport = await readFile(resolve(diagnostics
 const diagnosticsBackgroundSessionHealth = await readFile(resolve(diagnosticsRoot, 'background-session-health.js'), 'utf8');
 const diagnosticsBackgroundStreamingExport = await readFile(resolve(diagnosticsRoot, 'background-streaming-export.js'), 'utf8');
 const diagnosticsBackgroundDiscardHardening = await readFile(resolve(diagnosticsRoot, 'background-discard-hardening.js'), 'utf8');
+const diagnosticsBackgroundExportResume = await readFile(resolve(diagnosticsRoot, 'background-export-resume.js'), 'utf8');
 const diagnosticsHarExtraInfo = await readFile(resolve(diagnosticsRoot, 'har-extra-info.js'), 'utf8');
 const diagnosticsServiceWorker = await readFile(resolve(diagnosticsRoot, 'service-worker.js'), 'utf8');
 const diagnosticsTransport = await readFile(resolve(diagnosticsRoot, 'transport.js'), 'utf8');
 const diagnosticsBootstrapGuard = await readFile(resolve(diagnosticsRoot, 'bootstrap-guard.js'), 'utf8');
 const diagnosticsContent = await readFile(resolve(diagnosticsRoot, 'content.js'), 'utf8');
 const diagnosticsControls = await readFile(resolve(diagnosticsRoot, 'controls.js'), 'utf8');
+const diagnosticsExportResumeGuard = await readFile(resolve(diagnosticsRoot, 'export-resume-guard.js'), 'utf8');
+const diagnosticsExportUiPolish = await readFile(resolve(diagnosticsRoot, 'export-ui-polish.js'), 'utf8');
 const diagnosticsExportStreaming = await readFile(resolve(diagnosticsRoot, 'export-streaming.js'), 'utf8');
 const diagnosticsControlsDetachAutoExport = await readFile(resolve(diagnosticsRoot, 'controls-detach-autoexport.js'), 'utf8');
 
@@ -71,12 +74,15 @@ try {
   new Function(diagnosticsBackgroundSessionHealth);
   new Function(diagnosticsBackgroundStreamingExport);
   new Function(diagnosticsBackgroundDiscardHardening);
+  new Function(diagnosticsBackgroundExportResume);
   new Function(diagnosticsHarExtraInfo);
   new Function(diagnosticsServiceWorker);
   new Function(diagnosticsTransport);
   new Function(diagnosticsBootstrapGuard);
   new Function(diagnosticsContent);
   new Function(diagnosticsControls);
+  new Function(diagnosticsExportResumeGuard);
+  new Function(diagnosticsExportUiPolish);
   new Function(diagnosticsExportStreaming);
   new Function(diagnosticsControlsDetachAutoExport);
 } catch (error) {
@@ -113,11 +119,14 @@ const diagnosticsSourceFiles = [
   'background-session-health.js',
   'background-streaming-export.js',
   'background-discard-hardening.js',
+  'background-export-resume.js',
   'har-extra-info.js',
   'transport.js',
   'bootstrap-guard.js',
   'content.js',
   'controls.js',
+  'export-resume-guard.js',
+  'export-ui-polish.js',
   'export-streaming.js',
   'controls-detach-autoexport.js'
 ];
@@ -129,12 +138,15 @@ await Promise.all([
   writeFile(resolve(diagnosticsDir, 'background-session-health.js'), `${diagnosticsBackgroundSessionHealth.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-streaming-export.js'), `${diagnosticsBackgroundStreamingExport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'background-discard-hardening.js'), `${diagnosticsBackgroundDiscardHardening.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'background-export-resume.js'), `${diagnosticsBackgroundExportResume.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'har-extra-info.js'), `${diagnosticsHarExtraInfo.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'service-worker.js'), `${diagnosticsServiceWorker.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'transport.js'), `${diagnosticsTransport.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'bootstrap-guard.js'), `${diagnosticsBootstrapGuard.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'content.js'), `${diagnosticsContent.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls.js'), `${diagnosticsControls.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'export-resume-guard.js'), `${diagnosticsExportResumeGuard.trim()}\n`, 'utf8'),
+  writeFile(resolve(diagnosticsDir, 'export-ui-polish.js'), `${diagnosticsExportUiPolish.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'export-streaming.js'), `${diagnosticsExportStreaming.trim()}\n`, 'utf8'),
   writeFile(resolve(diagnosticsDir, 'controls-detach-autoexport.js'), `${diagnosticsControlsDetachAutoExport.trim()}\n`, 'utf8'),
   writeFile(
