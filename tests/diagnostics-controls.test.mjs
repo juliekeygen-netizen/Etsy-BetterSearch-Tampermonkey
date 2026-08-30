@@ -52,7 +52,7 @@ function loadStreamingTestHooks() {
 test('diagnostics v0.2.8 keeps passive startup and resumable bounded exporter in safe script order', () => {
   assert.equal(manifest.version, '0.2.8');
   assert.deepEqual(manifest.content_scripts[0].js, [
-    'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'export-resume-guard.js', 'export-streaming.js', 'controls-detach-autoexport.js'
+    'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'export-resume-guard.js', 'export-ui-polish.js', 'export-streaming.js', 'controls-detach-autoexport.js'
   ]);
   assert.match(serviceWorker, /background-detach-autoexport\.js/);
   assert.match(serviceWorker, /background-session-health\.js/);
@@ -60,7 +60,7 @@ test('diagnostics v0.2.8 keeps passive startup and resumable bounded exporter in
   assert.match(serviceWorker, /background-export-resume\.js/);
   assert.match(bootstrapGuard, /__EBSF_DIAG_PANEL_OBSERVER_GUARD__/);
   assert.match(bootstrapGuard, /attributeOldValue: true/);
-  for (const file of ['background-streaming-export.js', 'background-export-resume.js', 'bootstrap-guard.js', 'export-resume-guard.js', 'export-streaming.js', 'controls-detach-autoexport.js']) {
+  for (const file of ['background-streaming-export.js', 'background-export-resume.js', 'bootstrap-guard.js', 'export-resume-guard.js', 'export-ui-polish.js', 'export-streaming.js', 'controls-detach-autoexport.js']) {
     assert.match(build, new RegExp(file.replaceAll('.', '\\.')));
   }
 });
