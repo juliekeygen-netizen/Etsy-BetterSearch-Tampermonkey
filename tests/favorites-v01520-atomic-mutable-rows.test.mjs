@@ -36,7 +36,12 @@ async function makeIntegrationContext({ listing, shop, jobs = {} } = {}) {
       if (outcome?.shop !== undefined && outcome?.shop !== null) currentShop = clone(outcome.shop);
       return clone(outcome?.result);
     },
-    favIndexMutateStoreRow01520:async (_storeName, key, mutator) => {
+    favIndexMutateStoreRow01520:async (storeName, key, mutator) => {
+      if (storeName === 'listings') {
+        const outcome = mutator(clone(currentListing));
+        if (outcome?.write === true) currentListing = clone(outcome.value);
+        return clone(outcome?.result);
+      }
       const current = queue.has(String(key)) ? clone(queue.get(String(key))) : undefined;
       const outcome = mutator(current);
       if (outcome?.write === true) queue.set(String(key), clone(outcome.value));
