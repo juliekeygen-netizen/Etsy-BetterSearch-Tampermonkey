@@ -54,12 +54,12 @@ function loadVisualSyncHelper() {
   return context.testApi.sync;
 }
 
-test('0.15.10 keeps the v0.15.7 filter-state boundary final after diagnostics geometry', () => {
+test('0.15.11 keeps the final state-semantics boundary after diagnostics geometry', () => {
   const diagnostics = userscript.indexOf('/src/103-favorites-v0157-diagnostics-fixes.js');
   const stateSync = userscript.indexOf('/src/104-favorites-v0157-filter-state-sync.js');
   assert.ok(diagnostics >= 0 && stateSync > diagnostics);
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.match(requires.at(-1) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.10$/);
+  assert.match(requires.at(-1) || '', /\/src\/104-favorites-v0157-filter-state-sync\.js\?v=0\.15\.11$/);
 });
 
 test('normalized default configuration has no meaningfully active v2 filter binding', () => {
