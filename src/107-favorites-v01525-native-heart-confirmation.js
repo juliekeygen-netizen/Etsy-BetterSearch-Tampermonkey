@@ -11,12 +11,12 @@
  * evidence-driven. Observe the native removal intent before Etsy handles it,
  * consume the historical 900 ms persistence hook, then re-acquire the current
  * native card by listing ID under the exact same Favorites dataset/view. An
- * explicit unfavorited control is immediate proof; disappearance is accepted
- * only while the native grid remains mounted and the listing stays absent for a
- * bounded stable interval. Route/view changes, superseding heart clicks and
- * unresolved timeouts fail closed and never write a durable unfavorite.
+ * explicit unfavorited control and card disappearance both require bounded
+ * stability before they become durable evidence. Route/view changes,
+ * superseding heart clicks and unresolved timeouts fail closed.
  */
 var FAV_NATIVE_HEART_CONFIRM_TIMEOUT01525 = 6000;
+var FAV_NATIVE_HEART_STATE_STABLE01525 = 1200;
 var FAV_NATIVE_HEART_ABSENCE_STABLE01525 = 1500;
 var FAV_NATIVE_HEART_POLL01525 = 120;
 var FAV_NATIVE_HEART_ACTION_TTL01525 = 10000;
@@ -81,6 +81,7 @@ function favCaptureNativeHeartIntent01525(event) {
         viewKey:String(favViewKey0137()),
         startedAt:Date.now(),
         confirmationPromise:null,
+        committing:false,
         cleanupTimer:0,
     };
     action.cleanupTimer = setTimeout(() => favClearNativeHeartAction01525(action), FAV_NATIVE_HEART_ACTION_TTL01525);
@@ -88,9 +89,8 @@ function favCaptureNativeHeartIntent01525(event) {
 
     /* Start from the capture itself rather than depending on module 63's later
      * bubble listener. Etsy may optimistically flip aria-pressed/remove the card
-     * before that historical listener runs, which would otherwise skip its
-     * fixed-delay hook entirely. Promise timing lets the current click stack
-     * finish first so Etsy remains the mutation owner. */
+     * before that historical listener runs. Promise timing lets the current
+     * click stack finish first so Etsy remains the mutation owner. */
     if (action.intent === 'remove') {
         void Promise.resolve().then(() => {
             if (favNativeHeartAction01525(id) === action) return favStartNativeHeartConfirmation01525(action);
@@ -103,6 +103,8 @@ document.addEventListener('click', favCaptureNativeHeartIntent01525, true);
 
 async function favConfirmNativeHeartRemoval01525(action) {
     const startedAt = Date.now();
+    let explicitSince = 0;
+    let explicitSamples = 0;
     let absenceSince = 0;
     let absenceSamples = 0;
 
@@ -116,6 +118,8 @@ async function favConfirmNativeHeartRemoval01525(action) {
 
         const nativeGrid = favNativeMainGrid0141?.();
         if (!nativeGrid?.isConnected) {
+            explicitSince = 0;
+            explicitSamples = 0;
             absenceSince = 0;
             absenceSamples = 0;
         } else {
@@ -125,9 +129,19 @@ async function favConfirmNativeHeartRemoval01525(action) {
                 absenceSamples = 0;
                 const currentButton = favNativeFavoriteButton01525(currentCard);
                 if (currentButton && !isFavoritedButton(currentButton)) {
-                    return { confirmed:true, reason:'explicit-state' };
+                    const now = Date.now();
+                    if (!explicitSince) explicitSince = now;
+                    explicitSamples += 1;
+                    if (explicitSamples >= 3 && now - explicitSince >= FAV_NATIVE_HEART_STATE_STABLE01525) {
+                        return { confirmed:true, reason:'stable-explicit-state' };
+                    }
+                } else {
+                    explicitSince = 0;
+                    explicitSamples = 0;
                 }
             } else {
+                explicitSince = 0;
+                explicitSamples = 0;
                 const now = Date.now();
                 if (!absenceSince) absenceSince = now;
                 absenceSamples += 1;
@@ -143,22 +157,27 @@ async function favConfirmNativeHeartRemoval01525(action) {
 
 async function favCommitConfirmedNativeHeartRemoval01525(action) {
     if (favNativeHeartAction01525(action?.id) !== action || !favNativeHeartContextCurrent01525(action)) return false;
-    favClearNativeHeartAction01525(action);
 
-    /* On somebody else's profile this heart is viewer-personal state, not that
-     * profile's Favorites membership. Refresh cloned presentation if possible,
-     * but never remove or persist the profile catalogue row. */
-    if (!favIsOwnFavoritesPage()) {
-        favRefreshOwnedCardsFromNative0143?.();
+    /* Keep a confirmed tombstone until the action TTL expires. Module 63's old
+     * 900 ms callback may still fire after this confirmation; retaining the
+     * action lets the wrappers consume that stale callback instead of writing a
+     * second time. A later real heart click replaces this action immediately. */
+    action.committing = true;
+    try {
+        if (!favIsOwnFavoritesPage()) {
+            action.intent = 'confirmed-remove';
+            favRefreshOwnedCardsFromNative0143?.();
+            return true;
+        }
+
+        const removed = favRemoveLocalFavoriteBefore01525(action.id);
+        if (!removed) await favIndexMarkUnfavoriteBefore01525(action.id);
+        if (removed && favState.renderMode0141 === 'bettersearch-local') favRenderCurrent();
+        action.intent = 'confirmed-remove';
         return true;
+    } finally {
+        action.committing = false;
     }
-
-    const removed = favRemoveLocalFavoriteBefore01525(action.id);
-    if (!removed) {
-        await favIndexMarkUnfavoriteBefore01525(action.id);
-    }
-    if (removed && favState.renderMode0141 === 'bettersearch-local') favRenderCurrent();
-    return true;
 }
 
 async function favRunNativeHeartConfirmation01525(action) {
@@ -190,8 +209,8 @@ function favStartNativeHeartConfirmation01525(action) {
 }
 
 /* Consume module 63's old fixed-delay live/local removal path while a captured
- * native heart action is still current. Returning true prevents its immediate
- * fallback persistence; the confirmed path performs the actual mutation later. */
+ * native heart action is recent. Confirmed tombstones are intentionally consumed
+ * too so a late historical callback cannot duplicate the durable write. */
 var favRemoveLocalFavoriteBefore01525 = favRemoveLocalFavorite;
 favRemoveLocalFavorite = function favRemoveLocalFavorite01525(idValue) {
     const action = favNativeHeartAction01525(idValue);
@@ -201,13 +220,14 @@ favRemoveLocalFavorite = function favRemoveLocalFavorite01525(idValue) {
 };
 
 /* Native mode bypasses favRemoveLocalFavorite in module 63 and calls the index
- * helper directly after 900 ms. Fence that same historical path by listing ID.
- * Calls unrelated to a recent native heart action retain the established
- * v0.15.19 owner-specific atomic writer unchanged. */
+ * helper directly after 900 ms. Fence that historical path by listing ID. The
+ * confirmed commit uses the pre-wrapper atomic writer directly, while unrelated
+ * calls retain the established v0.15.19 owner-specific writer unchanged. */
 var favIndexMarkUnfavoriteBefore01525 = favIndexMarkUnfavorite;
 favIndexMarkUnfavorite = function favIndexMarkUnfavorite01525(idValue, ...args) {
     const action = favNativeHeartAction01525(idValue);
     if (!action) return favIndexMarkUnfavoriteBefore01525(idValue, ...args);
+    if (action.committing === true) return favIndexMarkUnfavoriteBefore01525(idValue, ...args);
     if (action.intent === 'remove') void favStartNativeHeartConfirmation01525(action);
     return Promise.resolve(false);
 };
