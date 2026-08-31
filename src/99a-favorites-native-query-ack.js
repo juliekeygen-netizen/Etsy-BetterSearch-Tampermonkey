@@ -15,6 +15,7 @@
 var FAV_NATIVE_QUERY_LATE_ACK_MS01523 = 5000;
 var favCommittedNativeQueryProvenanceBefore01523 = favCommittedNativeQueryProvenance01510;
 var favMarkNativeQuerySubmittedBefore01523 = favMarkNativeQuerySubmitted0140;
+var favCatalogWithCrossTabLeaseBefore01523 = favCatalogWithCrossTabLease0141;
 
 favState.nativeQueryVerificationScope01523 = String(favState.nativeQueryVerificationScope01523 || '');
 favState.nativeQueryVerifiedValue01523 = String(favState.nativeQueryVerifiedValue01523 || '');
@@ -125,9 +126,13 @@ function favFinalizeNativeQueryState01523(next, verified) {
     const value = String(next || '').trim();
     const changed = value !== favState.nativeCommittedQuery0140;
     const submittedAt = favState.nativeQuerySubmittedAt0140;
+    const preserveVerifiedSameValue = !changed
+        && favState.nativeQueryCommitVerified01523 === true
+        && favState.nativeQueryVerifiedValue01523 === value;
+    const finalVerified = verified === true || preserveVerifiedSameValue;
 
     favState.nativeCommittedQuery0140 = value;
-    favMarkNativeQueryVerification01523(value, verified, submittedAt);
+    favMarkNativeQueryVerification01523(value, finalVerified, submittedAt);
     favState.nativeQueryPendingDirty0140 = false;
     favState.nativeQueryAwaitingSettle0140 = false;
     favState.nativeQuerySubmittedAt0140 = 0;
@@ -209,4 +214,37 @@ favCommittedNativeQueryProvenance01510 = function favCommittedNativeQueryProvena
     return verified
         ? result
         : { queryCommitSource:'favorites-search-unverified', queryCommitVerified:false };
+};
+
+function favNativeQueryScopeDurable01523(scope) {
+    const query = String(scope?.query || '').trim();
+    if (!query) return true;
+    try {
+        const proof = favCommittedNativeQueryProvenance01510(query);
+        const candidate = { ...(scope || {}), query, ...proof };
+        if (typeof favScopeQueryTrusted01510 === 'function') {
+            return favScopeQueryTrusted01510(candidate) === true;
+        }
+        return proof?.queryCommitVerified === true;
+    } catch (_) {
+        return false;
+    }
+}
+
+/* v0.15.22's no-Web-Locks fallback coordinates by writing lease fields onto the
+ * canonical scope row. That is correct only for a scope whose query identity is
+ * already eligible to be durable. A timeout-only runtime query must not seed a
+ * coordination-only IndexedDB scope before v0.15.10 gets a chance to reject its
+ * eventual observation. Keep ephemeral Web Locks when available; otherwise let
+ * the unverified runtime crawl execute without durable cross-tab coordination.
+ * The in-tab favCatalogInflight0141 owner still deduplicates same-tab work, and
+ * every observation remains behind the existing v0.15.10 fail-closed writer. */
+favCatalogWithCrossTabLease0141 = async function favCatalogWithCrossTabLease01523(scope, requestedAt, signal, work) {
+    const query = String(scope?.query || '').trim();
+    const owner = String(scope?.owner || '').trim();
+    const webLocksAvailable = Boolean(globalThis.navigator?.locks?.request);
+    if (query && owner && !webLocksAvailable && !favNativeQueryScopeDurable01523(scope)) {
+        return work(() => true);
+    }
+    return favCatalogWithCrossTabLeaseBefore01523(scope, requestedAt, signal, work);
 };
