@@ -22,9 +22,7 @@ const provenanceSource = sourceBlock(
 );
 
 function grid(ids = []) {
-  return {
-    children:Array.from(ids, (id) => ({ id:String(id) })),
-  };
+  return { children:Array.from(ids, (id) => ({ id:String(id) })) };
 }
 
 function input(value) {
@@ -41,9 +39,26 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
   let propsQuery = initialCommitted;
   let href = 'https://www.etsy.com/people/example?tab=items';
   let syncCalls = 0;
-  let observations = 0;
+  let performanceNow = 100;
+  let timerId = 0;
+  const resources = [];
   const scheduled = [];
-  const leaseCalls = [];
+  const observers = [];
+
+  class FakePerformanceObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.disconnected = false;
+      observers.push(this);
+    }
+    observe() {}
+    disconnect() { this.disconnected = true; }
+  }
+
+  const performance = {
+    now:() => performanceNow,
+    getEntriesByType:(type) => type === 'resource' ? resources.slice() : [],
+  };
 
   const context = {
     favState:{
@@ -75,33 +90,27 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
     favListingIdFromNode:(node) => String(node?.id || ''),
     favScheduleCurrentPageObservation:(delay = 0) => { scheduled.push(delay); },
     favScheduleSync:() => { syncCalls += 1; },
-    favIndexObserveCurrentPage:() => { observations += 1; },
+    favIndexObserveCurrentPage:async () => {},
     favShellMutationRelevant0128:() => false,
     favMutationElement0128:(node) => node?.nodeType === 1 ? node : node?.parentElement || null,
     favDesktopShell0120:() => true,
     favScheduleShellRepair0123:() => {},
-    favScopeQueryTrusted01510:(scope) => {
-      const query = String(scope?.query || '').trim();
-      if (!query) return true;
-      return query.length <= 512
-        && scope?.queryCommitVerified === true
-        && ['route','ssr-props','favorites-search-commit'].includes(String(scope?.queryCommitSource || ''));
-    },
-    favCatalogWithCrossTabLease0141:async (...args) => {
-      leaseCalls.push(args);
-      return { delegated:true };
-    },
-    navigator:{},
     MutationObserver:class { disconnect() {} observe() {} },
+    PerformanceObserver:FakePerformanceObserver,
+    performance,
     GM_addStyle:() => {},
     document:{
       addEventListener:() => {},
       body:{},
       createElement:() => ({ innerHTML:'', content:{ firstElementChild:null } }),
     },
-    location:{ get href() { return href; }, set href(value) { href = String(value); } },
+    location:{
+      origin:'https://www.etsy.com',
+      get href() { return href; },
+      set href(value) { href = String(value); },
+    },
     URL,
-    setTimeout:() => 1,
+    setTimeout:() => ++timerId,
     clearTimeout:() => {},
     requestAnimationFrame:(fn) => fn(),
     Date, String, Number, Boolean, Array, Object, Map, Set, Promise, console,
@@ -115,156 +124,198 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
     settle:favMaybeCommitSubmittedNativeQuery0140,
     provenance:favCommittedNativeQueryProvenance01510,
     committed:()=>favCommittedNativeQuery0138(),
-    lease:favCatalogWithCrossTabLease0141,
-    durable:(scope)=>favNativeQueryScopeDurable01523(scope),
-    verification:()=>({
-      verified:favState.nativeQueryCommitVerified01523,
-      value:favState.nativeQueryVerifiedValue01523,
-      unverified:favState.nativeQueryUnverifiedValue01523,
-      unverifiedAt:favState.nativeQueryUnverifiedSubmittedAt01523,
-    }),
+    verification:()=>({ verified:favState.nativeQueryCommitVerified01523, value:favState.nativeQueryVerifiedValue01523 }),
+    submission:()=>favState.nativeQuerySubmission01523,
+    record:favNativeQueryRecordResource01523,
   };`, context);
+
+  function emitResource({ query, status = 200, startTime = performanceNow + 10, responseEnd = startTime + 20, includeQuery = true } = {}) {
+    const url = new URL('https://www.etsy.com/api/v3/ajax/bespoke/member/users/owner/collections/vns/landing-listings-bespoke');
+    url.searchParams.set('limit', '20');
+    url.searchParams.set('offset', '0');
+    if (includeQuery) url.searchParams.set('query', String(query ?? ''));
+    const entry = { entryType:'resource', name:url.href, startTime, responseEnd, responseStatus:status };
+    resources.push(entry);
+    for (const observer of observers) {
+      if (!observer.disconnected) observer.callback({ getEntries:() => [entry] });
+    }
+    return entry;
+  }
 
   return {
     context,
     api:context.testApi,
+    input,
     get grid() { return nativeGrid; },
     setGrid(next) { nativeGrid = next; },
     replaceGrid(ids) { nativeGrid = grid(ids); return nativeGrid; },
     setIds(ids) { nativeGrid.children = Array.from(ids, (id) => ({ id:String(id) })); },
-    setPropsQuery(value) { propsQuery = String(value || ''); },
+    setPropsQuery(value) { propsQuery = String(value ?? ''); },
     setHref(value) { href = String(value); },
+    emitResource,
+    setPerformanceNow(value) { performanceNow = Number(value) || 0; },
     get syncCalls() { return syncCalls; },
-    get observations() { return observations; },
     scheduled,
-    leaseCalls,
+    observers,
   };
 }
 
 function ageSubmission(f, ms) {
-  f.context.favState.nativeQuerySubmittedAt0140 = Date.now() - ms;
+  const submission = f.api.submission();
+  assert.ok(submission, 'expected active submission');
+  submission.submittedAt = Date.now() - ms;
 }
 
-function ageUnverified(f, ms) {
-  f.context.favState.nativeQueryUnverifiedSubmittedAt01523 = Date.now() - ms;
+function typeDraft(f, value) {
+  f.context.favRememberNativeQueryDraft0140(input(value));
 }
 
-test('behavior gate load order is 99 -> 99a -> 100 -> 101 while release identity remains 0.15.22', () => {
+test('behavior gate load order is 99 -> 99a -> 100 while release identity remains 0.15.22', () => {
   const p99 = userscript.indexOf('/src/99-favorites-v0131-correctness.js?v=0.15.22');
   const p99a = userscript.indexOf('/src/99a-favorites-native-query-ack.js?v=0.15.22');
   const p100 = userscript.indexOf('/src/100-favorites-all-search-clear-parity.js?v=0.15.22');
-  const p101 = userscript.indexOf('/src/101-favorites-v0141-smoke-fixes.js?v=0.15.22');
-  assert.ok(p99 >= 0 && p99a > p99 && p100 > p99a && p101 > p100);
+  assert.ok(p99 >= 0 && p99a > p99 && p100 > p99a);
   assert.match(userscript, /@version\s+0\.15\.22/);
 });
 
-test('typing stays draft-only and a submitted unchanged grid stays pending before timeout', () => {
-  const f = fixture();
-  const field = input('search one');
-  f.context.favRememberNativeQueryDraft0140(field);
-  assert.equal(f.api.committed(), '');
+test('source proves historical module99 timeout promoted unacknowledged pending text', () => {
+  const old = sourceBlock(
+    correction,
+    'function favMaybeCommitSubmittedNativeQuery0140()',
+    "document.addEventListener('input'",
+  );
+  assert.match(old, /elapsed < FAV_QUERY_SETTLE_FALLBACK_MS0140/);
+  assert.match(old, /favState\.nativeCommittedQuery0140 = next/);
+  assert.match(old, /nativePendingQuery0140/);
+});
 
+test('typing and timer alone never change final committed query identity', () => {
+  const f = fixture();
+  const field = input('timer must not commit');
+  typeDraft(f, field.value);
+  assert.equal(f.api.committed(), '');
   f.api.submit(field);
+  ageSubmission(f, 1000);
   assert.equal(f.api.settle(), 'pending');
   assert.equal(f.api.committed(), '');
   assert.equal(f.syncCalls, 0);
 });
 
-test('timeout can advance nonempty runtime query but durable provenance remains unverified', () => {
+test('deadline fails closed and preserves the submitted text only as dirty draft', () => {
   const f = fixture();
-  const field = input('runtime only');
+  const field = input('failed request');
   f.api.submit(field);
-  ageSubmission(f, 1000);
-
-  assert.equal(f.api.settle(), true);
-  assert.equal(f.api.committed(), 'runtime only');
-  assert.deepEqual({ ...f.api.provenance('runtime only') }, {
-    queryCommitSource:'favorites-search-unverified',
-    queryCommitVerified:false,
-  });
-  assert.deepEqual({ ...f.api.verification() }, {
-    verified:false,
-    value:'',
-    unverified:'runtime only',
-    unverifiedAt:f.context.favState.nativeQueryUnverifiedSubmittedAt01523,
-  });
+  ageSubmission(f, 6000);
+  assert.equal(f.api.settle(), false);
+  assert.equal(f.api.committed(), '');
+  assert.equal(f.context.favState.nativePendingQuery0140, 'failed request');
+  assert.equal(f.context.favState.nativeQueryPendingDirty0140, true);
+  assert.equal(f.context.favState.nativeQueryAwaitingSettle0140, false);
+  assert.equal(f.api.submission(), null);
 });
 
-test('changed native listing IDs positively acknowledge submitted query before timeout', () => {
+test('exact successful Favorites resource acknowledges the exact submitted non-empty query', () => {
   const f = fixture();
-  const field = input('changed ids');
-  f.api.submit(field);
+  f.api.submit(input('exact query'));
+  f.emitResource({ query:'exact query', status:200 });
+  assert.equal(f.api.settle(), true);
+  assert.equal(f.api.committed(), 'exact query');
+  assert.deepEqual({ ...f.api.provenance('exact query') }, {
+    queryCommitSource:'favorites-search-commit',
+    queryCommitVerified:true,
+  });
+  assert.equal(f.syncCalls, 1);
+});
+
+test('different-query resource cannot acknowledge current submission', () => {
+  const f = fixture();
+  f.api.submit(input('wanted'));
+  f.emitResource({ query:'other', status:200 });
+  f.setIds(['changed-by-other']);
+  assert.equal(f.api.settle(), 'pending');
+  assert.equal(f.api.committed(), '');
+});
+
+test('known failed exact response cannot commit even if native grid changes', () => {
+  const f = fixture();
+  f.api.submit(input('server fails'));
+  f.emitResource({ query:'server fails', status:500 });
+  f.setIds(['error-ui-change']);
+  assert.equal(f.api.settle(), false);
+  assert.equal(f.api.committed(), '');
+  assert.equal(f.context.favState.nativeQueryPendingDirty0140, true);
+});
+
+test('when responseStatus is unavailable, exact completed request also requires native grid settlement', () => {
+  const f = fixture();
+  f.api.submit(input('unknown status'));
+  f.emitResource({ query:'unknown status', status:0 });
+  assert.equal(f.api.settle(), 'pending');
   f.setIds(['C','D']);
-
   assert.equal(f.api.settle(), true);
-  assert.equal(f.api.committed(), 'changed ids');
-  assert.deepEqual({ ...f.api.provenance('changed ids') }, {
-    queryCommitSource:'favorites-search-commit',
-    queryCommitVerified:true,
-  });
+  assert.equal(f.api.committed(), 'unknown status');
 });
 
-test('zero-result native transition is positive acknowledgement rather than waiting for timeout', () => {
-  const f = fixture({ initialIds:['A','B'] });
-  const field = input('nothing matches');
-  f.api.submit(field);
-  f.setIds([]);
-
-  assert.equal(f.api.settle(), true);
-  assert.equal(f.api.committed(), 'nothing matches');
-  assert.equal(f.api.verification().verified, true);
-});
-
-test('native grid replacement with identical IDs is positive acknowledgement', () => {
-  const f = fixture({ initialIds:['A','B'] });
-  const before = f.grid;
-  const field = input('same ids new response');
-  f.api.submit(field);
-  const after = f.replaceGrid(['A','B']);
-  assert.notEqual(after, before);
-
-  assert.equal(f.api.settle(), true);
-  assert.equal(f.api.verification().verified, true);
-});
-
-test('re-submitting the already verified identical query does not downgrade trust on timeout no-op', () => {
+test('submit A then type B: acknowledgement for A commits A and leaves B as dirty unsubmitted draft', () => {
   const f = fixture();
-  const field = input('same verified query');
-  f.api.submit(field);
-  f.setIds(['verified-result']);
+  f.api.submit(input('alpha'));
+  typeDraft(f, 'beta');
+  f.emitResource({ query:'alpha', status:200 });
   assert.equal(f.api.settle(), true);
-  assert.equal(f.api.verification().verified, true);
-
-  f.api.submit(field);
-  ageSubmission(f, 1000);
-  assert.equal(f.api.settle(), false, 'same committed value is not a new query generation');
-  assert.equal(f.api.verification().verified, true);
-  assert.deepEqual({ ...f.api.provenance('same verified query') }, {
-    queryCommitSource:'favorites-search-commit',
-    queryCommitVerified:true,
-  });
+  assert.equal(f.api.committed(), 'alpha');
+  assert.equal(f.context.favState.nativePendingQuery0140, 'beta');
+  assert.equal(f.context.favState.nativeQueryPendingDirty0140, true);
+  assert.equal(f.api.provenance('beta').queryCommitVerified, false);
 });
 
-test('failed clear-to-All never timeout-promotes canonical empty query', () => {
-  const f = fixture({ initialCommitted:'old query', initialIds:['A','B'] });
-  const field = input('');
-  f.api.submit(field);
-  ageSubmission(f, 2000);
+test('submit A then submit B: late exact A response cannot acknowledge B', () => {
+  const f = fixture();
+  f.api.submit(input('alpha'));
+  const first = f.api.submission();
+  f.api.submit(input('beta'));
+  const second = f.api.submission();
+  assert.notEqual(second.sequence, first.sequence);
 
+  f.emitResource({ query:'alpha', status:200 });
+  f.setIds(['late-alpha']);
+  assert.equal(f.api.settle(), 'pending');
+  assert.equal(f.api.committed(), '');
+
+  f.emitResource({ query:'beta', status:200 });
+  assert.equal(f.api.settle(), true);
+  assert.equal(f.api.committed(), 'beta');
+});
+
+test('late observer from superseded submission is disconnected and cannot mutate current evidence', () => {
+  const f = fixture();
+  f.api.submit(input('first'));
+  const oldObserver = f.observers.at(-1);
+  f.api.submit(input('second'));
+  assert.equal(oldObserver.disconnected, true);
+  f.emitResource({ query:'first', status:200 });
+  assert.equal(f.api.submission().value, 'second');
+  assert.equal(f.api.submission().resourceCompleted, false);
+});
+
+test('route or SSR evidence must change after submit and match exact submitted value', () => {
+  const f = fixture();
+  f.api.submit(input('explicit'));
+  assert.equal(f.api.settle(), 'pending');
+  f.setPropsQuery('wrong');
+  assert.equal(f.api.settle(), 'pending');
+  f.setPropsQuery('explicit');
+  assert.equal(f.api.settle(), true);
+  assert.equal(f.api.committed(), 'explicit');
+});
+
+test('clear-to-All never commits from timer or exact request alone; native settlement is required', () => {
+  const f = fixture({ initialCommitted:'old query', initialIds:['A','B'] });
+  f.api.submit(input(''));
+  f.emitResource({ query:'', status:200, includeQuery:false });
+  ageSubmission(f, 1000);
   assert.equal(f.api.settle(), 'pending');
   assert.equal(f.api.committed(), 'old query');
-  assert.deepEqual({ ...f.api.provenance('old query') }, {
-    queryCommitSource:'ssr-props',
-    queryCommitVerified:true,
-  });
-});
-
-test('clear-to-All commits only after positive native grid acknowledgement', () => {
-  const f = fixture({ initialCommitted:'old query', initialIds:['A','B'] });
-  const field = input('');
-  f.api.submit(field);
   f.setIds(['A','B','C']);
-
   assert.equal(f.api.settle(), true);
   assert.equal(f.api.committed(), '');
   assert.deepEqual({ ...f.api.provenance('') }, {
@@ -273,124 +324,50 @@ test('clear-to-All commits only after positive native grid acknowledgement', () 
   });
 });
 
-test('matching route/SSR evidence must change after submit to count as a fresh explicit acknowledgement', () => {
-  const f = fixture();
-  const field = input('explicit query');
-  f.api.submit(field);
-
-  /* Route/props still carry their submit-time values, so no fresh ack yet. */
-  assert.equal(f.api.settle(), 'pending');
-
-  f.setPropsQuery('explicit query');
+test('zero-result transition can acknowledge when paired with exact completed resource lacking responseStatus', () => {
+  const f = fixture({ initialIds:['A','B'] });
+  f.api.submit(input('nothing'));
+  f.emitResource({ query:'nothing', status:0 });
+  f.setIds([]);
   assert.equal(f.api.settle(), true);
-  assert.deepEqual({ ...f.api.provenance('explicit query') }, {
-    queryCommitSource:'ssr-props',
-    queryCommitVerified:true,
-  });
+  assert.equal(f.api.committed(), 'nothing');
 });
 
-test('timeout-promoted query upgrades to durable verified state on bounded late grid acknowledgement', () => {
+test('re-submitting an already verified identical query remains verified without creating a generation', () => {
   const f = fixture();
-  const field = input('late result');
-  f.api.submit(field);
-  ageSubmission(f, 1000);
-  assert.equal(f.api.settle(), true);
-  assert.equal(f.api.verification().verified, false);
-
-  f.setIds(['late-A']);
+  f.api.submit(input('same'));
+  f.emitResource({ query:'same', status:200 });
   assert.equal(f.api.settle(), true);
   assert.equal(f.api.verification().verified, true);
-  assert.deepEqual({ ...f.api.provenance('late result') }, {
-    queryCommitSource:'favorites-search-commit',
-    queryCommitVerified:true,
-  });
-});
+  assert.equal(f.syncCalls, 1);
 
-test('old unverified query cannot be upgraded later by an unrelated grid change after late-ack window', () => {
-  const f = fixture();
-  const field = input('stale late query');
-  f.api.submit(field);
-  ageSubmission(f, 1000);
-  assert.equal(f.api.settle(), true);
-  ageUnverified(f, 6000);
-  f.setIds(['unrelated-page-change']);
-
+  f.api.submit(input('same'));
   assert.equal(f.api.settle(), false);
-  assert.equal(f.api.verification().verified, false);
-  assert.equal(f.api.provenance('stale late query').queryCommitVerified, false);
-});
-
-test('changed exact route evidence can still prove a timeout query after the grid late-ack window', () => {
-  const f = fixture();
-  const field = input('eventual route query');
-  f.api.submit(field);
-  ageSubmission(f, 1000);
-  assert.equal(f.api.settle(), true);
-  ageUnverified(f, 6000);
-  f.setHref('https://www.etsy.com/people/example?tab=items&q=eventual%20route%20query');
-
-  assert.equal(f.api.settle(), true);
   assert.equal(f.api.verification().verified, true);
-  assert.equal(f.api.provenance('eventual route query').queryCommitVerified, true);
+  assert.equal(f.syncCalls, 1);
 });
 
-test('unverified timeout query bypasses durable scope-row coordinator when Web Locks are unavailable', async () => {
+test('resource matcher rejects pre-submit timeline entries', () => {
   const f = fixture();
-  const field = input('runtime no durable lease');
-  f.api.submit(field);
-  ageSubmission(f, 1000);
-  assert.equal(f.api.settle(), true);
-  assert.equal(f.api.durable({ owner:'owner', type:'items', id:'', query:'runtime no durable lease' }), false);
-
-  let worked = 0;
-  const result = await f.api.lease(
-    { owner:'owner', type:'items', id:'', query:'runtime no durable lease' },
-    Date.now(),
-    new AbortController().signal,
-    async (touch) => { worked += 1; assert.equal(touch(), true); return { runtime:true }; },
-  );
-  assert.deepEqual({ ...result }, { runtime:true });
-  assert.equal(worked, 1);
-  assert.equal(f.leaseCalls.length, 0, 'v0.15.22 durable scope-row coordinator is not entered');
+  f.api.submit(input('fresh'));
+  f.emitResource({ query:'fresh', status:200, startTime:50 });
+  assert.equal(f.api.settle(), 'pending');
+  assert.equal(f.api.committed(), '');
 });
 
-test('verified query and Web Locks path still delegate to established cross-tab ownership', async () => {
+test('Strict/Multi mode never enters native query commit boundary', () => {
   const f = fixture();
-  const field = input('verified lease');
-  f.api.submit(field);
-  f.setIds(['verified']);
-  assert.equal(f.api.settle(), true);
-  assert.equal(f.api.durable({ owner:'owner', type:'items', id:'', query:'verified lease' }), true);
-
-  await f.api.lease(
-    { owner:'owner', type:'items', id:'', query:'verified lease' },
-    Date.now(),
-    new AbortController().signal,
-    async () => ({ unused:true }),
-  );
-  assert.equal(f.leaseCalls.length, 1, 'verified query retains the v0.15.22 coordinator path');
-
-  const unverified = fixture();
-  const timeoutField = input('web lock runtime');
-  unverified.api.submit(timeoutField);
-  ageSubmission(unverified, 1000);
-  assert.equal(unverified.api.settle(), true);
-  unverified.context.navigator.locks = { request:() => {} };
-  await unverified.api.lease(
-    { owner:'owner', type:'items', id:'', query:'web lock runtime' },
-    Date.now(),
-    new AbortController().signal,
-    async () => ({ unused:true }),
-  );
-  assert.equal(unverified.leaseCalls.length, 1, 'ephemeral Web Locks path stays available for an unverified runtime query');
+  f.context.favCfg.strict = true;
+  f.api.submit(input('strict local text'));
+  assert.equal(f.api.settle(), false);
+  assert.equal(f.api.committed(), '');
 });
 
-test('module source makes timeout-only query provenance and fallback coordination fail closed without persistence writes', () => {
-  assert.match(ack, /favorites-search-unverified/);
-  assert.match(ack, /if \(!acknowledged && !next\) return 'pending'/);
-  assert.match(ack, /favNativeMainGrid0141/);
-  assert.match(ack, /grid !== favState\.nativeQuerySubmitGrid01523/);
-  assert.match(ack, /favNativeQueryGridFingerprint01523\(grid\) !== favState\.nativeQuerySubmitGridFingerprint01523/);
-  assert.match(ack, /!webLocksAvailable && !favNativeQueryScopeDurable01523\(scope\)/);
-  assert.doesNotMatch(ack, /favCatalogCoordinatorMutateScope01522|favIndexOpen\(|\.put\(|listingIds\s*=/);
+test('final module is acknowledgement-only: no catalogue coordinator/storage writer override remains', () => {
+  assert.match(ack, /PerformanceObserver/);
+  assert.match(ack, /favNativeQueryResourceEndpointMatches01523/);
+  assert.match(ack, /submission\.value/);
+  assert.match(ack, /FAV_NATIVE_QUERY_ACK_DEADLINE_MS01523/);
+  assert.doesNotMatch(ack, /favCatalogWithCrossTabLease0141\s*=/);
+  assert.doesNotMatch(ack, /favIndexOpen\(|favCatalogCoordinatorMutateScope01522|\.put\(/);
 });
