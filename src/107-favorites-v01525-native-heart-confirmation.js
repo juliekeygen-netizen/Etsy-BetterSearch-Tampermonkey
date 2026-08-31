@@ -172,7 +172,11 @@ async function favCommitConfirmedNativeHeartRemoval01525(action) {
 
         const removed = favRemoveLocalFavoriteBefore01525(action.id);
         if (!removed) await favIndexMarkUnfavoriteBefore01525(action.id);
-        if (removed && favState.renderMode0141 === 'bettersearch-local') favRenderCurrent();
+        if (removed && favState.renderMode0141 === 'bettersearch-local') {
+            void Promise.resolve(favReapply()).catch((error) => {
+                console.debug?.('[EBSF] Confirmed Favorite removal reapply deferred.', error);
+            });
+        }
         action.intent = 'confirmed-remove';
         return true;
     } finally {
