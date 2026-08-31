@@ -43,6 +43,7 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
   let syncCalls = 0;
   let observations = 0;
   const scheduled = [];
+  const leaseCalls = [];
 
   const context = {
     favState:{
@@ -79,6 +80,18 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
     favMutationElement0128:(node) => node?.nodeType === 1 ? node : node?.parentElement || null,
     favDesktopShell0120:() => true,
     favScheduleShellRepair0123:() => {},
+    favScopeQueryTrusted01510:(scope) => {
+      const query = String(scope?.query || '').trim();
+      if (!query) return true;
+      return query.length <= 512
+        && scope?.queryCommitVerified === true
+        && ['route','ssr-props','favorites-search-commit'].includes(String(scope?.queryCommitSource || ''));
+    },
+    favCatalogWithCrossTabLease0141:async (...args) => {
+      leaseCalls.push(args);
+      return { delegated:true };
+    },
+    navigator:{},
     MutationObserver:class { disconnect() {} observe() {} },
     GM_addStyle:() => {},
     document:{
@@ -102,6 +115,8 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
     settle:favMaybeCommitSubmittedNativeQuery0140,
     provenance:favCommittedNativeQueryProvenance01510,
     committed:()=>favCommittedNativeQuery0138(),
+    lease:favCatalogWithCrossTabLease0141,
+    durable:(scope)=>favNativeQueryScopeDurable01523(scope),
     verification:()=>({
       verified:favState.nativeQueryCommitVerified01523,
       value:favState.nativeQueryVerifiedValue01523,
@@ -122,6 +137,7 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
     get syncCalls() { return syncCalls; },
     get observations() { return observations; },
     scheduled,
+    leaseCalls,
   };
 }
 
@@ -209,6 +225,24 @@ test('native grid replacement with identical IDs is positive acknowledgement', (
 
   assert.equal(f.api.settle(), true);
   assert.equal(f.api.verification().verified, true);
+});
+
+test('re-submitting the already verified identical query does not downgrade trust on timeout no-op', () => {
+  const f = fixture();
+  const field = input('same verified query');
+  f.api.submit(field);
+  f.setIds(['verified-result']);
+  assert.equal(f.api.settle(), true);
+  assert.equal(f.api.verification().verified, true);
+
+  f.api.submit(field);
+  ageSubmission(f, 1000);
+  assert.equal(f.api.settle(), false, 'same committed value is not a new query generation');
+  assert.equal(f.api.verification().verified, true);
+  assert.deepEqual({ ...f.api.provenance('same verified query') }, {
+    queryCommitSource:'favorites-search-commit',
+    queryCommitVerified:true,
+  });
 });
 
 test('failed clear-to-All never timeout-promotes canonical empty query', () => {
@@ -300,11 +334,63 @@ test('changed exact route evidence can still prove a timeout query after the gri
   assert.equal(f.api.provenance('eventual route query').queryCommitVerified, true);
 });
 
-test('module source makes timeout-only query provenance fail closed and does not mutate persistence itself', () => {
+test('unverified timeout query bypasses durable scope-row coordinator when Web Locks are unavailable', async () => {
+  const f = fixture();
+  const field = input('runtime no durable lease');
+  f.api.submit(field);
+  ageSubmission(f, 1000);
+  assert.equal(f.api.settle(), true);
+  assert.equal(f.api.durable({ owner:'owner', type:'items', id:'', query:'runtime no durable lease' }), false);
+
+  let worked = 0;
+  const result = await f.api.lease(
+    { owner:'owner', type:'items', id:'', query:'runtime no durable lease' },
+    Date.now(),
+    new AbortController().signal,
+    async (touch) => { worked += 1; assert.equal(touch(), true); return { runtime:true }; },
+  );
+  assert.deepEqual({ ...result }, { runtime:true });
+  assert.equal(worked, 1);
+  assert.equal(f.leaseCalls.length, 0, 'v0.15.22 durable scope-row coordinator is not entered');
+});
+
+test('verified query and Web Locks path still delegate to established cross-tab ownership', async () => {
+  const f = fixture();
+  const field = input('verified lease');
+  f.api.submit(field);
+  f.setIds(['verified']);
+  assert.equal(f.api.settle(), true);
+  assert.equal(f.api.durable({ owner:'owner', type:'items', id:'', query:'verified lease' }), true);
+
+  await f.api.lease(
+    { owner:'owner', type:'items', id:'', query:'verified lease' },
+    Date.now(),
+    new AbortController().signal,
+    async () => ({ unused:true }),
+  );
+  assert.equal(f.leaseCalls.length, 1, 'verified query retains the v0.15.22 coordinator path');
+
+  const unverified = fixture();
+  const timeoutField = input('web lock runtime');
+  unverified.api.submit(timeoutField);
+  ageSubmission(unverified, 1000);
+  assert.equal(unverified.api.settle(), true);
+  unverified.context.navigator.locks = { request:() => {} };
+  await unverified.api.lease(
+    { owner:'owner', type:'items', id:'', query:'web lock runtime' },
+    Date.now(),
+    new AbortController().signal,
+    async () => ({ unused:true }),
+  );
+  assert.equal(unverified.leaseCalls.length, 1, 'ephemeral Web Locks path stays available for an unverified runtime query');
+});
+
+test('module source makes timeout-only query provenance and fallback coordination fail closed without persistence writes', () => {
   assert.match(ack, /favorites-search-unverified/);
   assert.match(ack, /if \(!acknowledged && !next\) return 'pending'/);
   assert.match(ack, /favNativeMainGrid0141/);
   assert.match(ack, /grid !== favState\.nativeQuerySubmitGrid01523/);
   assert.match(ack, /favNativeQueryGridFingerprint01523\(grid\) !== favState\.nativeQuerySubmitGridFingerprint01523/);
-  assert.doesNotMatch(ack, /indexedDB|\.put\(|readwrite|listingIds\s*=/);
+  assert.match(ack, /!webLocksAvailable && !favNativeQueryScopeDurable01523\(scope\)/);
+  assert.doesNotMatch(ack, /favCatalogCoordinatorMutateScope01522|favIndexOpen\(|\.put\(|listingIds\s*=/);
 });
