@@ -20,10 +20,11 @@ function executable(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-test('atomic render transaction is the final runtime integration boundary', () => {
+test('atomic render transaction stays final until the metadata-context boundary', () => {
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.equal(requires.at(-2) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`);
-  assert.equal(requires.at(-1) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`);
+  assert.equal(requires.at(-3) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`);
+  assert.equal(requires.at(-2) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`);
+  assert.equal(requires.at(-1) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/106-favorites-v01524-metadata-context-generation.js?v=${packageJson.version}`);
   assert.doesNotMatch(smoke, /01512/, 'the rejected first draft must not remain appended to module 101');
 });
 

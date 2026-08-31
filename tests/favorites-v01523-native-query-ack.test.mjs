@@ -177,12 +177,12 @@ function typeDraft(f, value) {
   f.context.favRememberNativeQueryDraft0140(input(value));
 }
 
-test('release load order is 99 -> 99a -> 100 at 0.15.23 identity', () => {
-  const p99 = userscript.indexOf('/src/99-favorites-v0131-correctness.js?v=0.15.23');
-  const p99a = userscript.indexOf('/src/99a-favorites-native-query-ack.js?v=0.15.23');
-  const p100 = userscript.indexOf('/src/100-favorites-all-search-clear-parity.js?v=0.15.23');
+test('release load order is 99 -> 99a -> 100 at 0.15.24 identity', () => {
+  const p99 = userscript.indexOf('/src/99-favorites-v0131-correctness.js?v=0.15.24');
+  const p99a = userscript.indexOf('/src/99a-favorites-native-query-ack.js?v=0.15.24');
+  const p100 = userscript.indexOf('/src/100-favorites-all-search-clear-parity.js?v=0.15.24');
   assert.ok(p99 >= 0 && p99a > p99 && p100 > p99a);
-  assert.match(userscript, /@version\s+0\.15\.23/);
+  assert.match(userscript, /@version\s+0\.15\.24/);
 });
 
 test('source proves historical module99 timeout promoted unacknowledged pending text', () => {
