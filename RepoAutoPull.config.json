@@ -1,0 +1,12 @@
+﻿{
+    "configVersion":  5,
+    "repoPath":  "C:\\Users\\Julie\\Documents\\AHK\\Other\\Etsy-BetterSearch-Tampermonkey",
+    "interval":  "30 seconds",
+    "pullMode":  "autostash",
+    "promptOnPullFailure":  true,
+    "runNpmBuild":  true,
+    "customCommands":  [
+
+                       ],
+    "launchPath":  ""
+}
