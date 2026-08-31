@@ -1,7 +1,7 @@
 # Etsy BetterSearch — Current Project State
 
-**Updated:** 2026-08-31  
-**Purpose:** changing development brain / roadmap for Codex and human reviewers  
+**Updated:** 2026-08-31
+**Purpose:** changing development brain / roadmap for Codex and human reviewers
 **Repository authority:** current source, tests, Git history, CI, and verified browser evidence override this file if they disagree.
 
 Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WORK_PLAN.md`.
