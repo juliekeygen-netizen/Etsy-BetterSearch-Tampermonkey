@@ -6,6 +6,12 @@ import { readFile } from 'node:fs/promises';
 const source = await readFile(new URL('../src/61ec-favorites-catalog-coordinator.js', import.meta.url), 'utf8');
 const userscript = await readFile(new URL('../etsy-bettersearch.user.js', import.meta.url), 'utf8');
 
+function executableSource(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
 function fixture() {
   const priorCalls = [];
   const observes = [];
@@ -86,7 +92,7 @@ test('fallback coordinator uses a separate IndexedDB readwrite transaction, not 
   assert.match(source, /db\.transaction\('leases', 'readwrite'\)/);
   assert.match(source, /store\.get\(key\)/);
   assert.match(source, /store\.put\(result\.row\)/);
-  assert.doesNotMatch(source, /localStorage|favCatalogReadLease0141|favCatalogWriteLease0141/);
+  assert.doesNotMatch(executableSource(source), /\blocalStorage\b|favCatalogReadLease0141|favCatalogWriteLease0141/);
 });
 
 test('coordinator key is bounded/opaque and rows do not persist raw dataset identity', async () => {
