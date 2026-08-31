@@ -35,13 +35,13 @@ function extractRemovalSource(source) {
 
 test('final userscript order reasserts owner maintenance after 61h at release identity', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
-  const membership = userscript.indexOf('/src/61eb-favorites-multi-owner-membership.js?v=0.15.21');
-  const coordinator = userscript.indexOf('/src/61h-favorites-metadata-coordinator.js?v=0.15.21');
-  const finalOwner = userscript.indexOf('/src/61ha-favorites-owner-maintenance-final.js?v=0.15.21');
-  const ui = userscript.indexOf('/src/62-favorites-ui.js?v=0.15.21');
+  const membership = userscript.indexOf('/src/61eb-favorites-multi-owner-membership.js?v=0.15.22');
+  const coordinator = userscript.indexOf('/src/61h-favorites-metadata-coordinator.js?v=0.15.22');
+  const finalOwner = userscript.indexOf('/src/61ha-favorites-owner-maintenance-final.js?v=0.15.22');
+  const ui = userscript.indexOf('/src/62-favorites-ui.js?v=0.15.22');
 
   assert.ok(membership >= 0 && coordinator > membership && finalOwner > coordinator && ui > finalOwner);
-  assert.match(userscript, /@version\s+0\.15\.21/);
+  assert.match(userscript, /@version\s+0\.15\.22/);
 });
 
 test('61h stale global gate is inverted by the final owner-aware maintenance boundary', async () => {
