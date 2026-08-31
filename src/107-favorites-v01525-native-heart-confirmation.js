@@ -85,6 +85,18 @@ function favCaptureNativeHeartIntent01525(event) {
     };
     action.cleanupTimer = setTimeout(() => favClearNativeHeartAction01525(action), FAV_NATIVE_HEART_ACTION_TTL01525);
     favState.nativeHeartActions01525.set(id, action);
+
+    /* Start from the capture itself rather than depending on module 63's later
+     * bubble listener. Etsy may optimistically flip aria-pressed/remove the card
+     * before that historical listener runs, which would otherwise skip its
+     * fixed-delay hook entirely. Promise timing lets the current click stack
+     * finish first so Etsy remains the mutation owner. */
+    if (action.intent === 'remove') {
+        void Promise.resolve().then(() => {
+            if (favNativeHeartAction01525(id) === action) return favStartNativeHeartConfirmation01525(action);
+            return false;
+        });
+    }
 }
 
 document.addEventListener('click', favCaptureNativeHeartIntent01525, true);
