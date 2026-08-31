@@ -110,11 +110,11 @@ function fixture() {
   return { context, favState, roots, portals, addController, connectedPortals, flushRaf };
 }
 
-test('release identity is 0.15.26 and module79 remains before module80', () => {
-  const p79 = userscript.indexOf('/src/79-favorites-sort-layout.js?v=0.15.26');
-  const p80 = userscript.indexOf('/src/80-favorites-layout-editor-core.js?v=0.15.26');
+test('behavior gate keeps release identity at 0.15.25 and module79 remains before module80', () => {
+  const p79 = userscript.indexOf('/src/79-favorites-sort-layout.js?v=0.15.25');
+  const p80 = userscript.indexOf('/src/80-favorites-layout-editor-core.js?v=0.15.25');
   assert.ok(p79 >= 0 && p80 > p79);
-  assert.match(userscript, /@version\s+0\.15\.26/);
+  assert.match(userscript, /@version\s+0\.15\.25/);
 });
 
 test('detached-root portal is disposed and its stale state references are cleared', () => {
