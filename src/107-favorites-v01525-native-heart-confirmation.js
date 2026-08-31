@@ -212,15 +212,32 @@ function favStartNativeHeartConfirmation01525(action) {
     return action.confirmationPromise;
 }
 
+/* v0.15.26 local-card safety boundary. A BetterSearch-owned Favorites clone may
+ * represent an off-page listing with no connected native Etsy card to delegate
+ * to. Never use the generic hidden-iframe Favorite bridge for that case: open
+ * the listing visibly so Etsy's own page remains the mutation/identity owner.
+ * Generic non-Favorites bridge consumers keep their historical behavior. */
+var bridgeFavoriteBefore01526 = bridgeFavorite;
+bridgeFavorite = async function bridgeFavorite01526(card, button) {
+    if (card?.dataset?.ebsfOwnedCard !== '1') return bridgeFavoriteBefore01526(card, button);
+    const url = String(card?.dataset?.ebsfUrl || card?.dataset?.ebsListingUrl || '').trim();
+    if (button?.setAttribute) button.setAttribute('title', 'Open this listing to change its Favorite with Etsy.');
+    if (url) window.open(url, '_blank', 'noopener');
+    return false;
+};
+
 /* Consume module 63's old fixed-delay live/local removal path while a captured
  * native heart action is recent. Confirmed tombstones are intentionally consumed
- * too so a late historical callback cannot duplicate the durable write. */
+ * too so a late historical callback cannot duplicate the durable write. A
+ * consumed callback must report false: historical callers interpret true as
+ * "the local row was already removed" and would otherwise direct-render stale
+ * state before the confirmation owner commits and re-enters favReapply(). */
 var favRemoveLocalFavoriteBefore01525 = favRemoveLocalFavorite;
 favRemoveLocalFavorite = function favRemoveLocalFavorite01525(idValue) {
     const action = favNativeHeartAction01525(idValue);
     if (!action) return favRemoveLocalFavoriteBefore01525(idValue);
     if (action.intent === 'remove') void favStartNativeHeartConfirmation01525(action);
-    return true;
+    return false;
 };
 
 /* Native mode bypasses favRemoveLocalFavorite in module 63 and calls the index
