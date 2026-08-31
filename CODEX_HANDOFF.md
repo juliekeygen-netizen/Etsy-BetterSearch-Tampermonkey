@@ -8,8 +8,8 @@ The purpose of this file is to let the user hand a completed Codex PR to another
 
 ## Current handoff status
 
-**Status:** template / no active Codex implementation task yet  
-**Baseline when template created:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`  
+**Status:** template / no active Codex implementation task yet
+**Baseline when template created:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`
 **Baseline post-merge CI:** run `33391628427` — success
 
 When Codex completes its first task, replace the review packet below with that task's real state.
