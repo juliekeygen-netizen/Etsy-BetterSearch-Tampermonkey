@@ -2,29 +2,35 @@
 
 /* v0.15.23 native Favorites query acknowledgement boundary.
  *
- * Module 99 correctly separates live input text from submitted query state, but
- * its 850 ms settle fallback historically promoted the submitted text to the
- * same "committed" state used by v0.15.10 durable query provenance even when
- * Etsy had not produced any positive route/SSR/grid evidence. Keep the timeout
- * for runtime continuity, but make durable trust a separate, explicit fact.
+ * Module 99 historically treated an 850 ms timer as sufficient to promote the
+ * live submitted text to favCommittedNativeQuery0138(). v0.15.10 then treated
+ * that state as durable "favorites-search-commit" provenance. A failed/stalled
+ * Etsy search could therefore manufacture a durable query scope, and submit A
+ * -> type B before A settled could commit B when A's grid response arrived.
  *
- * This module intentionally loads after 99 and before 101. Module 101 therefore
- * keeps wrapping the final favMaybeCommitSubmittedNativeQuery0140 implementation
- * for count-generation invalidation without needing another count owner.
+ * Keep module 99's timers only as recheck scheduling. Final committed identity
+ * changes only after positive evidence bound to the exact submitted value:
+ *   1. route/SSR query evidence changes to that exact value; or
+ *   2. an exact same-origin Favorites resource request for that submitted value
+ *      completes successfully; or
+ *   3. where responseStatus is unavailable, the exact request completes AND
+ *      Etsy's native grid settles away from the submit-time grid.
+ *
+ * The submitted query is snapshotted independently from the live draft. Typing
+ * another value after submit never changes which query can be acknowledged.
  */
-var FAV_NATIVE_QUERY_LATE_ACK_MS01523 = 5000;
+var FAV_NATIVE_QUERY_ACK_DEADLINE_MS01523 = 5000;
 var favCommittedNativeQueryProvenanceBefore01523 = favCommittedNativeQueryProvenance01510;
 var favMarkNativeQuerySubmittedBefore01523 = favMarkNativeQuerySubmitted0140;
-var favCatalogWithCrossTabLeaseBefore01523 = favCatalogWithCrossTabLease0141;
 
 favState.nativeQueryVerificationScope01523 = String(favState.nativeQueryVerificationScope01523 || '');
 favState.nativeQueryVerifiedValue01523 = String(favState.nativeQueryVerifiedValue01523 || '');
 favState.nativeQueryCommitVerified01523 = favState.nativeQueryCommitVerified01523 === true;
-favState.nativeQuerySubmitGrid01523 = favState.nativeQuerySubmitGrid01523 || null;
-favState.nativeQuerySubmitGridFingerprint01523 = String(favState.nativeQuerySubmitGridFingerprint01523 || '');
-favState.nativeQuerySubmitExplicitEvidence01523 = String(favState.nativeQuerySubmitExplicitEvidence01523 || '');
-favState.nativeQueryUnverifiedValue01523 = String(favState.nativeQueryUnverifiedValue01523 || '');
-favState.nativeQueryUnverifiedSubmittedAt01523 = Math.max(0, Number(favState.nativeQueryUnverifiedSubmittedAt01523) || 0);
+favState.nativeQuerySubmission01523 = favState.nativeQuerySubmission01523 || null;
+favState.nativeQuerySubmitSequence01523 = Math.max(0, Number(favState.nativeQuerySubmitSequence01523) || 0);
+favState.nativeQueryResourceObserver01523 = favState.nativeQueryResourceObserver01523 || null;
+favState.nativeQueryAckDeadlineTimer01523 = Number(favState.nativeQueryAckDeadlineTimer01523) || 0;
+favState.nativeQueryAckFollowupTimer01523 = Number(favState.nativeQueryAckFollowupTimer01523) || 0;
 
 function favNativeQueryObservedGrid01523() {
     try {
@@ -42,9 +48,6 @@ function favNativeQueryGridFingerprint01523(grid = favNativeQueryObservedGrid015
         .join(',');
 }
 
-/* Route/SSR evidence is useful only when it CHANGES after submit. Etsy often
- * leaves both at their pre-search value for client-side Favorites search, so an
- * already-matching stale SSR value must not be mistaken for a fresh ack. */
 function favNativeQueryExplicitEvidence01523() {
     try {
         const url = new URL(location.href);
@@ -66,13 +69,12 @@ function favNativeQueryExplicitEvidence01523() {
 
 function favNativeQueryExplicitEvidenceValue01523(evidence) {
     const text = String(evidence || '');
-    const index = text.indexOf(':');
-    if (index < 0) return '';
     if (text.startsWith('route:')) {
-        const second = text.indexOf(':', index + 1);
+        const second = text.indexOf(':', text.indexOf(':') + 1);
         return second >= 0 ? text.slice(second + 1) : '';
     }
-    return text.slice(index + 1);
+    const first = text.indexOf(':');
+    return first >= 0 ? text.slice(first + 1) : '';
 }
 
 function favEnsureNativeQueryVerification01523() {
@@ -83,61 +85,169 @@ function favEnsureNativeQueryVerification01523() {
     const committed = String(favState.nativeCommittedQuery0140 || '').trim();
     const evidence = favNativeQueryExplicitEvidence01523();
     const explicitlyBacked = Boolean(committed)
-        && favNativeQueryExplicitEvidenceValue01523(evidence) === committed
-        && evidence !== 'none:';
+        && evidence !== 'none:'
+        && favNativeQueryExplicitEvidenceValue01523(evidence) === committed;
 
     favState.nativeQueryVerificationScope01523 = scopeIdentity;
     favState.nativeQueryVerifiedValue01523 = !committed || explicitlyBacked ? committed : '';
     favState.nativeQueryCommitVerified01523 = !committed || explicitlyBacked;
-    favState.nativeQuerySubmitGrid01523 = null;
-    favState.nativeQuerySubmitGridFingerprint01523 = '';
-    favState.nativeQuerySubmitExplicitEvidence01523 = '';
-    favState.nativeQueryUnverifiedValue01523 = '';
-    favState.nativeQueryUnverifiedSubmittedAt01523 = 0;
+    favCancelNativeQuerySubmission01523(false);
 }
 
-function favNativeQueryHasPositiveAck01523(value, allowLateGrid = true) {
-    const next = String(value || '').trim();
-    const currentEvidence = favNativeQueryExplicitEvidence01523();
-    const explicitChanged = currentEvidence !== favState.nativeQuerySubmitExplicitEvidence01523;
-    if (explicitChanged
-        && currentEvidence !== 'none:'
-        && favNativeQueryExplicitEvidenceValue01523(currentEvidence) === next) {
-        return true;
-    }
-
-    if (!allowLateGrid) return false;
-    const grid = favNativeQueryObservedGrid01523();
-    if (!grid) return false;
-    if (!favState.nativeQuerySubmitGrid01523) return true;
-    if (grid !== favState.nativeQuerySubmitGrid01523) return true;
-    return favNativeQueryGridFingerprint01523(grid) !== favState.nativeQuerySubmitGridFingerprint01523;
+function favStopNativeQueryResourceObserver01523() {
+    favState.nativeQueryResourceObserver01523?.disconnect?.();
+    favState.nativeQueryResourceObserver01523 = null;
 }
 
-function favMarkNativeQueryVerification01523(value, verified, submittedAt = 0) {
-    const next = String(value || '').trim();
-    favState.nativeQueryVerifiedValue01523 = verified ? next : '';
-    favState.nativeQueryCommitVerified01523 = verified === true;
-    favState.nativeQueryUnverifiedValue01523 = verified ? '' : next;
-    favState.nativeQueryUnverifiedSubmittedAt01523 = verified ? 0 : Math.max(0, Number(submittedAt) || Date.now());
+function favClearNativeQueryAckTimers01523() {
+    clearTimeout(favState.nativeQueryAckDeadlineTimer01523);
+    clearTimeout(favState.nativeQueryAckFollowupTimer01523);
+    favState.nativeQueryAckDeadlineTimer01523 = 0;
+    favState.nativeQueryAckFollowupTimer01523 = 0;
 }
 
-function favFinalizeNativeQueryState01523(next, verified) {
-    const value = String(next || '').trim();
-    const changed = value !== favState.nativeCommittedQuery0140;
-    const submittedAt = favState.nativeQuerySubmittedAt0140;
-    const preserveVerifiedSameValue = !changed
-        && favState.nativeQueryCommitVerified01523 === true
-        && favState.nativeQueryVerifiedValue01523 === value;
-    const finalVerified = verified === true || preserveVerifiedSameValue;
+function favCancelNativeQuerySubmission01523(keepDraft = true) {
+    favStopNativeQueryResourceObserver01523();
+    favClearNativeQueryAckTimers01523();
+    favState.nativeQuerySubmission01523 = null;
+    if (!keepDraft) return;
 
-    favState.nativeCommittedQuery0140 = value;
-    favMarkNativeQueryVerification01523(value, finalVerified, submittedAt);
-    favState.nativeQueryPendingDirty0140 = false;
+    const draft = String(favState.nativePendingQuery0140 || '').trim();
+    const committed = String(favState.nativeCommittedQuery0140 || '').trim();
     favState.nativeQueryAwaitingSettle0140 = false;
     favState.nativeQuerySubmittedAt0140 = 0;
     favState.nativeQuerySubmitFingerprint0140 = '';
+    favState.nativeQueryPendingDirty0140 = draft !== committed;
     favClearNativeQuerySettleTimers0140();
+}
+
+function favNativeQueryResourceEndpointMatches01523(name, submission) {
+    let url;
+    try { url = new URL(String(name || ''), location.origin); }
+    catch (_) { return false; }
+    if (url.origin !== location.origin) return false;
+
+    const scope = submission?.scope || {};
+    const owner = String(scope.owner || '').trim();
+    const id = String(scope.id || '').trim();
+    const path = decodeURIComponent(url.pathname || '');
+    let endpointMatch = false;
+    if (scope.type === 'items' && owner) {
+        endpointMatch = path.endsWith(`/api/v3/ajax/member/users/${owner}/favorites/landing-listings`);
+    } else if (scope.type === 'collection' && owner && id) {
+        endpointMatch = path.endsWith(`/api/v3/ajax/bespoke/member/users/${owner}/collections/${id}/landing-listings-bespoke`);
+    }
+    if (!endpointMatch) return false;
+
+    const expected = String(submission.value || '').trim();
+    const actual = url.searchParams.has('query') ? String(url.searchParams.get('query') || '').trim() : '';
+    return actual === expected;
+}
+
+function favNativeQueryRecordResource01523(entry, submission = favState.nativeQuerySubmission01523) {
+    if (!submission || submission.sequence !== favState.nativeQuerySubmission01523?.sequence) return false;
+    const entryStart = Math.max(0, Number(entry?.startTime) || 0);
+    if (submission.performanceStart > 0 && entryStart + 0.01 < submission.performanceStart) return false;
+    if (!favNativeQueryResourceEndpointMatches01523(entry?.name, submission)) return false;
+
+    const status = Number(entry?.responseStatus);
+    const statusKnown = Number.isFinite(status) && status > 0;
+    submission.resourceCompleted = true;
+    submission.resourceStatusKnown = statusKnown;
+    submission.resourceStatus = statusKnown ? status : 0;
+    submission.resourceSucceeded = statusKnown ? status >= 200 && status < 400 : false;
+    submission.resourceFailed = statusKnown ? status >= 400 : false;
+    submission.resourceResponseEnd = Math.max(0, Number(entry?.responseEnd) || 0);
+
+    if (!submission.resourceFailed) {
+        favScheduleCurrentPageObservation(0);
+        clearTimeout(favState.nativeQueryAckFollowupTimer01523);
+        const sequence = submission.sequence;
+        favState.nativeQueryAckFollowupTimer01523 = setTimeout(() => {
+            favState.nativeQueryAckFollowupTimer01523 = 0;
+            if (favState.nativeQuerySubmission01523?.sequence === sequence) favScheduleCurrentPageObservation(0);
+        }, 180);
+    }
+    return true;
+}
+
+function favNativeQueryScanResourceTimeline01523(submission = favState.nativeQuerySubmission01523) {
+    if (!submission || typeof performance?.getEntriesByType !== 'function') return false;
+    let matched = false;
+    try {
+        for (const entry of performance.getEntriesByType('resource') || []) {
+            if (favNativeQueryRecordResource01523(entry, submission)) matched = true;
+        }
+    } catch (_) {}
+    return matched;
+}
+
+function favWatchNativeQueryResources01523(submission) {
+    favStopNativeQueryResourceObserver01523();
+    if (typeof PerformanceObserver !== 'function') return;
+    try {
+        const observer = new PerformanceObserver((list) => {
+            if (favState.nativeQuerySubmission01523?.sequence !== submission.sequence) return;
+            for (const entry of list.getEntries?.() || []) favNativeQueryRecordResource01523(entry, submission);
+        });
+        try { observer.observe({ type:'resource', buffered:false }); }
+        catch (_) { observer.observe({ entryTypes:['resource'] }); }
+        favState.nativeQueryResourceObserver01523 = observer;
+    } catch (_) {}
+}
+
+function favNativeQueryGridSettled01523(submission) {
+    const grid = favNativeQueryObservedGrid01523();
+    if (!grid) return false;
+    if (!submission.grid) return true;
+    if (grid !== submission.grid) return true;
+    return favNativeQueryGridFingerprint01523(grid) !== submission.gridFingerprint;
+}
+
+function favNativeQueryExplicitAck01523(submission) {
+    const current = favNativeQueryExplicitEvidence01523();
+    return current !== submission.explicitEvidence
+        && current !== 'none:'
+        && favNativeQueryExplicitEvidenceValue01523(current) === submission.value;
+}
+
+function favNativeQueryHasPositiveAck01523(submission) {
+    if (!submission) return false;
+    if (favNativeQueryExplicitAck01523(submission)) return true;
+    favNativeQueryScanResourceTimeline01523(submission);
+    if (submission.resourceFailed) return false;
+    if (!submission.resourceCompleted) return false;
+
+    /* responseStatus is not implemented in every target browser. A known 2xx/
+     * 3xx response is sufficient exact server acknowledgement for a non-empty
+     * submitted query. When status is unavailable, require native result
+     * settlement as a second independent signal. Clear-to-All always requires
+     * native settlement so an unrelated no-query background refresh cannot
+     * acknowledge a failed Clear action. */
+    if (submission.value && submission.resourceStatusKnown && submission.resourceSucceeded) return true;
+    return favNativeQueryGridSettled01523(submission);
+}
+
+function favMarkNativeQueryVerification01523(value, verified) {
+    const next = String(value || '').trim();
+    favState.nativeQueryVerifiedValue01523 = verified ? next : '';
+    favState.nativeQueryCommitVerified01523 = verified === true;
+}
+
+function favFinalizeNativeQuerySubmission01523(submission) {
+    const next = String(submission?.value || '').trim();
+    const previous = String(favState.nativeCommittedQuery0140 || '').trim();
+    const draft = String(favState.nativePendingQuery0140 || '').trim();
+    const changed = next !== previous;
+
+    favState.nativeCommittedQuery0140 = next;
+    favMarkNativeQueryVerification01523(next, true);
+    favState.nativeQueryAwaitingSettle0140 = false;
+    favState.nativeQuerySubmittedAt0140 = 0;
+    favState.nativeQuerySubmitFingerprint0140 = '';
+    favState.nativeQueryPendingDirty0140 = draft !== next;
+    favClearNativeQuerySettleTimers0140();
+    favCancelNativeQuerySubmission01523(false);
 
     if (!changed) return false;
     favState.localPage = 1;
@@ -150,57 +260,88 @@ function favFinalizeNativeQueryState01523(next, verified) {
     return true;
 }
 
+function favStartNativeQuerySubmission01523(input) {
+    favEnsureNativeQueryVerification01523();
+    favCancelNativeQuerySubmission01523(false);
+    const grid = favNativeQueryObservedGrid01523();
+    const sequence = ++favState.nativeQuerySubmitSequence01523;
+    let performanceStart = 0;
+    try { performanceStart = Math.max(0, Number(performance?.now?.()) || 0); }
+    catch (_) {}
+    const submission = {
+        sequence,
+        scopeIdentity:favNativeQueryScopeIdentity0140(),
+        scope:{ ...favScope() },
+        value:String(input?.value || '').trim(),
+        submittedAt:Date.now(),
+        performanceStart,
+        grid:grid || null,
+        gridFingerprint:favNativeQueryGridFingerprint01523(grid),
+        explicitEvidence:favNativeQueryExplicitEvidence01523(),
+        resourceCompleted:false,
+        resourceStatusKnown:false,
+        resourceStatus:0,
+        resourceSucceeded:false,
+        resourceFailed:false,
+        resourceResponseEnd:0,
+    };
+    favState.nativeQuerySubmission01523 = submission;
+    favWatchNativeQueryResources01523(submission);
+
+    favState.nativeQueryAckDeadlineTimer01523 = setTimeout(() => {
+        favState.nativeQueryAckDeadlineTimer01523 = 0;
+        if (favState.nativeQuerySubmission01523?.sequence === sequence) favScheduleCurrentPageObservation(0);
+    }, FAV_NATIVE_QUERY_ACK_DEADLINE_MS01523);
+    return submission;
+}
+
 favMarkNativeQuerySubmitted0140 = function favMarkNativeQuerySubmitted01523(input) {
     favMarkNativeQuerySubmittedBefore01523(input);
     if (!favState.nativeQueryAwaitingSettle0140) return;
-    favEnsureNativeQueryVerification01523();
-    const grid = favNativeQueryObservedGrid01523();
-    favState.nativeQuerySubmitGrid01523 = grid || null;
-    favState.nativeQuerySubmitGridFingerprint01523 = favNativeQueryGridFingerprint01523(grid);
-    favState.nativeQuerySubmitExplicitEvidence01523 = favNativeQueryExplicitEvidence01523();
+    favStartNativeQuerySubmission01523(input);
 };
 
 favMaybeCommitSubmittedNativeQuery0140 = function favMaybeCommitSubmittedNativeQuery01523() {
     if (favCfg.strict || favCfg.multi) return false;
     favEnsureNativeQueryVerification01523();
+    if (!favState.nativeQueryAwaitingSettle0140) return false;
 
-    /* A timeout-promoted non-empty query remains runtime-only. If Etsy responds
-     * late, allow a bounded late grid/route/SSR transition to upgrade it to a
-     * durable verified commit before current-page observation proceeds. */
-    if (!favState.nativeQueryAwaitingSettle0140) {
-        const unverified = String(favState.nativeQueryUnverifiedValue01523 || '').trim();
-        const committed = String(favState.nativeCommittedQuery0140 || '').trim();
-        if (!unverified || unverified !== committed) return false;
-        const age = Date.now() - favState.nativeQueryUnverifiedSubmittedAt01523;
-        const allowLateGrid = age >= 0 && age <= FAV_NATIVE_QUERY_LATE_ACK_MS01523;
-        if (!favNativeQueryHasPositiveAck01523(unverified, allowLateGrid)) return false;
-        favMarkNativeQueryVerification01523(unverified, true);
-        favScheduleSync(0);
-        return true;
+    const submission = favState.nativeQuerySubmission01523;
+    if (!submission || submission.scopeIdentity !== favNativeQueryScopeIdentity0140()) {
+        favCancelNativeQuerySubmission01523(true);
+        return false;
     }
 
-    const next = String(favState.nativePendingQuery0140 || '').trim();
-    const elapsed = Date.now() - favState.nativeQuerySubmittedAt0140;
-    const acknowledged = favNativeQueryHasPositiveAck01523(next, true);
+    const committed = String(favState.nativeCommittedQuery0140 || '').trim();
+    if (submission.value === committed
+        && favState.nativeQueryCommitVerified01523 === true
+        && favState.nativeQueryVerifiedValue01523 === committed) {
+        favCancelNativeQuerySubmission01523(true);
+        return false;
+    }
 
-    /* While a submitted query is neither acknowledged nor timed out, block the
-     * observation caller from indexing the transitioning native grid under the
-     * previous durable scope. The non-boolean truthy sentinel is intentional:
-     * module 101 increments query generation only for a real boolean `true`. */
-    if (!acknowledged && elapsed < FAV_QUERY_SETTLE_FALLBACK_MS0140) return 'pending';
+    if (favNativeQueryHasPositiveAck01523(submission)) {
+        return favFinalizeNativeQuerySubmission01523(submission);
+    }
 
-    /* Empty query means canonical All and is trusted by definition elsewhere.
-     * Never let a timer alone promote it; otherwise a failed Clear could replace
-     * canonical membership while Etsy was still showing a searched dataset. */
-    if (!acknowledged && !next) return 'pending';
+    const elapsed = Date.now() - submission.submittedAt;
+    if (elapsed >= FAV_NATIVE_QUERY_ACK_DEADLINE_MS01523 || submission.resourceFailed) {
+        /* Fail closed: keep the previous committed dataset. The current input
+         * remains a dirty draft and may be submitted again, but no timer, failed
+         * request, or unrelated grid mutation can create durable query identity. */
+        favCancelNativeQuerySubmission01523(true);
+        return false;
+    }
 
-    return favFinalizeNativeQueryState01523(next, acknowledged);
+    /* Non-boolean truthy sentinel intentionally stops module99's observation
+     * caller without telling later generation wrappers that a query committed. */
+    return 'pending';
 };
 
-/* v0.15.10 intentionally treats the module-99 state machine as a valid durable
- * provenance source. Narrow only that source: route/SSR proof remains trusted,
- * but a timeout-promoted runtime query must stay unverified until 99a has seen
- * positive acknowledgement for this exact scope/value. */
+/* v0.15.10 already trusts route/SSR sources. Narrow only its dynamic
+ * favorites-search-commit source: a non-empty committed value created by this
+ * client-side state machine is durable only when the exact submission above was
+ * positively acknowledged. */
 favCommittedNativeQueryProvenance01510 = function favCommittedNativeQueryProvenance01523(query = favDatasetQuery()) {
     const result = favCommittedNativeQueryProvenanceBefore01523(query);
     if (result?.queryCommitSource !== 'favorites-search-commit') return result;
@@ -214,37 +355,4 @@ favCommittedNativeQueryProvenance01510 = function favCommittedNativeQueryProvena
     return verified
         ? result
         : { queryCommitSource:'favorites-search-unverified', queryCommitVerified:false };
-};
-
-function favNativeQueryScopeDurable01523(scope) {
-    const query = String(scope?.query || '').trim();
-    if (!query) return true;
-    try {
-        const proof = favCommittedNativeQueryProvenance01510(query);
-        const candidate = { ...(scope || {}), query, ...proof };
-        if (typeof favScopeQueryTrusted01510 === 'function') {
-            return favScopeQueryTrusted01510(candidate) === true;
-        }
-        return proof?.queryCommitVerified === true;
-    } catch (_) {
-        return false;
-    }
-}
-
-/* v0.15.22's no-Web-Locks fallback coordinates by writing lease fields onto the
- * canonical scope row. That is correct only for a scope whose query identity is
- * already eligible to be durable. A timeout-only runtime query must not seed a
- * coordination-only IndexedDB scope before v0.15.10 gets a chance to reject its
- * eventual observation. Keep ephemeral Web Locks when available; otherwise let
- * the unverified runtime crawl execute without durable cross-tab coordination.
- * The in-tab favCatalogInflight0141 owner still deduplicates same-tab work, and
- * every observation remains behind the existing v0.15.10 fail-closed writer. */
-favCatalogWithCrossTabLease0141 = async function favCatalogWithCrossTabLease01523(scope, requestedAt, signal, work) {
-    const query = String(scope?.query || '').trim();
-    const owner = String(scope?.owner || '').trim();
-    const webLocksAvailable = Boolean(globalThis.navigator?.locks?.request);
-    if (query && owner && !webLocksAvailable && !favNativeQueryScopeDurable01523(scope)) {
-        return work(() => true);
-    }
-    return favCatalogWithCrossTabLeaseBefore01523(scope, requestedAt, signal, work);
 };
