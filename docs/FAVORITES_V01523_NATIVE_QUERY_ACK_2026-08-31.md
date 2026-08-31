@@ -1,6 +1,6 @@
 # BetterSearch v0.15.23 — exact native Favorites query acknowledgement
 
-**Date:** 2026-08-31  
+**Date:** 2026-08-31
 **Status:** final behavior design; behavior gate green on `11223d37fd300cda2ef7ea577d4e87b1a7bf8b2e` / CI `33379434004`. Release promotion and exact release CI still required.
 
 ## Problem
