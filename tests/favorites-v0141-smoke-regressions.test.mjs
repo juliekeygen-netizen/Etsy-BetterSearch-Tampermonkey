@@ -21,12 +21,14 @@ test('current release cache-busts every userscript module and keeps final harden
   const finalDiagnostics = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/103-favorites-v0157-diagnostics-fixes.js?v=${packageJson.version}`;
   const finalFilterState = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`;
   const finalRenderTransaction = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`;
+  const metadataContextBoundary = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/106-favorites-v01524-metadata-context-generation.js?v=${packageJson.version}`;
   assert.ok(requires.indexOf(smoke) >= 0, 'historical browser smoke hardening remains loaded');
   assert.ok(requires.indexOf(finalOwnership) > requires.indexOf(smoke), 'stable ownership finalizer must run after historical smoke hardening');
-  assert.equal(requires.at(-4) || '', finalOwnership, 'stable ownership must precede the v0.15.7 final boundaries and render transaction');
-  assert.equal(requires.at(-3) || '', finalDiagnostics, 'diagnostics-driven geometry/availability fixes must remain after stable ownership');
-  assert.equal(requires.at(-2) || '', finalFilterState, 'filter-state semantics must remain immediately before the render transaction');
-  assert.equal(requires.at(-1) || '', finalRenderTransaction, 'atomic render ownership must remain the final userscript boundary');
+  assert.equal(requires.at(-5) || '', finalOwnership, 'stable ownership must precede the final diagnostics/filter/render/metadata boundaries');
+  assert.equal(requires.at(-4) || '', finalDiagnostics, 'diagnostics-driven geometry/availability fixes must remain after stable ownership');
+  assert.equal(requires.at(-3) || '', finalFilterState, 'filter-state semantics must remain immediately before the render transaction');
+  assert.equal(requires.at(-2) || '', finalRenderTransaction, 'atomic render ownership must remain immediately before metadata-context fencing');
+  assert.equal(requires.at(-1) || '', metadataContextBoundary, 'destination-sensitive metadata fencing must remain the final userscript boundary');
 });
 
 test('shown count follows the current signed local-grid ownership', () => {
