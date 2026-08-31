@@ -1,276 +1,101 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-> **Codex:** rewrite this file on every coherent task branch before handing the task off for review. Do not merely append raw terminal logs. Keep it concise enough to review, but include exact durable identifiers and all material engineering decisions.
-
-The purpose of this file is to let the user hand a completed Codex PR to another ChatGPT session for an independent audit without requiring access to the original Codex conversation.
-
----
-
-## Current handoff status
-
-**Status:** template / no active Codex implementation task yet
-**Baseline when template created:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`
-**Baseline post-merge CI:** run `33391628427` — success
-
-When Codex completes its first task, replace the review packet below with that task's real state.
-
----
-
-# Review packet
-
 ## 1. Task identity
 
 ```text
-Date/time:
-Task summary:
-Base main SHA:
-Branch:
-Exact head SHA:
-PR number:
-PR URL:
-PR state: OPEN / DRAFT / OTHER
-Release identity on branch:
+Date/time: 2026-08-31 (Europe/Helsinki)
+Task summary: Audit and repair live PR #68, the focused Favorites rail-refresh behavior gate.
+Base product SHA: 4d0e0317d58711a5e1603ae8d2bf608c3f285c3b (v0.15.25)
+Current documentation main merged: 614ec3d26caa3ce9602b2e47261a15359e24be4a
+Branch: fix/favorites-v01526-focused-rail-refresh
+Implementation snapshot validated locally: e079a55
+PR: #68 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/68
+PR state: OPEN
+Release identity: restored to 0.15.25 behavior gate; no standalone v0.15.26 promotion
+Dependencies: none. Do not combine with PRs #67/#69 until independent review selects approved behavior gates.
 ```
 
-If this PR depends on another unmerged PR/branch, state that explicitly here.
+The handoff document is committed after the validated snapshot; inspect the live PR head for the exact review commit.
 
----
+## 2. Evidence and decision
 
-## 2. Problem / evidence
+The live GitHub queue is authoritative over stale `ACTIVE_WORK.md` labels: PR #68 is the focused-rail branch. Its behavior is source-proven: the permanent rail preserves its root but `favRefreshRail()` rebuilds all children, so an asynchronous refresh can detach a focused text/number/range draft before the existing change/blur handler commits it to `favCfg`.
 
-Describe:
+`src/108-favorites-v01526-focused-rail-refresh.js` is the final semantic owner. It captures the prior refresh owner, defers only when a connected, enabled, writable draft-capable editor inside the live rail has focus, coalesces calls to the latest arguments, and flushes after focusout on the next task. A focus transfer to another draft editor re-defers; checkbox/radio/select/button paths stay immediate. An immediate refresh invalidates a stale deferred callback.
 
-- what user-visible or architectural problem was investigated;
-- how the issue was proven to still exist in the **current final runtime**, rather than merely an older module/audit;
-- relevant historical audit/release documents;
-- relevant source symbols/final owners;
-- browser/Diagnostics evidence if used;
-- why the chosen patch boundary is the semantic owner or narrowest safe integration point.
+The existing branch had prematurely promoted package/userscript/cache-busters and historical release-identity tests to 0.15.26 despite its PR body and release plan specifying a v0.15.25 behavior gate. Those promotion commits were reverted with new commits; production focused-rail behavior and its regressions remain unchanged.
 
-If the task was audit-only and no bug was confirmed, say so clearly.
+The ordered final chain is module 107 → module 108 → modules 102–106. A source-wide assignment search found no later `favRefreshRail` reassignment after module 108.
 
----
-
-## 3. Changes made
-
-List every changed file and its purpose.
-
-Example:
+## 3. Files changed relative to current main
 
 ```text
-src/...                     — production behavior
-src/...                     — integration boundary
- tests/...                   — adversarial regressions
- docs/...                    — architecture/release record
- PROJECT_STATE.md            — roadmap/status update
- CODEX_HANDOFF.md            — this review packet
+etsy-bettersearch.user.js
+  Adds module 108 immediately after native-heart confirmation and before final ownership modules; remains v0.15.25.
+
+src/108-favorites-v01526-focused-rail-refresh.js
+  Final focused-draft refresh guard.
+
+tests/favorites-v01526-focused-rail-refresh.test.mjs
+  Focused editor, coalescing/latest-args, editor transfer, immediate controls, disabled/read-only,
+  stale callback, and load-order regressions.
+
+CODEX_HANDOFF.md
+  This review packet.
 ```
 
-Explain any intentional load-order changes.
+`package.json` and historical release tests are unchanged relative to current main after explicit reversions of the premature promotion commits. The documentation merge carries no production code change.
 
-For wrapper/replacement functions, list the final assignment chain when relevant.
+## 4. Invariants checked
 
----
+- Draft input state is not destructively detached before existing blur/change handlers can commit it.
+- Checkbox/radio/select/button state is not unnecessarily delayed.
+- The live rail root must be connected and contain the active editor; stale/detached controls cannot hold refreshes.
+- Coalescing preserves only the latest requested refresh, and stale focusout callbacks cannot resurrect an old refresh.
+- Module order preserves native-heart confirmation followed by this narrow UI wrapper, then existing final ownership/metadata/render boundaries.
+- No observer, persistent state owner, route lifecycle system, or delivery-target-specific code was added.
 
-## 4. Architecture / invariants checked
-
-State which invariants were specifically considered:
-
-- owner/profile isolation;
-- immutable complete membership;
-- atomic IndexedDB latest-row merge;
-- cross-tab lease/generation fencing;
-- native query generation;
-- metadata destination generation;
-- local/native grid/pager ownership;
-- filter known/unknown semantics;
-- native heart confirmation;
-- route/BFCache/lifecycle;
-- duplicate delivery runtimes;
-- UI/focus/accessibility;
-- diagnostics privacy.
-
-For each relevant invariant, explain briefly why the patch preserves it.
-
----
-
-## 5. Tests and local validation
-
-Report commands and exact results, for example:
+## 5. Validation
 
 ```text
-npm run check     PASS
-npm test          PASS — X/X tests
-npm run build     PASS
-npm run ci        PASS
+Node 22.23.2 (matches GitHub Actions):
+  focused rail + v0.15.19/20/21/23/24 release tests  PASS — 61/61
+  node scripts/check.mjs                              PASS — 122 files, 87 modules, v0.15.25
+  node scripts/build.mjs                              PASS — Chrome, Firefox, Diagnostics Chrome
+
+Native desktop Node 26.1.0:
+  npm test is not a parity signal; VM fixtures fail due Node 26 behavior.
 ```
 
-If only focused tests were run during iteration, list them too.
+The full Node 22 suite is expected to have the same one pre-existing Windows CRLF-only marker failure in `favorites-v01511-count-authority.test.mjs`; its Linux CI checkout uses LF and remains the authoritative full-suite gate. No focused-rail test or relevant release assertion failed locally.
 
-Do not say "all tests pass" unless the complete suite actually ran on the final head.
+## 6. Artifact audit
 
----
+The v0.15.25 build reports 87 shared modules and emits all Chrome, Firefox, and Diagnostics Chrome targets. The userscript and builders place module 108 after module 107 and before modules 102–106. Review the generated Chrome/Firefox content artifacts after the fresh CI run to confirm the same final assignment boundary on the pushed head.
 
-## 6. GitHub CI
+## 7. GitHub CI and manual browser testing
 
-```text
-Workflow:
-Run ID:
-Exact head SHA tested:
-Status:
-Conclusion:
-```
+PR #68’s previously green run `33400241223` tested the prematurely promoted identity and is not the final result for this repaired behavior-gate head. Push the branch and require a new green `CI and extension builds` run before merge.
 
-List job/step results that matter:
+Manual browser checks before merge:
 
-- whitespace;
-- repository checks;
-- tests;
-- Chrome build;
-- Firefox build;
-- Diagnostics build;
-- artifact uploads.
+1. Type a partial number/text/range filter value, allow metadata or route/cache refresh activity, then blur: the typed value must commit before one rail refresh.
+2. Move focus directly from one draft editor to another: neither editor is rebuilt mid-edit.
+3. Toggle checkbox/radio/select controls and invoke filter actions: refresh remains immediate.
+4. Repeat on desktop Chrome, Firefox, and Tampermonkey; verify mobile/drawer behavior remains unchanged.
 
-If CI is pending, say pending; do not describe it as green.
+## 8. Risks and reviewer focus
 
----
+Review whether any valid draft-capable control is omitted from the selector, especially Etsy or future custom controls with nonstandard types. Confirm a re-render cannot leave an obsolete focusout listener with live effects; the target identity guard is intended to prevent that. No real Etsy focus timing has been captured yet.
 
-## 7. Artifact/build audit
+The branch deliberately does not redesign the rail, promote a release, change `favCfg` persistence, or alter PRs #67/#69.
 
-For release/load-order-sensitive work, record what was inspected in actual built artifacts.
+## 9. PROJECT_STATE update and next action
 
-Examples:
-
-- `BUILD_INFO.json` version;
-- manifest version;
-- final module order;
-- final assignment to a fragile symbol;
-- no later override;
-- Chrome/Firefox parity;
-- diagnostics packaging.
-
-If artifact inspection was not relevant or not performed, say so.
-
----
-
-## 8. Release promotion state
-
-If this is a release candidate, report separately:
-
-```text
-Behavior gate head:
-Behavior CI:
-Behavior artifact audit:
-Release version promoted to:
-Userscript @version aligned:
-All @require cachebusters aligned:
-package.json aligned:
-Historical identity assertions updated only where legitimate:
-Release gate head:
-Release CI:
-Release artifact audit:
-```
-
-Do not merge merely because release CI is green. Leave it for independent review unless explicitly instructed otherwise.
-
----
-
-## 9. Manual browser testing still needed
-
-Describe precise tests the user/reviewer should perform, if any.
-
-Examples:
-
-- Chrome normal extension;
-- Firefox extension;
-- Tampermonkey;
-- own Favorites All;
-- collection;
-- native search submit/clear;
-- two tabs;
-- delivery destination change;
-- heart/unfavorite timing;
-- route change during async operation;
-- responsive/focus behavior;
-- Diagnostics capture.
-
-Keep these as actionable steps, not vague "test it in browser" notes.
-
----
-
-## 10. Known limitations / unresolved risks
-
-List anything not proven:
-
-- browser-only timing not modeled by tests;
-- selector uncertainty;
-- Etsy frontend/API dependency;
-- cross-tab scenario not manually reproduced;
-- physical/user-account evidence needed;
-- intentionally deferred architecture cleanup.
-
-Also state what **was deliberately not changed** to preserve scope.
-
----
-
-## 11. Diff audit
-
-Record:
-
-- number of changed files;
-- whether unrelated files changed;
-- whether generated/temp/private diagnostics were removed;
-- whether version churn is expected;
-- whether `git diff --check` / repository whitespace check is clean.
-
----
-
-## 12. PROJECT_STATE update
-
-State what changed in `PROJECT_STATE.md`:
-
-- finding closed;
-- new live finding;
-- next-priority change;
-- release baseline update;
-- no change required.
-
----
-
-## 13. Reviewer focus
-
-Tell the independent reviewer exactly where to spend attention.
-
-Examples:
-
-- concurrency interleaving;
-- final load order;
-- stale-generation behavior;
-- owner/profile isolation;
-- transition between native/local grid ownership;
-- no-op DOM feedback;
-- release identity only vs behavior assertion changes.
-
----
-
-## 14. Recommended next action
-
-Choose one:
+`PROJECT_STATE.md` needs no product-state change: this is a reviewed existing behavior gate, not a new current-main finding.
 
 ```text
 AUDIT PR BEFORE MERGE
-MANUAL BROWSER TEST BEFORE MERGE
-READY FOR RELEASE PROMOTION AFTER AUDIT
-AUDIT-ONLY — NO MERGEABLE CODE CHANGE
-BLOCKED — USER INPUT REQUIRED
 ```
 
-Then identify the next independent project task that can be started from clean `main` while this PR waits for review.
-
----
-
-# Independent-review rule
-
-A reviewer should inspect the actual remote branch/PR and current `main`, not rely solely on this file.
-
-This file is a navigation packet, not a substitute for code review.
+Next: audit/repair PR #69’s Sort portal behavior gate, then create a separate current-main audit branch for Phase 1 reconciliation. Do not merge or release-promote individual v0.15.26 candidates.
