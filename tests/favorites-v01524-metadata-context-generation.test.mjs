@@ -179,11 +179,11 @@ function response(shipping, estimated = '', acceptsReturns = '1') {
   return { map:{ '1':{ shipping_costs:String(shipping), estimated_delivery:estimated, accepts_returns:acceptsReturns } } };
 }
 
-test('behavior gate loads 106 after final renderer while release identity remains 0.15.23', () => {
-  const p105 = userscript.indexOf('/src/105-favorites-v01512-atomic-render.js?v=0.15.23');
-  const p106 = userscript.indexOf('/src/106-favorites-v01524-metadata-context-generation.js?v=0.15.23');
+test('release loads 106 after final renderer at v0.15.24 identity', () => {
+  const p105 = userscript.indexOf('/src/105-favorites-v01512-atomic-render.js?v=0.15.24');
+  const p106 = userscript.indexOf('/src/106-favorites-v01524-metadata-context-generation.js?v=0.15.24');
   assert.ok(p105 >= 0 && p106 > p105);
-  assert.match(userscript, /@version\s+0\.15\.23/);
+  assert.match(userscript, /@version\s+0\.15\.24/);
 });
 
 test('same dataset A -> B: B applies and a late A response cannot mutate or persist', async () => {
