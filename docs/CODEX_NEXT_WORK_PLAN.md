@@ -1,7 +1,7 @@
 # Etsy BetterSearch — Codex Next Work Plan
 
-**Prepared:** 2026-08-31  
-**Starting verified baseline:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`  
+**Prepared:** 2026-08-31
+**Starting verified baseline:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`
 **Post-merge baseline CI:** `33391628427` — success
 
 This is the current long-run work plan for Codex Desktop/local Codex.
