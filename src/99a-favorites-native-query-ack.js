@@ -1,5 +1,4 @@
 'use strict';
-
 /* v0.15.23 native Favorites query acknowledgement boundary.
  *
  * Module 99 historically treated an 850 ms timer as sufficient to promote the
@@ -130,7 +129,7 @@ function favNativeQueryResourceEndpointMatches01523(name, submission) {
     const scope = submission?.scope || {};
     const owner = String(scope.owner || '').trim();
     const id = String(scope.id || '').trim();
-    const path = decodeURIComponent(url.pathname || '');
+    const path = decodeURIComponent(url.pathname || '').replace(/\/+$/, '');
     let endpointMatch = false;
     if (scope.type === 'items' && owner) {
         endpointMatch = path.endsWith(`/api/v3/ajax/member/users/${owner}/favorites/landing-listings`);
@@ -138,6 +137,8 @@ function favNativeQueryResourceEndpointMatches01523(name, submission) {
         endpointMatch = path.endsWith(`/api/v3/ajax/bespoke/member/users/${owner}/collections/${id}/landing-listings-bespoke`);
     }
     if (!endpointMatch) return false;
+    const offset = Number(url.searchParams.get('offset') || 0);
+    if (!Number.isFinite(offset) || offset !== 0) return false;
 
     const expected = String(submission.value || '').trim();
     const actual = url.searchParams.has('query') ? String(url.searchParams.get('query') || '').trim() : '';
@@ -156,6 +157,7 @@ function favNativeQueryRecordResource01523(entry, submission = favState.nativeQu
     submission.resourceStatusKnown = statusKnown;
     submission.resourceStatus = statusKnown ? status : 0;
     submission.resourceSucceeded = statusKnown ? status >= 200 && status < 400 : false;
+    submission.resourceResponseStarted = statusKnown || Math.max(0, Number(entry?.responseStart) || 0) > 0;
     submission.resourceFailed = statusKnown ? status >= 400 : false;
     submission.resourceResponseEnd = Math.max(0, Number(entry?.responseEnd) || 0);
 
@@ -225,6 +227,7 @@ function favNativeQueryHasPositiveAck01523(submission) {
      * native settlement so an unrelated no-query background refresh cannot
      * acknowledge a failed Clear action. */
     if (submission.value && submission.resourceStatusKnown && submission.resourceSucceeded) return true;
+    if (!submission.resourceResponseStarted) return false;
     return favNativeQueryGridSettled01523(submission);
 }
 
@@ -282,6 +285,7 @@ function favStartNativeQuerySubmission01523(input) {
         resourceStatusKnown:false,
         resourceStatus:0,
         resourceSucceeded:false,
+        resourceResponseStarted:false,
         resourceFailed:false,
         resourceResponseEnd:0,
     };
@@ -326,11 +330,20 @@ favMaybeCommitSubmittedNativeQuery0140 = function favMaybeCommitSubmittedNativeQ
 
     const elapsed = Date.now() - submission.submittedAt;
     if (elapsed >= FAV_NATIVE_QUERY_ACK_DEADLINE_MS01523 || submission.resourceFailed) {
-        /* Fail closed: keep the previous committed dataset. The current input
-         * remains a dirty draft and may be submitted again, but no timer, failed
-         * request, or unrelated grid mutation can create durable query identity. */
-        favCancelNativeQuerySubmission01523(true);
-        return false;
+        /* If Etsy never changed the native result grid, abandoning this failed
+         * submission is safe: subsequent observation still describes the prior
+         * committed dataset. If the grid DID change without query-specific proof,
+         * keep the transition unresolved and continue blocking observation.
+         * Writing those cards under the old committed query would be worse than
+         * temporarily refusing to index an identity we cannot prove. */
+        if (!favNativeQueryGridSettled01523(submission)) {
+            favCancelNativeQuerySubmission01523(true);
+            return false;
+        }
+        favStopNativeQueryResourceObserver01523();
+        favClearNativeQueryAckTimers01523();
+        submission.expired = true;
+        return 'pending';
     }
 
     /* Non-boolean truthy sentinel intentionally stops module99's observation
