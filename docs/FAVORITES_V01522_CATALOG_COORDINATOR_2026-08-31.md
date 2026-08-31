@@ -1,6 +1,6 @@
 # BetterSearch v0.15.22 — atomic catalogue fallback coordinator
 
-**Date:** 2026-08-31  
+**Date:** 2026-08-31
 **Status:** behavior-gate implementation; release promotion waits for exact-head CI and post-green audit.
 
 ## Problem
