@@ -303,13 +303,13 @@ test('atomic primitive reads and writes one row in the same readwrite transactio
 
 test('load order makes atomic integration the module-75 fallback at release version', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
-  const primitive = userscript.indexOf('/src/61ab-favorites-atomic-mutations.js?v=0.15.22');
-  const hardening = userscript.indexOf('/src/73-favorites-phase5-hardening.js?v=0.15.22');
-  const runtimeGuard = userscript.indexOf('/src/74-favorites-phase5-runtime-guard.js?v=0.15.22');
-  const integration = userscript.indexOf('/src/74a-favorites-atomic-mutable-rows.js?v=0.15.22');
-  const lease = userscript.indexOf('/src/75-favorites-phase5-multitab-lease.js?v=0.15.22');
+  const primitive = userscript.indexOf('/src/61ab-favorites-atomic-mutations.js?v=0.15.23');
+  const hardening = userscript.indexOf('/src/73-favorites-phase5-hardening.js?v=0.15.23');
+  const runtimeGuard = userscript.indexOf('/src/74-favorites-phase5-runtime-guard.js?v=0.15.23');
+  const integration = userscript.indexOf('/src/74a-favorites-atomic-mutable-rows.js?v=0.15.23');
+  const lease = userscript.indexOf('/src/75-favorites-phase5-multitab-lease.js?v=0.15.23');
   assert.ok(primitive >= 0 && hardening > primitive && runtimeGuard > hardening && integration > runtimeGuard && lease > integration);
-  assert.match(userscript, /@version\s+0\.15\.22/);
+  assert.match(userscript, /@version\s+0\.15\.23/);
 });
 
 test('integration replaces module-73 captured base failure instead of discarding hardening wrapper', async () => {
