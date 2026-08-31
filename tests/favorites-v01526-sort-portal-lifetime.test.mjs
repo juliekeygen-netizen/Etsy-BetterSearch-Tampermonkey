@@ -162,6 +162,8 @@ test('opening a newer connected controller removes the older portal after module
   f.flushRaf();
 
   assert.equal(old.menu.isConnected, false, 'orphan is removed rather than retained as hidden body DOM');
+  assert.equal(old.root.__ebsfSortMenu, null, 'the briefly connected predecessor cannot retain a dead portal backlink');
+  assert.equal(old.menu.__ebsfSortRoot01526, null, 'the disposed portal cannot retain its old root');
   assert.equal(next.menu.isConnected, true);
   assert.equal(next.menu.hidden, false);
   assert.equal(f.connectedPortals().length, 1);

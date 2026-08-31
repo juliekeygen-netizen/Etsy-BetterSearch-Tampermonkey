@@ -41,15 +41,17 @@ function favBindSortPortal01526(root, menu) {
 function favDisposeSortPortal01526(menu) {
     if (!menu) return false;
     const owner = favSortPortalOwner01526(menu);
-    const ownerConnected = owner?.isConnected === true;
+    const ownerReferencesMenu = owner?.__ebsfSortMenu === menu;
 
     menu.remove?.();
 
-    if (!ownerConnected) {
-        if (owner?.__ebsfSortMenu === menu) owner.__ebsfSortMenu = null;
-        if (menu.__ebsfSortRoot01526 === owner) menu.__ebsfSortRoot01526 = null;
-        if (favState.sortRoot === owner) favState.sortRoot = null;
-    }
+    /* Orphan pruning can run in the short window where Etsy has mounted the
+     * replacement Sort root but has not detached its predecessor yet. Clear
+     * both backlinks even then: leaving the connected predecessor pointing at
+     * a removed body portal lets a stale click/rebuild re-adopt dead menu DOM. */
+    if (ownerReferencesMenu) owner.__ebsfSortMenu = null;
+    if (menu.__ebsfSortRoot01526 === owner) menu.__ebsfSortRoot01526 = null;
+    if (favState.sortRoot === owner && ownerReferencesMenu) favState.sortRoot = null;
     if (favState.sortMenu === menu) favState.sortMenu = null;
     return true;
 }
