@@ -22,13 +22,23 @@ If `git status` shows local changes, do not blindly reset/discard them. Preserve
 
 A plain `git pull` is only sufficient when the current local branch is already the intended branch. The explicit commands above avoid accidentally pulling an old feature branch.
 
-At the time the Codex handoff was prepared, the latest verified **product-code** baseline was BetterSearch v0.15.25 at:
+At handoff time the verified merged **product-code** baseline was BetterSearch v0.15.25:
 
 ```text
 4d0e0317d58711a5e1603ae8d2bf608c3f285c3b
 ```
 
-The documentation/setup commits added after that may make the newest `main` SHA newer. Always trust current `origin/main`, not the historical SHA above.
+The Codex documentation/setup commits added later make the newest `main` SHA newer. Always trust current `origin/main`, not that historical product SHA.
+
+### Important: merged main vs open PRs
+
+`git pull --ff-only origin main` gives you everything that is **merged** into production `main` plus the Codex handoff files after their setup PR is merged.
+
+It does **not** place unmerged PR code into `main`.
+
+At handoff time PRs #67, #68, and #69 are intentionally unmerged v0.15.26 behavior candidates. `git fetch origin` downloads their remote branch objects, and Codex/GitHub CLI can inspect/check out the relevant branches when reviewing them.
+
+Read `ACTIVE_WORK.md` for the exact queue and current known CI state. Re-check GitHub because heads/checks can advance after this document is written.
 
 ---
 
@@ -39,17 +49,22 @@ In the desktop app:
 1. Open/select **Codex**.
 2. Add/open the local `Etsy-BetterSearch-Tampermonkey` repository folder as the project/workspace.
 3. Start a new Codex thread inside that repository.
-4. Allow the project/repository permissions needed for normal local editing/testing.
-5. Give additional/network permissions when needed for operations such as `git fetch`, `git push`, GitHub CLI, or GitHub Actions inspection, according to your local Codex security settings.
+4. Allow the repository permissions needed for ordinary local editing/testing.
+5. Grant network/GitHub operations when needed according to your local security settings.
 
-Codex should discover root `AGENTS.md` automatically. The first task prompt should still explicitly tell it to read the project-state/handoff files.
+You do not need to launch the Codex CLI for this workflow. The desktop Codex workspace can operate on the local repo directly.
+
+Codex should discover root `AGENTS.md` as repository instructions. The startup prompt still explicitly tells it to read the changing state/queue files.
 
 ---
 
 ## 3. Files Codex should read first
 
+Read in this order:
+
 ```text
 AGENTS.md
+ACTIVE_WORK.md
 PROJECT_STATE.md
 CODEX_HANDOFF.md
 docs/CODEX_NEXT_WORK_PLAN.md
@@ -59,19 +74,22 @@ Roles:
 
 ```text
 AGENTS.md
-  stable working rules and architecture invariants
+  stable working rules and architectural invariants
+
+ACTIVE_WORK.md
+  highest-priority currently open branch/PR queue
 
 PROJECT_STATE.md
-  current completed work, release baseline, live audit frontier, roadmap
+  merged release baseline, completed work, historical reconciliation, roadmap
 
 CODEX_HANDOFF.md
-  review packet Codex rewrites after each coherent task
+  exact review packet Codex rewrites after each coherent task
 
 docs/CODEX_NEXT_WORK_PLAN.md
-  long autonomous task sequence
+  long autonomous task sequence after/around the active queue
 ```
 
-Source/tests/Git remain the ultimate authority.
+If an older statement in `PROJECT_STATE.md` conflicts with a newer open-PR fact in `ACTIVE_WORK.md`, inspect current GitHub state and treat the current PR/Git evidence as authoritative.
 
 ---
 
@@ -79,7 +97,7 @@ Source/tests/Git remain the ultimate authority.
 
 For full branch → push → PR → CI workflow, the local environment should have working GitHub authentication.
 
-Normal checks:
+Basic checks:
 
 ```powershell
 git remote -v
@@ -90,11 +108,20 @@ If GitHub CLI is installed:
 
 ```powershell
 gh auth status
+gh pr list
+```
+
+Useful examples for the active queue:
+
+```powershell
+gh pr view 67
+gh pr checks 67
+gh pr diff 67
 ```
 
 Codex can use normal local Git/GitHub tooling when the environment grants the required permissions.
 
-The project instructions require Codex to publish coherent finished work as a remote branch/PR when possible, but to leave implementation PRs unmerged for independent review by default.
+The repository instructions require Codex to publish coherent finished work as remote branches/PRs when possible, while leaving implementation PRs unmerged for independent review by default.
 
 ---
 
@@ -103,11 +130,13 @@ The project instructions require Codex to publish coherent finished work as a re
 The intended loop is:
 
 ```text
-current main
+verified main
   ↓
-Codex reads AGENTS + PROJECT_STATE
+Codex reads AGENTS + ACTIVE_WORK + PROJECT_STATE
   ↓
-focused branch
+inspect existing overlapping PRs first
+  ↓
+focused branch / existing task branch
   ↓
 source audit / implementation
   ↓
@@ -115,13 +144,13 @@ regression tests
   ↓
 npm checks/tests/builds
   ↓
-exact diff audit
+exact diff + artifact audit
   ↓
 commit + push
   ↓
 PR
   ↓
-GitHub Actions / artifact inspection
+GitHub Actions
   ↓
 CODEX_HANDOFF updated
   ↓
@@ -130,36 +159,67 @@ STOP BEFORE MERGE
 independent ChatGPT/user audit
 ```
 
-After the independent audit, the user can choose whether to merge, request fixes, or return the PR to Codex.
+After independent audit, the user can choose whether to merge, request fixes, combine approved behavior gates into a release integration branch, or return the PR to Codex.
 
 ---
 
-## 6. Recommended Codex model/reasoning
+## 6. Active v0.15.26 queue
 
-For long architecture/concurrency/browser-extension work, use a high reasoning setting when available and usage permits.
+At the initial handoff:
 
-The project is well suited to long autonomous Codex turns because the repo has:
+```text
+#67 focused owned-rail refresh
+    one failing regression / requires inspection
 
-- detailed tests;
-- CI;
-- Chrome/Firefox/Diagnostics builds;
-- durable audit documents;
-- explicit branch/PR rules;
-- a review handoff format.
+#68 local Favorite action boundary
+    behavior CI green / awaiting audit
 
-The agent should still split unrelated tasks into separate PRs instead of using one giant long-running branch.
+#69 sort portal lifetime
+    behavior CI green / awaiting audit
+```
+
+Do not create duplicate fixes for those areas before reviewing them.
+
+Do not independently version-promote all three competing behavior branches to v0.15.26. Once behavior gates are independently reviewed, use a deliberate integration/release branch for the approved set.
+
+See `ACTIVE_WORK.md` for exact branch/head/run identities and coordination rules.
 
 ---
 
-## 7. First prompt
+## 7. Recommended model/reasoning
 
-Use the current prompt supplied by the user/reviewer, or start with a prompt that says to:
+This project benefits from a high reasoning setting because the difficult work involves:
 
-- read all four project context files;
-- inspect/sync current local Git state;
-- execute `docs/CODEX_NEXT_WORK_PLAN.md` autonomously;
-- publish each coherent task as an unmerged PR;
-- keep `CODEX_HANDOFF.md` updated;
-- continue independent useful work while CI/review is pending.
+- multi-tab concurrency;
+- IndexedDB transaction boundaries;
+- SPA lifecycle/load order;
+- browser artifact verification;
+- historical audit reconciliation;
+- several delivery targets.
 
-The exact recommended initial prompt is also provided by the ChatGPT handoff conversation that created these files, but the repository itself contains all essential project context.
+Use the strongest practical Codex reasoning setting available to the user when usage permits. The repo workflow is designed so long autonomous turns still produce small reviewable PRs rather than one giant unreviewable branch.
+
+---
+
+## 8. First prompt
+
+The detailed ready-to-paste prompt is:
+
+```text
+docs/CODEX_INITIAL_PROMPT.md
+```
+
+It instructs Codex to:
+
+- inspect/sync current local + remote state;
+- read all repository context files;
+- reconcile PR #67–#69 first;
+- leave implementation PRs unmerged;
+- continue independent useful work while CI/review is pending;
+- then execute the broader audit roadmap.
+
+A short bootstrap message can simply say:
+
+```text
+Read AGENTS.md, ACTIVE_WORK.md, PROJECT_STATE.md, CODEX_HANDOFF.md, and docs/CODEX_INITIAL_PROMPT.md completely. Then follow docs/CODEX_INITIAL_PROMPT.md as the task, working autonomously and leaving implementation PRs unmerged for independent review.
+```
