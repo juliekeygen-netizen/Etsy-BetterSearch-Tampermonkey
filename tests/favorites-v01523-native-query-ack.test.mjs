@@ -129,12 +129,19 @@ function fixture({ initialCommitted = '', initialIds = ['A','B'] } = {}) {
     record:favNativeQueryRecordResource01523,
   };`, context);
 
-  function emitResource({ query, status = 200, startTime = performanceNow + 10, responseEnd = startTime + 20, includeQuery = true } = {}) {
+  function emitResource({
+    query,
+    status = 200,
+    startTime = performanceNow + 10,
+    responseStart = startTime + 10,
+    responseEnd = startTime + 20,
+    includeQuery = true,
+  } = {}) {
     const url = new URL('https://www.etsy.com/api/v3/ajax/bespoke/member/users/owner/collections/vns/landing-listings-bespoke');
     url.searchParams.set('limit', '20');
     url.searchParams.set('offset', '0');
     if (includeQuery) url.searchParams.set('query', String(query ?? ''));
-    const entry = { entryType:'resource', name:url.href, startTime, responseEnd, responseStatus:status };
+    const entry = { entryType:'resource', name:url.href, startTime, responseStart, responseEnd, responseStatus:status };
     resources.push(entry);
     for (const observer of observers) {
       if (!observer.disconnected) observer.callback({ getEntries:() => [entry] });
@@ -201,7 +208,7 @@ test('typing and timer alone never change final committed query identity', () =>
   assert.equal(f.syncCalls, 0);
 });
 
-test('deadline fails closed and preserves the submitted text only as dirty draft', () => {
+test('deadline fails closed and preserves the submitted text only as dirty draft when the native grid never changed', () => {
   const f = fixture();
   const field = input('failed request');
   f.api.submit(field);
@@ -212,6 +219,18 @@ test('deadline fails closed and preserves the submitted text only as dirty draft
   assert.equal(f.context.favState.nativeQueryPendingDirty0140, true);
   assert.equal(f.context.favState.nativeQueryAwaitingSettle0140, false);
   assert.equal(f.api.submission(), null);
+});
+
+test('deadline never resumes old-scope observation after native grid changed without query-specific proof', () => {
+  const f = fixture();
+  f.api.submit(input('unverified changed grid'));
+  f.setIds(['C']);
+  ageSubmission(f, 6000);
+  assert.equal(f.api.settle(), 'pending');
+  assert.equal(f.api.committed(), '');
+  assert.equal(f.context.favState.nativeQueryAwaitingSettle0140, true);
+  assert.equal(f.api.submission()?.expired, true);
+  assert.equal(f.syncCalls, 0);
 });
 
 test('exact successful Favorites resource acknowledges the exact submitted non-empty query', () => {
@@ -236,14 +255,15 @@ test('different-query resource cannot acknowledge current submission', () => {
   assert.equal(f.api.committed(), '');
 });
 
-test('known failed exact response cannot commit even if native grid changes', () => {
+test('known failed exact response cannot commit and changed native results stay unresolved', () => {
   const f = fixture();
   f.api.submit(input('server fails'));
   f.emitResource({ query:'server fails', status:500 });
   f.setIds(['error-ui-change']);
-  assert.equal(f.api.settle(), false);
+  assert.equal(f.api.settle(), 'pending');
   assert.equal(f.api.committed(), '');
-  assert.equal(f.context.favState.nativeQueryPendingDirty0140, true);
+  assert.equal(f.context.favState.nativeQueryAwaitingSettle0140, true);
+  assert.equal(f.api.submission()?.expired, true);
 });
 
 test('when responseStatus is unavailable, exact completed request also requires native grid settlement', () => {
@@ -254,6 +274,16 @@ test('when responseStatus is unavailable, exact completed request also requires 
   f.setIds(['C','D']);
   assert.equal(f.api.settle(), true);
   assert.equal(f.api.committed(), 'unknown status');
+});
+
+test('unknown-status timing entry without responseStart cannot acknowledge even if the grid changes', () => {
+  const f = fixture();
+  f.api.submit(input('opaque failure'));
+  f.emitResource({ query:'opaque failure', status:0, responseStart:0 });
+  f.setIds(['C','D']);
+  assert.equal(f.api.settle(), 'pending');
+  assert.equal(f.api.committed(), '');
+  assert.equal(f.syncCalls, 0);
 });
 
 test('submit A then type B: acknowledgement for A commits A and leaves B as dirty unsubmitted draft', () => {
