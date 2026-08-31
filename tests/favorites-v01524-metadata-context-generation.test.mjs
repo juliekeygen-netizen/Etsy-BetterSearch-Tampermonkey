@@ -250,6 +250,22 @@ test('wrong-context indexed shipping cannot overwrite a current live/card shippi
   assert.equal(next.acceptsReturns, true, 'destination-independent metadata still hydrates');
 });
 
+test('wrong-context indexed shipping cannot promote an unknown raw value to numeric zero', () => {
+  const f = fixture({ destination:'DE|10115' });
+  const record = {
+    id:'1', shipping:'', estimatedDelivery:'',
+    known:{ shipping:false, estimatedDelivery:false }, metadataMeta0141:{},
+  };
+  const listing = {
+    shippingMetadata:{
+      cost:{ known:true, value:44, contextKey:'FI|00100' },
+    },
+  };
+  const next = f.api.hydrate(record, listing);
+  assert.equal(Number.isFinite(next.shipping), false);
+  assert.equal(next.known.shipping, false);
+});
+
 test('wrong-context indexed shipping is cleared when the existing raw value is itself tagged stale', () => {
   const f = fixture({ destination:'DE|10115' });
   const record = {
@@ -318,6 +334,8 @@ test('destination-sensitive coverage is invalid immediately after destination ge
 
 test('destination-independent coverage remains valid across destination changes', async () => {
   const f = fixture({ destination:'FI|00100' });
+  f.context.favCfg.filters.maxShipping = '';
+  f.context.favCfg.filters.returns = true;
   const ensure = f.api.ensure({ requirements:new Set(['returns']) });
   f.fetches[0].resolve(response(0, '', '1'));
   const coverage = await ensure;
