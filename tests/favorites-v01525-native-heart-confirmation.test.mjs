@@ -84,6 +84,7 @@ function makeHarness() {
 
   vm.runInContext(source, context);
   context.FAV_NATIVE_HEART_CONFIRM_TIMEOUT01525 = 90;
+  context.FAV_NATIVE_HEART_STATE_STABLE01525 = 25;
   context.FAV_NATIVE_HEART_ABSENCE_STABLE01525 = 25;
   context.FAV_NATIVE_HEART_POLL01525 = 5;
   context.FAV_NATIVE_HEART_ACTION_TTL01525 = 250;
@@ -106,13 +107,16 @@ function makeHarness() {
   };
 }
 
-test('source replaces fixed-delay persistence with same-context reacquisition and bounded stable absence', () => {
+test('source replaces fixed-delay persistence with same-context reacquisition and bounded stable evidence', () => {
   assert.match(source, /favNativeCardMap0141\?\.\(document\)/);
   assert.match(source, /favDatasetKey\(\).*action\.datasetKey/s);
   assert.match(source, /favScopeKey\(\).*action\.scopeKey/s);
   assert.match(source, /favViewKey0137\(\).*action\.viewKey/s);
+  assert.match(source, /explicitSamples >= 3/);
   assert.match(source, /absenceSamples >= 3/);
+  assert.match(source, /FAV_NATIVE_HEART_STATE_STABLE01525/);
   assert.match(source, /FAV_NATIVE_HEART_ABSENCE_STABLE01525/);
+  assert.match(source, /Promise\.resolve\(\)\.then\(\(\) =>/);
   assert.doesNotMatch(source, /bridgeFavorite\(/);
 });
 
@@ -126,6 +130,18 @@ test('delayed explicit unfavorited state commits exactly once instead of trustin
   assert.equal(harness.counts().durableWrites, 0);
 
   await sleep(12);
+  card.button.favorited = false;
+  assert.equal(await action.confirmationPromise, true);
+  assert.equal(harness.counts().durableWrites, 1);
+});
+
+test('capture starts removal confirmation even if the historical bubble listener never schedules its timeout', async () => {
+  const harness = makeHarness();
+  const card = harness.makeCard('X', true);
+  harness.setCards([card]);
+  const action = harness.capture(card);
+  await sleep(8);
+  assert.ok(action.confirmationPromise, 'capture must independently start confirmation');
   card.button.favorited = false;
   assert.equal(await action.confirmationPromise, true);
   assert.equal(harness.counts().durableWrites, 1);
@@ -146,6 +162,20 @@ test('detached original card cannot prove removal when its current replacement i
   assert.ok(harness.counts().refreshes >= 1, 'unresolved current context asks the presentation owner to reconcile');
 });
 
+test('optimistic unfavorited state that rolls back before stability never becomes durable evidence', async () => {
+  const harness = makeHarness();
+  const card = harness.makeCard('X', true);
+  harness.setCards([card]);
+  const action = harness.capture(card);
+  await sleep(8);
+  card.button.favorited = false;
+  await sleep(10);
+  card.button.favorited = true;
+
+  assert.equal(await action.confirmationPromise, false);
+  assert.equal(harness.counts().durableWrites, 0);
+});
+
 test('same-view stable card absence after a removal click is accepted only after the bounded stability window', async () => {
   const harness = makeHarness();
   const card = harness.makeCard('X', true);
@@ -154,7 +184,6 @@ test('same-view stable card absence after a removal click is accepted only after
   card.isConnected = false;
   harness.setCards([]);
 
-  await harness.context.favIndexMarkUnfavorite('X');
   assert.equal(await action.confirmationPromise, true);
   assert.equal(harness.counts().durableWrites, 1);
 });
@@ -166,7 +195,6 @@ test('route/view change while the native action is in flight fails closed withou
   const action = harness.capture(card);
   harness.setView('view:B');
 
-  await harness.context.favIndexMarkUnfavorite('X');
   assert.equal(await action.confirmationPromise, false);
   assert.equal(harness.counts().durableWrites, 0);
 });
@@ -185,13 +213,26 @@ test('a second heart click supersedes the prior removal intent and suppresses it
   assert.equal(harness.counts().durableWrites, 0);
 });
 
+test('confirmed tombstone suppresses a later copy of module 63 fixed-delay persistence', async () => {
+  const harness = makeHarness();
+  const card = harness.makeCard('X', true);
+  harness.setCards([card]);
+  const action = harness.capture(card);
+  card.button.favorited = false;
+  assert.equal(await action.confirmationPromise, true);
+  assert.equal(harness.counts().durableWrites, 1);
+  assert.equal(action.intent, 'confirmed-remove');
+
+  assert.equal(await harness.context.favIndexMarkUnfavorite('X'), false);
+  assert.equal(harness.counts().durableWrites, 1, 'historical delayed callback must not write twice');
+});
+
 test('confirmed viewer-personal heart change on another profile never mutates profile membership', async () => {
   const harness = makeHarness();
   harness.setOwn(false);
   const card = harness.makeCard('X', true);
   harness.setCards([card]);
   const action = harness.capture(card);
-  await harness.context.favIndexMarkUnfavorite('X');
   card.button.favorited = false;
 
   assert.equal(await action.confirmationPromise, true);
