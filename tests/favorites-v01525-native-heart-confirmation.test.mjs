@@ -183,6 +183,7 @@ test('same-view stable card absence after a removal click is accepted only after
   const action = harness.capture(card);
   card.isConnected = false;
   harness.setCards([]);
+  await sleep(0);
 
   assert.equal(await action.confirmationPromise, true);
   assert.equal(harness.counts().durableWrites, 1);
@@ -194,6 +195,7 @@ test('route/view change while the native action is in flight fails closed withou
   harness.setCards([card]);
   const action = harness.capture(card);
   harness.setView('view:B');
+  await sleep(0);
 
   assert.equal(await action.confirmationPromise, false);
   assert.equal(harness.counts().durableWrites, 0);
@@ -219,6 +221,7 @@ test('confirmed tombstone suppresses a later copy of module 63 fixed-delay persi
   harness.setCards([card]);
   const action = harness.capture(card);
   card.button.favorited = false;
+  await sleep(0);
   assert.equal(await action.confirmationPromise, true);
   assert.equal(harness.counts().durableWrites, 1);
   assert.equal(action.intent, 'confirmed-remove');
@@ -234,6 +237,7 @@ test('confirmed viewer-personal heart change on another profile never mutates pr
   harness.setCards([card]);
   const action = harness.capture(card);
   card.button.favorited = false;
+  await sleep(0);
 
   assert.equal(await action.confirmationPromise, true);
   assert.equal(harness.counts().durableWrites, 0);
