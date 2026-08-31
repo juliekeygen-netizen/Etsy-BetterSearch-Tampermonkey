@@ -18,10 +18,14 @@ function makeHarness() {
   let scope = 'scope:A';
   let view = 'view:A';
   let ownProfile = true;
+  let removeSucceeds = false;
   let durableWrites = 0;
   let localRemovals = 0;
   let refreshes = 0;
   let integritySchedules = 0;
+  let reapplyCalls = 0;
+  let bridgeCalls = 0;
+  const opened = [];
   const nativeGrid = { isConnected:true };
   let nativeCards = new Map();
 
@@ -59,6 +63,16 @@ function makeHarness() {
         if (type === 'click' && capture === true) captureHandler = handler;
       },
     },
+    window:{
+      open(...args) {
+        opened.push(args);
+        return {};
+      },
+    },
+    bridgeFavorite:async () => {
+      bridgeCalls += 1;
+      return true;
+    },
     isFavoritesPage:() => true,
     favDatasetKey:() => dataset,
     favScopeKey:() => scope,
@@ -71,13 +85,17 @@ function makeHarness() {
     favIsOwnFavoritesPage:() => ownProfile,
     favRemoveLocalFavorite() {
       localRemovals += 1;
-      return false;
+      return removeSucceeds;
     },
     favIndexMarkUnfavorite() {
       durableWrites += 1;
       return Promise.resolve(true);
     },
     favRenderCurrent:() => true,
+    favReapply:() => {
+      reapplyCalls += 1;
+      return Promise.resolve(true);
+    },
     favRefreshOwnedCardsFromNative0143:() => { refreshes += 1; return true; },
     favScheduleRenderIntegrity0142:() => { integritySchedules += 1; },
   });
@@ -103,7 +121,9 @@ function makeHarness() {
     setScope(value) { scope = value; },
     setView(value) { view = value; },
     setOwn(value) { ownProfile = Boolean(value); },
-    counts:() => ({ durableWrites, localRemovals, refreshes, integritySchedules }),
+    setRemoveSucceeds(value) { removeSucceeds = Boolean(value); },
+    counts:() => ({ durableWrites, localRemovals, refreshes, integritySchedules, reapplyCalls, bridgeCalls }),
+    opened,
   };
 }
 
@@ -215,6 +235,62 @@ test('a second heart click supersedes the prior removal intent and suppresses it
   assert.equal(harness.counts().durableWrites, 0);
 });
 
+test('captured removal fence reports not-committed so historical callers cannot direct-render', async () => {
+  const harness = makeHarness();
+  const card = harness.makeCard('X', true);
+  harness.setCards([card]);
+  const action = harness.capture(card);
+
+  assert.equal(harness.context.favRemoveLocalFavorite('X'), false);
+  assert.equal(harness.counts().localRemovals, 0, 'fenced historical callback never reaches the real local remover');
+
+  card.button.favorited = false;
+  assert.equal(await action.confirmationPromise, true);
+});
+
+test('confirmed local removal uses the real remover once then re-enters favReapply', async () => {
+  const harness = makeHarness();
+  harness.setRemoveSucceeds(true);
+  harness.context.favState.renderMode0141 = 'bettersearch-local';
+  const card = harness.makeCard('X', true);
+  harness.setCards([card]);
+  const action = harness.capture(card);
+
+  assert.equal(harness.context.favRemoveLocalFavorite('X'), false, 'historical caller still sees not committed');
+  card.button.favorited = false;
+  assert.equal(await action.confirmationPromise, true);
+  await sleep(0);
+
+  assert.equal(harness.counts().localRemovals, 1);
+  assert.equal(harness.counts().durableWrites, 0, 'successful local remover owns persistence');
+  assert.equal(harness.counts().reapplyCalls, 1, 'confirmation returns through the current reapply pipeline exactly once');
+});
+
+test('BetterSearch-owned off-page Favorite bridge opens the listing instead of using the hidden iframe bridge', async () => {
+  const harness = makeHarness();
+  let title = '';
+  const card = {
+    dataset:{
+      ebsfOwnedCard:'1',
+      ebsfUrl:'https://www.etsy.com/listing/123/example',
+    },
+  };
+  const button = { setAttribute(name, value) { if (name === 'title') title = value; } };
+
+  assert.equal(await harness.context.bridgeFavorite(card, button), false);
+  assert.equal(harness.counts().bridgeCalls, 0, 'generic hidden-iframe bridge is bypassed for an owned Favorites clone');
+  assert.deepEqual(harness.opened, [['https://www.etsy.com/listing/123/example', '_blank', 'noopener']]);
+  assert.match(title, /Open this listing/i);
+});
+
+test('generic non-owned bridge consumers retain their existing behavior', async () => {
+  const harness = makeHarness();
+  const card = { dataset:{ ebsfOwnedCard:'0', ebsfUrl:'https://www.etsy.com/listing/456/example' } };
+  assert.equal(await harness.context.bridgeFavorite(card, {}), true);
+  assert.equal(harness.counts().bridgeCalls, 1);
+  assert.deepEqual(harness.opened, []);
+});
+
 test('confirmed tombstone suppresses a later copy of module 63 fixed-delay persistence', async () => {
   const harness = makeHarness();
   const card = harness.makeCard('X', true);
@@ -226,6 +302,7 @@ test('confirmed tombstone suppresses a later copy of module 63 fixed-delay persi
   assert.equal(harness.counts().durableWrites, 1);
   assert.equal(action.intent, 'confirmed-remove');
 
+  assert.equal(harness.context.favRemoveLocalFavorite('X'), false, 'confirmed tombstone cannot trigger historical direct render');
   assert.equal(await harness.context.favIndexMarkUnfavorite('X'), false);
   assert.equal(harness.counts().durableWrites, 1, 'historical delayed callback must not write twice');
 });
