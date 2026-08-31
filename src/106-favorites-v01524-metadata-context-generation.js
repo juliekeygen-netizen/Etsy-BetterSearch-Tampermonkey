@@ -94,10 +94,10 @@ function favMetadataMaskWrongDestinationFields01524(listing, contextKey) {
 
 function favMetadataRestoreOrClearNumber01524(record, property, knownKey, beforeValue, beforeKnown, beforeMeta, contextKey) {
     const priorContextCurrent = !beforeMeta || String(beforeMeta.contextKey || '') === String(contextKey || '');
-    if (priorContextCurrent && Number.isFinite(Number(beforeValue))) {
+    if (priorContextCurrent && beforeKnown === true && Number.isFinite(Number(beforeValue))) {
         record[property] = Number(beforeValue);
         record.known = record.known || {};
-        record.known[knownKey] = beforeKnown === true || Number.isFinite(Number(beforeValue));
+        record.known[knownKey] = true;
         return;
     }
     record[property] = Number.NaN;
