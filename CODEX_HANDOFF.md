@@ -10,7 +10,9 @@ Date: 2026-09-01
 Base main SHA: 63c8b6453b443a2f346c20723f6c5da36793a830
 Branch: codex/fix-favorites-stable-toolbar-geometry
 Behavior head: 7d03cc01c034b7c62178c738156dc41c825a9967
-PR: pending creation at the time this handoff commit was written
+PR: #77 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/77
+PR state: OPEN
+Remote review head when PR opened: 197d65969ace6b640f637421a3165a12ec3bb57a
 Release identity: 0.15.26 (intentionally unchanged)
 ```
 
@@ -99,9 +101,15 @@ Diagnostics Chrome builds separately at its independent 0.2.9 identity.
 
 ## GitHub CI and PR
 
-No GitHub PR/CI existed when this handoff commit was created. Push this branch,
-open a PR to `main`, then update this record with the PR URL, exact remote head,
-run ID, conclusion, and artifact state before requesting final review.
+```text
+PR: #77 (OPEN)
+Workflow: CI and extension builds
+Run ID: 33523080011
+Exact remote head: 197d65969ace6b640f637421a3165a12ec3bb57a
+State at publication: QUEUED
+```
+
+The run must be inspected after completion. It is not claimed green here.
 
 ## Manual browser testing still needed
 
