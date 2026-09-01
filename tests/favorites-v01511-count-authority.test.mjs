@@ -3,7 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = await readFile(new URL('../src/104-favorites-v0157-filter-state-sync.js', import.meta.url), 'utf8');
+/* Source assertions use LF fixtures. Normalize checkout transport line endings
+ * before locating the semantic marker so Windows autocrlf cannot turn a source
+ * existence check into a false regression. */
+const source = (await readFile(new URL('../src/104-favorites-v0157-filter-state-sync.js', import.meta.url), 'utf8'))
+  .replace(/\r\n/g, '\n');
 const marker = '/* ------------------------------------------------------------------------- *\n * v0.15.11 count authority';
 const start = source.indexOf(marker);
 assert.ok(start >= 0, 'v0.15.11 count authority block must exist');

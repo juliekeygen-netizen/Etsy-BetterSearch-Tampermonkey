@@ -12,7 +12,71 @@ function favVisibleSortDefinitions0110() {
     return definitions;
 }
 
+/* v0.15.26 behavior gate: body-level Sort portals must have an explicit root
+ * owner. Etsy can replace the toolbar root without going through
+ * favRebuildSortControl0110(); before this fence the detached root's portal
+ * stayed under document.body and later Sort openings only hid/tagged it as an
+ * orphan. Repeated soft-route/root replacement could therefore accumulate
+ * hidden portal DOM for the lifetime of the document.
+ *
+ * Keep this beside module 79, the final Sort-control creator, rather than
+ * introducing another route/lifecycle observer. Pruning happens at the natural
+ * Sort lifecycle boundaries (create/open/close/rebuild), and only portals whose
+ * owner is detached or already declared orphaned are disposed. */
+function favSortPortalOwner01526(menu) {
+    if (!menu) return null;
+    if (menu.__ebsfSortRoot01526) return menu.__ebsfSortRoot01526;
+    return Array.from(document.querySelectorAll('[data-ebsf-sort]'))
+        .find((root) => root?.__ebsfSortMenu === menu) || null;
+}
+
+function favBindSortPortal01526(root, menu) {
+    if (!root || !menu) return menu || null;
+    root.__ebsfSortMenu = menu;
+    menu.__ebsfSortRoot01526 = root;
+    menu.removeAttribute?.('data-ebsf-orphaned');
+    return menu;
+}
+
+function favDisposeSortPortal01526(menu) {
+    if (!menu) return false;
+    const owner = favSortPortalOwner01526(menu);
+    const ownerReferencesMenu = owner?.__ebsfSortMenu === menu;
+
+    menu.remove?.();
+
+    /* Orphan pruning can run in the short window where Etsy has mounted the
+     * replacement Sort root but has not detached its predecessor yet. Clear
+     * both backlinks even then: leaving the connected predecessor pointing at
+     * a removed body portal lets a stale click/rebuild re-adopt dead menu DOM. */
+    if (ownerReferencesMenu) owner.__ebsfSortMenu = null;
+    if (menu.__ebsfSortRoot01526 === owner) menu.__ebsfSortRoot01526 = null;
+    if (favState.sortRoot === owner && ownerReferencesMenu) favState.sortRoot = null;
+    if (favState.sortMenu === menu) favState.sortMenu = null;
+    return true;
+}
+
+function favPruneSortPortals01526(keepMenu = null) {
+    for (const portal of Array.from(document.querySelectorAll('[data-ebsf-sort-menu-portal]'))) {
+        if (!portal || portal === keepMenu) continue;
+        const owner = favSortPortalOwner01526(portal);
+        const orphaned = portal.dataset?.ebsfOrphaned === '1';
+        if (orphaned || owner?.isConnected !== true) favDisposeSortPortal01526(portal);
+    }
+    return keepMenu;
+}
+
+function favScheduleSortPortalPrune01526(keepMenu = null) {
+    requestAnimationFrame(() => favPruneSortPortals01526(keepMenu));
+}
+
 favCreateSort = function favCreateSort0110() {
+    /* Dispose portals whose old toolbar/root is already gone before adding the
+     * new controller. A second prune is scheduled because explicit rebuilds
+     * create the next root immediately before replaceWith() disconnects the old
+     * one in the same task. */
+    favPruneSortPortals01526();
+
     const root = document.createElement('div');
     root.className = 'wt-menu wt-menu--use-animation ebsf-sort';
     root.dataset.ebsfSort = '';
@@ -82,7 +146,7 @@ favCreateSort = function favCreateSort0110() {
         options.append(row);
     }
 
-    root.__ebsfSortMenu = menu;
+    favBindSortPortal01526(root, menu);
     document.body.append(menu);
     trigger.addEventListener('click', (event) => {
         event.preventDefault();
@@ -95,6 +159,7 @@ favCreateSort = function favCreateSort0110() {
     menu.addEventListener('pointerdown', (event) => event.stopPropagation());
     menu.addEventListener('click', (event) => event.stopPropagation());
     root.append(trigger);
+    favScheduleSortPortalPrune01526(menu);
     return root;
 };
 
@@ -124,11 +189,45 @@ function favRebuildSortControl0110() {
     const oldRoot = favState.sortRoot || document.querySelector('[data-ebsf-sort]');
     if (!oldRoot?.isConnected) return;
     const oldMenu = oldRoot.__ebsfSortMenu || favState.sortMenu;
-    if (oldMenu?.isConnected) oldMenu.remove();
+    if (oldMenu?.isConnected) favDisposeSortPortal01526(oldMenu);
     const next = favCreateSort();
     oldRoot.replaceWith(next);
     favState.sortRoot = next;
     favState.sortMenu = next.__ebsfSortMenu || null;
+    favPruneSortPortals01526(favState.sortMenu);
     favUpdateSortUi();
     requestAnimationFrame(() => favRepairToolbarLayout?.());
+}
+
+/* Module 69 remains the positioning/visibility owner. Add lifetime fencing
+ * around its final open/close behavior rather than reimplementing that menu
+ * logic here. */
+var favOpenSortMenuBefore01526 = favOpenSortMenu;
+favOpenSortMenu = function favOpenSortMenu01526(root = favState.sortRoot) {
+    const menu = root?.__ebsfSortMenu || favState.sortMenu;
+    if (root && menu) favBindSortPortal01526(root, menu);
+    favPruneSortPortals01526(menu);
+    const result = favOpenSortMenuBefore01526(root);
+    favScheduleSortPortalPrune01526(menu);
+    return result;
+};
+
+var favCloseSortMenuBefore01526 = favCloseSortMenu;
+favCloseSortMenu = function favCloseSortMenu01526() {
+    const root = favState.sortRoot;
+    const menu = root?.__ebsfSortMenu || favState.sortMenu;
+    const result = favCloseSortMenuBefore01526();
+    if (menu && root?.isConnected !== true) favDisposeSortPortal01526(menu);
+    else favScheduleSortPortalPrune01526(menu || null);
+    return result;
+};
+
+/* Cover a pre-existing Sort control in case an earlier runtime path mounted it
+ * before this module finished installing. This is idempotent and does not create
+ * any observer or timer of its own. */
+{
+    const existingRoot = favState.sortRoot || document.querySelector('[data-ebsf-sort]');
+    const existingMenu = existingRoot?.__ebsfSortMenu || favState.sortMenu;
+    if (existingRoot && existingMenu) favBindSortPortal01526(existingRoot, existingMenu);
+    favPruneSortPortals01526(existingMenu || null);
 }

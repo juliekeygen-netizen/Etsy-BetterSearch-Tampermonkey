@@ -1,6 +1,6 @@
 # Etsy BetterSearch — Current Project State
 
-**Updated:** 2026-08-31
+**Updated:** 2026-09-01
 **Purpose:** changing development brain / roadmap for Codex and human reviewers
 **Repository authority:** current source, tests, Git history, CI, and verified browser evidence override this file if they disagree.
 
@@ -13,9 +13,9 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 Current verified production baseline at the time this file was written:
 
 ```text
-main SHA: 4d0e0317d58711a5e1603ae8d2bf608c3f285c3b
-release:  v0.15.25
-commit:   Release v0.15.25: confirm native Favorite-heart removals
+main SHA: 614ec3d26caa3ce9602b2e47261a15359e24be4a
+release:  v0.15.25 (current merged baseline; v0.15.26 release candidate pending)
+commit:   Docs: establish Codex autonomous handoff and review workflow
 ```
 
 Required independent post-merge CI was green:
@@ -153,6 +153,17 @@ These are the most important conclusions accumulated from real-browser diagnosti
 - Stable same-view card disappearance can confirm removal only through the bounded confirmation path.
 - Superseding clicks, route/view changes, rollback, or unresolved timeouts fail closed.
 - Public-profile viewer-personal hearts remain isolated from profile membership.
+
+## 3.10 Production runtime ownership
+
+- A Favorites runtime must have one shared document owner even when the
+  Tampermonkey userscript and a production browser extension are accidentally
+  enabled together.
+- Module `60b-favorites-runtime-owner.js` is the unmerged behavior-gate
+  boundary for this rule: its document-lifetime marker makes the first
+  production Favorites runtime active and later isolated-world copies inert.
+- Diagnostics remains an independent observational build and must not be
+  mistaken for a second production Favorites owner.
 
 ---
 
@@ -294,7 +305,10 @@ Audit goal:
 - confirm count presentation never changes owner identity;
 - establish whether an explicit count view-model separation is still needed.
 
-Do not refactor counts unless a live ambiguity/bug remains after tracing final modules.
+2026-09-01 reconciliation: the final module 104 → 105 chain separates native
+total authority from local shown-count authority. The old
+`fix/favorites-count-authority-fail-closed` remote branch is pre-v0.15.25 and
+not an active implementation task. Do not duplicate it without new evidence.
 
 Relevant historical docs:
 
@@ -310,11 +324,9 @@ Historical concerns:
 - route/owner change during create/fetch;
 - fetched collection refresh owner verification.
 
-Audit goal:
-
-- trace current collection model/writers after all later ownership modules;
-- determine which findings remain reachable;
-- create a bounded fix only if source-proven.
+2026-09-01 reconciliation: this is now covered by unmerged PR #71
+(`fix/favorites-collection-lifecycle-generation`). Review that branch rather
+than starting another collection-lifecycle patch.
 
 Relevant historical docs:
 
@@ -331,6 +343,13 @@ Historical concerns:
 - duplicate Tampermonkey + extension runtime split-brain.
 
 Some of this has been hardened by later modules, so the agent must trace current final behavior before changing anything.
+
+2026-09-01 reconciliation: v0.15.18 closes the stale whole-object
+configuration-write/live propagation finding, and module83 reads the durable
+manual-pause value before claims. The remaining source-proven split-brain risk
+is duplicate production delivery runtimes; the current unmerged runtime-owner
+behavior gate addresses that narrow boundary. Generation wakeups still require
+real browser/Diagnostics evidence before a broader design change.
 
 Audit questions:
 
@@ -515,6 +534,10 @@ Expected CI responsibilities include:
 - Diagnostics Chrome build;
 - artifact uploads.
 
+Static source-marker tests normalize CRLF transport line endings before matching
+their LF fixtures. This keeps the same semantic assertion valid in Windows
+autocrlf checkouts and the Linux CI checkout.
+
 The project has repeatedly caught release/load-order issues only after building the actual extension bundle. Artifact inspection is part of release correctness for sensitive boundaries.
 
 ---
@@ -539,6 +562,29 @@ However, do not ask the user for manual DevTools evidence before exhausting sour
 The development Diagnostics build exists specifically to gather controlled evidence. Keep raw private capture data out of the public repository.
 
 ---
+
+# v0.15.26 release-candidate reconciliation — 2026-09-01
+
+The release candidate on `codex/release-v0.15.26-integration` reconciles and
+combines seven green, independently bounded post-v0.15.25 pull requests:
+
+- #67 local-card heart/bridge confirmation boundary;
+- #68 focused filter-rail refresh deferral;
+- #69 sort portal owner/backlink lifetime cleanup;
+- #71 collection owner and operation-generation fencing;
+- #72 IndexedDB `versionchange` cache invalidation;
+- #73 duplicate delivery-runtime first-owner boundary;
+- #74 CRLF-portable static-source test normalization.
+
+The combined v0.15.25 behavior gate passed Node 22 repository checks and all
+565 tests, then built Chrome, Firefox, and Diagnostics artifacts. It preserves
+the later/final owners in the production chain: runtime ownership before
+Favorites state, DB upgrade handling before later cached openers, collection
+lifecycle after the native boundary, the sort wrapper at module79, and rail
+refresh after the heart-confirmation boundary. The candidate then promotes the
+shared userscript/package/extension identity and every `@require` cache-buster
+to v0.15.26. The remaining gate is exact-head GitHub CI and the merge-authorized
+review recorded in `CODEX_HANDOFF.md`.
 
 # 11. Versioning note
 

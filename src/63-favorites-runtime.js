@@ -258,6 +258,7 @@ function favNativeActionForOwnedCard0141(card, target) {
 }
 
 function favHandleTransplantedClick(event) {
+    if (typeof favFavoritesRuntimeActive01527 !== 'undefined' && favFavoritesRuntimeActive01527 !== true) return;
     const card=event.target?.closest?.('[data-ebsf-owned-card="1"]');if(!card)return;
     const favorite=favoriteButtonFromEvent(event.target);
     if(favorite){
@@ -490,6 +491,7 @@ function favRuntimeHandleMutations0137(records){
 }
 
 function favStartRuntime() {
+    if (typeof favFavoritesRuntimeActive01527 !== 'undefined' && favFavoritesRuntimeActive01527 !== true) return;
     if(!favState.runtimeObserverBound0121){
         favState.observer?.disconnect();
         favState.observer=new MutationObserver(favRuntimeHandleMutations0137);

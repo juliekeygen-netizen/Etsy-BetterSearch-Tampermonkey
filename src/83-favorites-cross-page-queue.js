@@ -64,6 +64,7 @@ favDeepQueueClaimNext = function favDeepQueueClaimNext0110(now = Date.now()) {
 };
 
 function favMarkDeepWorkerEnded0110() {
+    if (typeof favFavoritesRuntimeActive01527 !== 'undefined' && favFavoritesRuntimeActive01527 !== true) return;
     const ownership = favDeepCurrentOwnership0105;
     if (!ownership?.workerId) return;
     try {
@@ -127,6 +128,7 @@ function favScheduleDeepResume0110(delay) {
 }
 
 async function favDeepResumeExistingQueue0110() {
+    if (typeof favFavoritesRuntimeActive01527 !== 'undefined' && favFavoritesRuntimeActive01527 !== true) return false;
     if (favDeepPauseStored0110() || favCfg.autoScanMissingMetadata === false) {
         favDeepAutoResumeSuppressed0103 = favDeepPauseStored0110();
         return false;
@@ -161,6 +163,7 @@ async function favDeepResumeExistingQueue0110() {
 
 var favDeepMaybeAutoScanBefore0110 = favDeepMaybeAutoScan;
 favDeepMaybeAutoScan = async function favDeepMaybeAutoScan0110() {
+    if (typeof favFavoritesRuntimeActive01527 !== 'undefined' && favFavoritesRuntimeActive01527 !== true) return false;
     if (favDeepPauseStored0110() || favCfg.autoScanMissingMetadata === false) return false;
     /* Favorites remains the discovery point that can add newly found/missing
      * listings to the durable queue. Everywhere else only resumes known work. */
