@@ -13,9 +13,9 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 Current verified production baseline at the time this file was written:
 
 ```text
-main SHA: 614ec3d26caa3ce9602b2e47261a15359e24be4a
-release:  v0.15.25 (current merged baseline; v0.15.26 release candidate pending)
-commit:   Docs: establish Codex autonomous handoff and review workflow
+main SHA: 4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5
+release:  v0.15.26
+commit:   Release v0.15.26: integrate audited Favorites fixes
 ```
 
 Required independent post-merge CI was green:
@@ -565,7 +565,7 @@ The development Diagnostics build exists specifically to gather controlled evide
 
 # v0.15.26 release-candidate reconciliation — 2026-09-01
 
-The release candidate on `codex/release-v0.15.26-integration` reconciles and
+The merged release on `main` reconciles and
 combines seven green, independently bounded post-v0.15.25 pull requests:
 
 - #67 local-card heart/bridge confirmation boundary;
@@ -583,8 +583,9 @@ Favorites state, DB upgrade handling before later cached openers, collection
 lifecycle after the native boundary, the sort wrapper at module79, and rail
 refresh after the heart-confirmation boundary. The candidate then promotes the
 shared userscript/package/extension identity and every `@require` cache-buster
-to v0.15.26. The remaining gate is exact-head GitHub CI and the merge-authorized
-review recorded in `CODEX_HANDOFF.md`.
+to v0.15.26. Exact-head GitHub CI run `33520794029` and the required
+post-merge `main` push CI run `33520898859` both succeeded. The component PRs
+were closed as superseded by the merged integration PR #75.
 
 # 11. Versioning note
 
