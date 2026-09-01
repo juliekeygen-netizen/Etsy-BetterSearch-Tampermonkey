@@ -12,7 +12,7 @@ Branch: codex/fix-favorites-stable-toolbar-geometry
 Behavior head: 7d03cc01c034b7c62178c738156dc41c825a9967
 PR: #77 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/77
 PR state: OPEN
-Remote review head when PR opened: 197d65969ace6b640f637421a3165a12ec3bb57a
+Validated review head: a3daae98d46792f23040add0e0048de2219c59c2
 Release identity: 0.15.26 (intentionally unchanged)
 ```
 
@@ -104,12 +104,14 @@ Diagnostics Chrome builds separately at its independent 0.2.9 identity.
 ```text
 PR: #77 (OPEN)
 Workflow: CI and extension builds
-Run ID: 33523080011
-Exact remote head: 197d65969ace6b640f637421a3165a12ec3bb57a
-State at publication: QUEUED
+Run ID: 33523301062
+Exact head tested: a3daae98d46792f23040add0e0048de2219c59c2
+State: COMPLETED
+Conclusion: SUCCESS
 ```
 
-The run must be inspected after completion. It is not claimed green here.
+The successful workflow included repository checks, the complete Node suite,
+Chrome/Firefox/Diagnostics builds, and artifact uploads.
 
 ## Manual browser testing still needed
 
