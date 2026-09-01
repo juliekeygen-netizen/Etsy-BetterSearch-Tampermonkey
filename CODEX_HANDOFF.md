@@ -11,6 +11,8 @@ The purpose of this file is to let the user hand a completed Codex PR to another
 **Status:** v0.15.26 integration release candidate; exact-head CI pending.
 **Base main:** `614ec3d26caa3ce9602b2e47261a15359e24be4a`
 **Branch:** `codex/release-v0.15.26-integration`
+**PR:** [#75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75) — open, CI pending
+**Release implementation head:** `f371538370e6c5a95828c7850978233ee5c2fe8a`
 **Release identity:** `0.15.26` (userscript, package, cache-busters, built extension manifests)
 
 This branch deliberately integrates the substantive work from green PRs #67,

@@ -45,3 +45,5 @@ Historical release narrative documents are left unchanged.
 Exact-head CI and fresh built-artifact inspection are required after this
 promotion. Browser smoke testing remains valuable for Etsy timing/selectors and
 the cross-delivery duplicate-runtime case; no private browser data is included.
+
+The published release candidate is [PR #75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75).

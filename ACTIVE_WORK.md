@@ -10,7 +10,9 @@ remain authoritative if they disagree with this snapshot.
 ```text
 Base main: 614ec3d26caa3ce9602b2e47261a15359e24be4a
 Branch: codex/release-v0.15.26-integration
-State: release candidate; GitHub CI pending publication
+PR: #75 https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75
+Release implementation head: f371538370e6c5a95828c7850978233ee5c2fe8a
+State: release candidate; GitHub CI pending
 ```
 
 The release combines the independently reviewed behavior gates from PRs #67,
