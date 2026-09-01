@@ -11,6 +11,10 @@
  * Attach the cooperative close handler to both already-created and future
  * connections. Once this document receives a versionchange, database work is
  * fail-closed until the page reloads into the new runtime/schema.
+ *
+ * v0.15.19 adds a later cached `favIndexOpen` wrapper. A versionchange must
+ * clear that outer cache as well, otherwise the final runtime opener can hand
+ * the already-closed DB back without re-entering this invalidation guard.
  */
 
 var favIndexVersionInvalidated01527 = favIndexVersionInvalidated01527 === true;
@@ -20,6 +24,15 @@ var favIndexVersionchangeDatabases01527 = typeof favIndexVersionchangeDatabases0
 
 function favIndexVersionchangeError01527() {
     return new Error('Favorites index schema changed in another tab. Reload Etsy BetterSearch before continuing database work.');
+}
+
+function favIndexClearLaterOpenCaches01527() {
+    /* This variable is declared by 61eb later in the production load order.
+     * `typeof` keeps the standalone/userscript boundary safe when it is absent,
+     * while concatenated extension builds expose the hoisted binding. */
+    if (typeof favMultiOwnerRepairPromise01519 !== 'undefined') {
+        favMultiOwnerRepairPromise01519 = null;
+    }
 }
 
 function favIndexInstallVersionchange01527(db) {
@@ -33,6 +46,7 @@ function favIndexInstallVersionchange01527(db) {
         }
         favIndexVersionInvalidated01527 = true;
         favIndexDatabasePromise = null;
+        favIndexClearLaterOpenCaches01527();
         try { db.close(); } catch (_) {}
         try {
             document.dispatchEvent?.(new CustomEvent('ebsf:favorites-index-versionchange', {
