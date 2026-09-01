@@ -7,7 +7,8 @@ Date: 2026-09-01
 Base main: 63c8b6453b443a2f346c20723f6c5da36793a830
 Branch: codex/fix-diagnostics-valid-empty-state-marker
 Behavior head: 1762992e5d0f54b6c0cc616513ddfdd2d6cbee18
-PR: pending creation when this record was written
+PR: #78 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/78 (OPEN)
+Validated review head: 43d4c3e7bbbf80e97c39b59dc54e3c3fcae31bc6
 Release identity: production 0.15.26; Diagnostics 0.2.9 (unchanged)
 ```
 
@@ -46,6 +47,10 @@ The built Diagnostics Chrome content script was inspected: it contains
 `nativeEmptyState`, `shouldMarkNoGridVisible`, and the valid-empty exclusion.
 No production userscript/extension behavior, version, network handling, or
 raw private diagnostics were changed.
+
+GitHub Actions `CI and extension builds` run `33523497323` succeeded for the
+validated review head. It passed whitespace, repository checks, tests,
+Chrome/Firefox/Diagnostics builds, and all three artifact uploads.
 
 Native `npm run ci` was not used because local Node 26 conflicts with the
 repository VM fixtures; the successful Node 22 commands above are exact.
