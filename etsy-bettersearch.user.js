@@ -31,6 +31,7 @@
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/50-modal-runtime.js?v=0.15.25
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/55-mode-background.js?v=0.15.25
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/60-favorites-state.js?v=0.15.25
+// @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/60b-favorites-runtime-owner.js?v=0.15.25
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/60a-favorites-owner-identity.js?v=0.15.25
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61-favorites-data.js?v=0.15.25
 // @require      https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/61a-favorites-index.js?v=0.15.25
