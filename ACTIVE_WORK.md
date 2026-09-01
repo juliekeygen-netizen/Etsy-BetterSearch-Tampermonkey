@@ -40,7 +40,12 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 ## Next independent work
 
-Take the next source-proven item from `docs/CODEX_NEXT_WORK_PLAN.md` from clean
-`main`.
-Prefer lifecycle/accessibility evidence or Diagnostics-guided work; do not
-reopen stale pre-v0.15.25 count-authority branches without final-owner proof.
+Open behavior gates from the 2026-09-01 private Diagnostics reconciliation:
+
+- #77: stable desktop Favorites toolbar geometry; production behavior,
+  independently reviewed CI green and awaiting browser/reviewer audit.
+- `codex/fix-diagnostics-valid-empty-state-marker`: Diagnostics-only valid
+  empty-collection marker suppression, independently based on clean `main`.
+
+The reported startup filter-rail flicker remains observation-only. Gather a
+focused before/after capture before changing the final drawer owner.
