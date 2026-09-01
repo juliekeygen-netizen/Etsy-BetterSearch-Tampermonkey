@@ -8,7 +8,10 @@ Task: make the v0.15.11 count-authority source assertion line-ending portable
 Base main SHA: 614ec3d26caa3ce9602b2e47261a15359e24be4a
 Branch: fix/test-crlf-static-source-normalization
 Implementation head: 3c965d2fce1343b8c1ec0c27557367d25f63c225
-PR: pending publication from this handoff commit
+Published behavior-gate head before this PR-metadata update: 93bedae6384fc25c59f0688ce38e236f60bd91b0
+PR: #74
+PR URL: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/74
+PR state: OPEN
 Release identity: unchanged v0.15.25; test-only behavior gate
 Dependencies: none
 ```
@@ -53,6 +56,6 @@ level and the existing semantic marker/count tests remain intact.
 
 ## GitHub CI and next action
 
-Publish this branch as a separate unmerged PR. The CI workflow must pass its
-exact head. Then independent review may approve it as a low-risk test-only
-maintenance change. No manual browser testing is required.
+This separate unmerged PR must pass CI on its exact published head. Then
+independent review may approve it as a low-risk test-only maintenance change.
+No manual browser testing is required.
