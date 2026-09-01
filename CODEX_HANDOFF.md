@@ -8,7 +8,10 @@ Task: post-v0.15.25 runtime reconciliation + duplicate Favorites runtime owner
 Base main SHA: 614ec3d26caa3ce9602b2e47261a15359e24be4a
 Branch: audit/favorites-v01526-runtime-reconciliation
 Implementation head: 72862b68b898173b7b44f105105781b7bfcf6079
-PR: pending publication from this handoff commit
+Published behavior-gate head before this PR-metadata update: 52b360442048afcc23e595fcbf9b1d9f23132e95
+PR: #73
+PR URL: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/73
+PR state: OPEN
 Release identity: v0.15.25 behavior gate; no version/cache-buster promotion
 Dependencies: none; independent of open PRs #67–#72
 ```
@@ -84,9 +87,10 @@ mixed into this runtime-owner gate.
 
 ## 6. CI and artifact audit
 
-PR CI is pending publication. The required workflow is `CI and extension
-builds`; it must test the published branch head, including whitespace, full
-Node 22 suite, Chrome/Firefox/Diagnostics builds, and artifacts.
+GitHub Actions run `33514377731` was queued for the published behavior-gate
+head at handoff-metadata time. The required workflow is `CI and extension
+builds`; it must test the final published branch head, including whitespace,
+full Node 22 suite, Chrome/Firefox/Diagnostics builds, and artifacts.
 
 Local built-artifact inspection confirmed:
 
