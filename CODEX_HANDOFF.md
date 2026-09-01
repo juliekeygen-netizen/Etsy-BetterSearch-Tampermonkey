@@ -8,11 +8,12 @@ The purpose of this file is to let the user hand a completed Codex PR to another
 
 ## Current handoff status
 
-**Status:** v0.15.26 integration release candidate; exact-head CI pending.
+**Status:** v0.15.26 merged and verified on `main`.
 **Base main:** `614ec3d26caa3ce9602b2e47261a15359e24be4a`
-**Branch:** `codex/release-v0.15.26-integration`
-**PR:** [#75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75) — open, CI pending
-**Release implementation head:** `f371538370e6c5a95828c7850978233ee5c2fe8a`
+**Branch:** `codex/release-v0.15.26-integration` (merged)
+**PR:** [#75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75) — merged
+**Release head:** `fccb28ba56f4682344ad4c27f16ce488bf794443`
+**Merge commit:** `4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5`
 **Release identity:** `0.15.26` (userscript, package, cache-busters, built extension manifests)
 
 This branch deliberately integrates the substantive work from green PRs #67,
@@ -35,6 +36,12 @@ sort-portal, native-heart, and focused-rail assignment order. Diagnostics stays
 at its separate 0.2.9 identity. No browser/manual test was performed; validate
 rapid heart, focused draft, collection route change, upgrade, and duplicate
 delivery runtime behavior before relying on Etsy-specific timing.
+
+The exact release head passed CI run `33520794029` (whitespace, repository
+checks, tests, Chrome/Firefox/Diagnostics builds, and all three artifact
+uploads). The actual merged `main` commit passed required push CI run
+`33520898859`. PRs #67, #68, #69, #71, #72, #73, and #74 are closed as
+superseded; their branches remain available as review evidence.
 
 ---
 

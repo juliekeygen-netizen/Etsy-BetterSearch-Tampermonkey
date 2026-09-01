@@ -42,8 +42,11 @@ The release candidate changes only the shared BetterSearch identity to v0.15.26:
 and tests whose assertions intentionally track the current release identity.
 Historical release narrative documents are left unchanged.
 
-Exact-head CI and fresh built-artifact inspection are required after this
-promotion. Browser smoke testing remains valuable for Etsy timing/selectors and
-the cross-delivery duplicate-runtime case; no private browser data is included.
+The exact release head passed GitHub Actions run `33520794029`, including patch
+whitespace, repository checks, tests, builds, and Chrome/Firefox/Diagnostics
+artifact uploads. It merged through [PR #75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75)
+as `main` commit `4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5`; the required
+push CI run `33520898859` also succeeded.
 
-The published release candidate is [PR #75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75).
+Browser smoke testing remains valuable for Etsy timing/selectors and the
+cross-delivery duplicate-runtime case; no private browser data is included.
