@@ -1,6 +1,6 @@
 # Etsy BetterSearch — Current Project State
 
-**Updated:** 2026-08-31
+**Updated:** 2026-09-01
 **Purpose:** changing development brain / roadmap for Codex and human reviewers
 **Repository authority:** current source, tests, Git history, CI, and verified browser evidence override this file if they disagree.
 
@@ -154,6 +154,17 @@ These are the most important conclusions accumulated from real-browser diagnosti
 - Superseding clicks, route/view changes, rollback, or unresolved timeouts fail closed.
 - Public-profile viewer-personal hearts remain isolated from profile membership.
 
+## 3.10 Production runtime ownership
+
+- A Favorites runtime must have one shared document owner even when the
+  Tampermonkey userscript and a production browser extension are accidentally
+  enabled together.
+- Module `60b-favorites-runtime-owner.js` is the unmerged behavior-gate
+  boundary for this rule: its document-lifetime marker makes the first
+  production Favorites runtime active and later isolated-world copies inert.
+- Diagnostics remains an independent observational build and must not be
+  mistaken for a second production Favorites owner.
+
 ---
 
 # 4. Recent correctness release history
@@ -294,7 +305,10 @@ Audit goal:
 - confirm count presentation never changes owner identity;
 - establish whether an explicit count view-model separation is still needed.
 
-Do not refactor counts unless a live ambiguity/bug remains after tracing final modules.
+2026-09-01 reconciliation: the final module 104 → 105 chain separates native
+total authority from local shown-count authority. The old
+`fix/favorites-count-authority-fail-closed` remote branch is pre-v0.15.25 and
+not an active implementation task. Do not duplicate it without new evidence.
 
 Relevant historical docs:
 
@@ -310,11 +324,9 @@ Historical concerns:
 - route/owner change during create/fetch;
 - fetched collection refresh owner verification.
 
-Audit goal:
-
-- trace current collection model/writers after all later ownership modules;
-- determine which findings remain reachable;
-- create a bounded fix only if source-proven.
+2026-09-01 reconciliation: this is now covered by unmerged PR #71
+(`fix/favorites-collection-lifecycle-generation`). Review that branch rather
+than starting another collection-lifecycle patch.
 
 Relevant historical docs:
 
@@ -331,6 +343,13 @@ Historical concerns:
 - duplicate Tampermonkey + extension runtime split-brain.
 
 Some of this has been hardened by later modules, so the agent must trace current final behavior before changing anything.
+
+2026-09-01 reconciliation: v0.15.18 closes the stale whole-object
+configuration-write/live propagation finding, and module83 reads the durable
+manual-pause value before claims. The remaining source-proven split-brain risk
+is duplicate production delivery runtimes; the current unmerged runtime-owner
+behavior gate addresses that narrow boundary. Generation wakeups still require
+real browser/Diagnostics evidence before a broader design change.
 
 Audit questions:
 
