@@ -515,6 +515,10 @@ Expected CI responsibilities include:
 - Diagnostics Chrome build;
 - artifact uploads.
 
+Static source-marker tests normalize CRLF transport line endings before matching
+their LF fixtures. This keeps the same semantic assertion valid in Windows
+autocrlf checkouts and the Linux CI checkout.
+
 The project has repeatedly caught release/load-order issues only after building the actual extension bundle. Artifact inspection is part of release correctness for sensitive boundaries.
 
 ---
