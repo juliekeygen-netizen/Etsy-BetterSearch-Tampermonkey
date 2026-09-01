@@ -13,9 +13,9 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 Current verified production baseline at the time this file was written:
 
 ```text
-main SHA: 4d0e0317d58711a5e1603ae8d2bf608c3f285c3b
-release:  v0.15.25
-commit:   Release v0.15.25: confirm native Favorite-heart removals
+main SHA: 614ec3d26caa3ce9602b2e47261a15359e24be4a
+release:  v0.15.25 (current merged baseline; v0.15.26 release candidate pending)
+commit:   Docs: establish Codex autonomous handoff and review workflow
 ```
 
 Required independent post-merge CI was green:
@@ -562,6 +562,29 @@ However, do not ask the user for manual DevTools evidence before exhausting sour
 The development Diagnostics build exists specifically to gather controlled evidence. Keep raw private capture data out of the public repository.
 
 ---
+
+# v0.15.26 release-candidate reconciliation — 2026-09-01
+
+The release candidate on `codex/release-v0.15.26-integration` reconciles and
+combines seven green, independently bounded post-v0.15.25 pull requests:
+
+- #67 local-card heart/bridge confirmation boundary;
+- #68 focused filter-rail refresh deferral;
+- #69 sort portal owner/backlink lifetime cleanup;
+- #71 collection owner and operation-generation fencing;
+- #72 IndexedDB `versionchange` cache invalidation;
+- #73 duplicate delivery-runtime first-owner boundary;
+- #74 CRLF-portable static-source test normalization.
+
+The combined v0.15.25 behavior gate passed Node 22 repository checks and all
+565 tests, then built Chrome, Firefox, and Diagnostics artifacts. It preserves
+the later/final owners in the production chain: runtime ownership before
+Favorites state, DB upgrade handling before later cached openers, collection
+lifecycle after the native boundary, the sort wrapper at module79, and rail
+refresh after the heart-confirmation boundary. The candidate then promotes the
+shared userscript/package/extension identity and every `@require` cache-buster
+to v0.15.26. The remaining gate is exact-head GitHub CI and the merge-authorized
+review recorded in `CODEX_HANDOFF.md`.
 
 # 11. Versioning note
 

@@ -8,11 +8,31 @@ The purpose of this file is to let the user hand a completed Codex PR to another
 
 ## Current handoff status
 
-**Status:** template / no active Codex implementation task yet
-**Baseline when template created:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`
-**Baseline post-merge CI:** run `33391628427` — success
+**Status:** v0.15.26 integration release candidate; exact-head CI pending.
+**Base main:** `614ec3d26caa3ce9602b2e47261a15359e24be4a`
+**Branch:** `codex/release-v0.15.26-integration`
+**Release identity:** `0.15.26` (userscript, package, cache-busters, built extension manifests)
 
-When Codex completes its first task, replace the review packet below with that task's real state.
+This branch deliberately integrates the substantive work from green PRs #67,
+#68, #69, #71, #72, #73, and #74. It does not merge the original behavior
+branches independently, because their historical intermediate release bumps
+would be both conflicting and misleading. After release CI is green, merge this
+single integration PR; close the original PRs as superseded while retaining
+their audit history.
+
+Combined behavior gate before promotion, with v0.15.25 identity:
+
+```text
+npx --yes --package=node@22 node scripts/check.mjs  PASS — 125 files, 90 modules
+npx --yes --package=node@22 node --test tests/*.test.mjs  PASS — 565/565
+npx --yes --package=node@22 node scripts/build.mjs  PASS — Chrome, Firefox, Diagnostics
+```
+
+Built Chrome/Firefox output was inspected for final runtime-owner, DB-opener,
+sort-portal, native-heart, and focused-rail assignment order. Diagnostics stays
+at its separate 0.2.9 identity. No browser/manual test was performed; validate
+rapid heart, focused draft, collection route change, upgrade, and duplicate
+delivery runtime behavior before relying on Etsy-specific timing.
 
 ---
 
