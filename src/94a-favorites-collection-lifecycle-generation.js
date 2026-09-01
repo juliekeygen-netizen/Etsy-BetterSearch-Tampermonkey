@@ -56,6 +56,12 @@ function favCollectionContextCurrent01526(context) {
     return current.ownerKey === context.ownerKey && current.routeKey === context.routeKey;
 }
 
+function favCollectionRefreshCurrent01526(context) {
+    if (!favCollectionContextCurrent01526(context)) return false;
+    const generation = Math.max(0, Number(context?.createGeneration) || 0);
+    return !generation || favState.collectionCreateGeneration01526 === generation;
+}
+
 function favCollectionPropsCandidate01526(root = document, expectedOwner = '') {
     const wantedOwner = String(expectedOwner || '').trim();
     let candidate = null;
@@ -119,21 +125,21 @@ favCollections0120 = function favCollections01526() {
 
 async function favRefreshCollectionModel0120(contextInput = favCollectionContext01526()) {
     const context = { ...contextInput };
-    if (!favCollectionContextCurrent01526(context)) return false;
+    if (!favCollectionRefreshCurrent01526(context)) return false;
 
     try {
         const response = await fetch(context.href, {
             credentials:'include',
             headers:{ Accept:'text/html,application/xhtml+xml' },
         });
-        if (!response.ok || !favCollectionContextCurrent01526(context)) return false;
+        if (!response.ok || !favCollectionRefreshCurrent01526(context)) return false;
 
         const html = await response.text();
-        if (!favCollectionContextCurrent01526(context)) return false;
+        if (!favCollectionRefreshCurrent01526(context)) return false;
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const props = favCollectionPropsCandidate01526(doc, context.owner);
         if (!props || String(props.profileOwnerUserId || '').trim() !== context.owner) return false;
-        if (!favCollectionContextCurrent01526(context)) return false;
+        if (!favCollectionRefreshCurrent01526(context)) return false;
 
         const before = favCollectionModelSignature01526(
             favState.collectionModelOwnerKey01526 === context.ownerKey ? favState.collectionModel0120 : []
@@ -146,7 +152,7 @@ async function favRefreshCollectionModel0120(contextInput = favCollectionContext
         if (before !== after) {
             const sidebar = document.querySelector?.('[data-testid="sidebar"]');
             const content = favFavoritesContentColumn0120?.(sidebar);
-            if (content && favCollectionContextCurrent01526(context)) favInstallCollectionStrip0120?.(content);
+            if (content && favCollectionRefreshCurrent01526(context)) favInstallCollectionStrip0120?.(content);
             return true;
         }
         return false;
@@ -211,6 +217,7 @@ function favWatchCollectionCreation0120() {
 
     const nativeCreate = favNativeCreateButton0120?.() || null;
     const generation = ++favState.collectionCreateGeneration01526;
+    context.createGeneration = generation;
     const operation = {
         generation,
         context,
