@@ -1,276 +1,129 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-> **Codex:** rewrite this file on every coherent task branch before handing the task off for review. Do not merely append raw terminal logs. Keep it concise enough to review, but include exact durable identifiers and all material engineering decisions.
-
-The purpose of this file is to let the user hand a completed Codex PR to another ChatGPT session for an independent audit without requiring access to the original Codex conversation.
-
----
-
-## Current handoff status
-
-**Status:** template / no active Codex implementation task yet
-**Baseline when template created:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`
-**Baseline post-merge CI:** run `33391628427` — success
-
-When Codex completes its first task, replace the review packet below with that task's real state.
-
----
-
-# Review packet
-
 ## 1. Task identity
 
 ```text
-Date/time:
-Task summary:
-Base main SHA:
-Branch:
-Exact head SHA:
-PR number:
-PR URL:
-PR state: OPEN / DRAFT / OTHER
-Release identity on branch:
+Date/time: 2026-09-01 (Europe/Helsinki)
+Task: post-v0.15.25 runtime reconciliation + duplicate Favorites runtime owner
+Base main SHA: 614ec3d26caa3ce9602b2e47261a15359e24be4a
+Branch: audit/favorites-v01526-runtime-reconciliation
+Implementation head: 72862b68b898173b7b44f105105781b7bfcf6079
+PR: pending publication from this handoff commit
+Release identity: v0.15.25 behavior gate; no version/cache-buster promotion
+Dependencies: none; independent of open PRs #67–#72
 ```
 
-If this PR depends on another unmerged PR/branch, state that explicitly here.
+## 2. Problem and evidence
 
----
+The post-v0.15.25 audit traced current final owners instead of replaying older
+findings. It confirmed the shipped v0.15.19–v0.15.25 boundaries for
+multi-owner membership, atomic rows, immutable generations, catalogue fencing,
+query acknowledgement, metadata context, and native-heart confirmation.
 
-## 2. Problem / evidence
+One live source-proven gap remained: Tampermonkey and the production extension
+run in separate JavaScript worlds, while no shared DOM-visible Favorites owner
+existed. Their independent `favState` flags could therefore both start UI,
+observers, local rendering, and deep-queue work on one Etsy document.
 
-Describe:
+`docs/FAVORITES_V01527_RUNTIME_RECONCILIATION_2026-09-01.md` contains the
+complete status table, open-PR reconciliation, stale count-branch conclusion,
+and the exact sources reviewed. No private Etsy data was added.
 
-- what user-visible or architectural problem was investigated;
-- how the issue was proven to still exist in the **current final runtime**, rather than merely an older module/audit;
-- relevant historical audit/release documents;
-- relevant source symbols/final owners;
-- browser/Diagnostics evidence if used;
-- why the chosen patch boundary is the semantic owner or narrowest safe integration point.
-
-If the task was audit-only and no bug was confirmed, say so clearly.
-
----
-
-## 3. Changes made
-
-List every changed file and its purpose.
-
-Example:
+## 3. Changes
 
 ```text
-src/...                     — production behavior
-src/...                     — integration boundary
- tests/...                   — adversarial regressions
- docs/...                    — architecture/release record
- PROJECT_STATE.md            — roadmap/status update
- CODEX_HANDOFF.md            — this review packet
+src/60b-favorites-runtime-owner.js                  document-lifetime first-runtime-wins marker
+etsy-bettersearch.user.js                           loads the owner boundary after Favorites state
+src/63-favorites-runtime.js                         inactive copies cannot start runtime or intercept local cards
+src/83-favorites-cross-page-queue.js                inactive copies cannot resume/mark deep work
+tests/favorites-v01527-runtime-owner.test.mjs       isolated-world owner, inert, unavailable-marker, order regressions
+docs/FAVORITES_V01527_RUNTIME_RECONCILIATION_2026-09-01.md  current audit table
+ACTIVE_WORK.md                                      reconciled live PR heads/CI queue
+PROJECT_STATE.md                                    current audit interpretation and owner invariant
+CODEX_HANDOFF.md                                    this review packet
 ```
 
-Explain any intentional load-order changes.
+The marker is installed immediately after `60-favorites-state.js`, before all
+Favorites identity/data/runtime modules. Chrome and Firefox derive that same
+module order from the userscript. Diagnostics remains separate and does not
+load the shared production module chain.
 
-For wrapper/replacement functions, list the final assignment chain when relevant.
+## 4. Invariants checked
 
----
+- The marker stores no owner/profile/query/listing data and lasts only for the
+  current document; navigation creates a fresh election.
+- A losing runtime fails closed through `isFavoritesPage()`, runtime startup,
+  transplanted-card capture, and module83 queue resume/pagehide guards.
+- The change does not alter membership, IndexedDB rows, catalogue leases,
+  query generation, metadata context, native/local render authority, or native
+  heart persistence.
+- First runtime wins deliberately; no preference is inferred between extension
+  and userscript. Diagnostics remains observational.
 
-## 4. Architecture / invariants checked
-
-State which invariants were specifically considered:
-
-- owner/profile isolation;
-- immutable complete membership;
-- atomic IndexedDB latest-row merge;
-- cross-tab lease/generation fencing;
-- native query generation;
-- metadata destination generation;
-- local/native grid/pager ownership;
-- filter known/unknown semantics;
-- native heart confirmation;
-- route/BFCache/lifecycle;
-- duplicate delivery runtimes;
-- UI/focus/accessibility;
-- diagnostics privacy.
-
-For each relevant invariant, explain briefly why the patch preserves it.
-
----
-
-## 5. Tests and local validation
-
-Report commands and exact results, for example:
+## 5. Local validation
 
 ```text
-npm run check     PASS
-npm test          PASS — X/X tests
-npm run build     PASS
-npm run ci        PASS
+Node 22 focused current-boundary suite: PASS — 67/67
+  (v0.15.18 config, v0.15.22 coordinator, v0.15.23 query,
+   v0.15.24 metadata, v0.15.25 heart, v0.15.27 owner)
+npx --yes --package=node@22 node scripts/check.mjs: PASS
+  122 files; 87 userscript modules; 945 versioned symbols
+npx --yes --package=node@22 node scripts/build.mjs: PASS
+  Chrome, Firefox, Diagnostics Chrome
+npx --yes --package=node@22 node --test tests/*.test.mjs:
+  517/518 passed; one pre-existing Windows CRLF-only static-marker failure in
+  tests/favorites-v01511-count-authority.test.mjs before behavior execution
+git diff --check: PASS
 ```
 
-If only focused tests were run during iteration, list them too.
+The failing static test searches an LF-only marker in a working-tree source
+checked out with CRLF. The exact GitHub Linux baseline `main`
+`4d0e0317d58711a5e1603ae8d2bf608c3f285c3b` passed run `33391628427`; no
+behavioral test failed locally. Its portability repair is intentionally not
+mixed into this runtime-owner gate.
 
-Do not say "all tests pass" unless the complete suite actually ran on the final head.
+## 6. CI and artifact audit
 
----
+PR CI is pending publication. The required workflow is `CI and extension
+builds`; it must test the published branch head, including whitespace, full
+Node 22 suite, Chrome/Firefox/Diagnostics builds, and artifacts.
 
-## 6. GitHub CI
+Local built-artifact inspection confirmed:
 
 ```text
-Workflow:
-Run ID:
-Exact head SHA tested:
-Status:
-Conclusion:
+dist/chrome/content.js: 60b marker at line 4772; runtime start at 14348; queue resume at 15725
+dist/firefox/content.js: identical marker/runtime/queue ordering and line positions
+Chrome/Firefox BUILD_INFO: v0.15.25, 87 modules, 60 -> 60b -> 60a
+dist/diagnostics-chrome/BUILD_INFO: independent Diagnostics source list; no production marker
 ```
 
-List job/step results that matter:
+## 7. Manual browser testing still required
 
-- whitespace;
-- repository checks;
-- tests;
-- Chrome build;
-- Firefox build;
-- Diagnostics build;
-- artifact uploads.
+Use a disposable profile with production extension + Tampermonkey userscript
+enabled together. On own Favorites All and a collection, verify one rail,
+toolbar, grid controller, and deep worker; the losing delivery should issue one
+clear warning. Repeat after Etsy soft navigation and BFCache Back/Forward.
+Then run each production delivery alone and Diagnostics alongside it.
 
-If CI is pending, say pending; do not describe it as green.
+## 8. Diff/risk review
 
----
+Implementation/audit commit changes eight files: one new early module, three
+narrow integration guards/wiring, one regression suite, and three current-state
+documents. No generated artifacts or private Diagnostics material are tracked.
+No release identity churn occurred.
 
-## 7. Artifact/build audit
+Primary review focus: confirm that first-runtime-wins is acceptable for an
+unsupported dual-install configuration, and verify all persistent Favorites
+entry points are inert in the second isolated world. Browser validation is
+needed because module fixtures cannot reproduce real userscript/content-script
+injection timing.
 
-For release/load-order-sensitive work, record what was inspected in actual built artifacts.
-
-Examples:
-
-- `BUILD_INFO.json` version;
-- manifest version;
-- final module order;
-- final assignment to a fragile symbol;
-- no later override;
-- Chrome/Firefox parity;
-- diagnostics packaging.
-
-If artifact inspection was not relevant or not performed, say so.
-
----
-
-## 8. Release promotion state
-
-If this is a release candidate, report separately:
-
-```text
-Behavior gate head:
-Behavior CI:
-Behavior artifact audit:
-Release version promoted to:
-Userscript @version aligned:
-All @require cachebusters aligned:
-package.json aligned:
-Historical identity assertions updated only where legitimate:
-Release gate head:
-Release CI:
-Release artifact audit:
-```
-
-Do not merge merely because release CI is green. Leave it for independent review unless explicitly instructed otherwise.
-
----
-
-## 9. Manual browser testing still needed
-
-Describe precise tests the user/reviewer should perform, if any.
-
-Examples:
-
-- Chrome normal extension;
-- Firefox extension;
-- Tampermonkey;
-- own Favorites All;
-- collection;
-- native search submit/clear;
-- two tabs;
-- delivery destination change;
-- heart/unfavorite timing;
-- route change during async operation;
-- responsive/focus behavior;
-- Diagnostics capture.
-
-Keep these as actionable steps, not vague "test it in browser" notes.
-
----
-
-## 10. Known limitations / unresolved risks
-
-List anything not proven:
-
-- browser-only timing not modeled by tests;
-- selector uncertainty;
-- Etsy frontend/API dependency;
-- cross-tab scenario not manually reproduced;
-- physical/user-account evidence needed;
-- intentionally deferred architecture cleanup.
-
-Also state what **was deliberately not changed** to preserve scope.
-
----
-
-## 11. Diff audit
-
-Record:
-
-- number of changed files;
-- whether unrelated files changed;
-- whether generated/temp/private diagnostics were removed;
-- whether version churn is expected;
-- whether `git diff --check` / repository whitespace check is clean.
-
----
-
-## 12. PROJECT_STATE update
-
-State what changed in `PROJECT_STATE.md`:
-
-- finding closed;
-- new live finding;
-- next-priority change;
-- release baseline update;
-- no change required.
-
----
-
-## 13. Reviewer focus
-
-Tell the independent reviewer exactly where to spend attention.
-
-Examples:
-
-- concurrency interleaving;
-- final load order;
-- stale-generation behavior;
-- owner/profile isolation;
-- transition between native/local grid ownership;
-- no-op DOM feedback;
-- release identity only vs behavior assertion changes.
-
----
-
-## 14. Recommended next action
-
-Choose one:
+## 9. Recommended next action
 
 ```text
 AUDIT PR BEFORE MERGE
-MANUAL BROWSER TEST BEFORE MERGE
-READY FOR RELEASE PROMOTION AFTER AUDIT
-AUDIT-ONLY — NO MERGEABLE CODE CHANGE
-BLOCKED — USER INPUT REQUIRED
 ```
 
-Then identify the next independent project task that can be started from clean `main` while this PR waits for review.
-
----
-
-# Independent-review rule
-
-A reviewer should inspect the actual remote branch/PR and current `main`, not rely solely on this file.
-
-This file is a navigation packet, not a substitute for code review.
+After CI, review this behavior gate independently. While it waits, use a new
+clean-main branch for the isolated CRLF static-test portability repair or a
+separate source-proven task; do not overlap PRs #67–#72.
