@@ -1,276 +1,96 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-> **Codex:** rewrite this file on every coherent task branch before handing the task off for review. Do not merely append raw terminal logs. Keep it concise enough to review, but include exact durable identifiers and all material engineering decisions.
-
-The purpose of this file is to let the user hand a completed Codex PR to another ChatGPT session for an independent audit without requiring access to the original Codex conversation.
-
----
-
-## Current handoff status
-
-**Status:** template / no active Codex implementation task yet
-**Baseline when template created:** v0.15.25, `main` `4d0e0317d58711a5e1603ae8d2bf608c3f285c3b`
-**Baseline post-merge CI:** run `33391628427` — success
-
-When Codex completes its first task, replace the review packet below with that task's real state.
-
----
-
-# Review packet
-
 ## 1. Task identity
 
 ```text
-Date/time:
-Task summary:
-Base main SHA:
-Branch:
-Exact head SHA:
-PR number:
-PR URL:
-PR state: OPEN / DRAFT / OTHER
-Release identity on branch:
+Date/time: 2026-09-01 (Europe/Helsinki)
+Task summary: Audit and repair live PR #69, the Favorites Sort portal lifetime behavior gate.
+Base product SHA: 4d0e0317d58711a5e1603ae8d2bf608c3f285c3b (v0.15.25)
+Current documentation main merged: 614ec3d26caa3ce9602b2e47261a15359e24be4a
+Branch: fix/favorites-v01526-sort-portal-lifetime
+Implementation snapshot validated locally: 43b6e27
+PR: #69 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/69
+PR state: OPEN
+Release identity: restored to 0.15.25 behavior gate; no standalone v0.15.26 promotion
+Dependencies: none. Do not combine with PRs #67/#68 until independent review selects approved behavior gates.
 ```
 
-If this PR depends on another unmerged PR/branch, state that explicitly here.
+The handoff document is committed after the validated snapshot; inspect the live PR head for the exact review commit.
 
----
+## 2. Evidence and decision
 
-## 2. Problem / evidence
+The final Sort creator is module 79. It creates a body-level menu portal while module 69 owns positioning/open/close visibility. When Etsy replaces toolbar roots outside the explicit rebuild path, an old root can detach while its portal remains in `document.body`; module 69 previously only hid and tagged that portal. This PR binds each portal to its owner root and prunes detached/orphaned portals at natural create/open/close/rebuild boundaries, avoiding a second route lifecycle or observer system.
 
-Describe:
+During audit, the original candidate exposed an additional live lifetime bug: disposing an orphaned menu while its predecessor root is still briefly connected removed the body DOM but retained `oldRoot.__ebsfSortMenu`. A stale click/rebuild could therefore re-adopt detached menu DOM. `favDisposeSortPortal01526()` now clears both root/menu backlinks in all dispose cases and drops a matching stale state root. A regression covers the two-connected-roots interleaving.
 
-- what user-visible or architectural problem was investigated;
-- how the issue was proven to still exist in the **current final runtime**, rather than merely an older module/audit;
-- relevant historical audit/release documents;
-- relevant source symbols/final owners;
-- browser/Diagnostics evidence if used;
-- why the chosen patch boundary is the semantic owner or narrowest safe integration point.
+The branch also contained premature package/userscript/cache-buster and release-test promotion to 0.15.26. Those commits were explicitly reverted, preserving the v0.15.25 behavior-gate policy. The final source order remains module 79 before modules 80–106; no later source module assigns `favCreateSort`, `favOpenSortMenu`, or `favCloseSortMenu`.
 
-If the task was audit-only and no bug was confirmed, say so clearly.
-
----
-
-## 3. Changes made
-
-List every changed file and its purpose.
-
-Example:
+## 3. Files changed relative to current main
 
 ```text
-src/...                     — production behavior
-src/...                     — integration boundary
- tests/...                   — adversarial regressions
- docs/...                    — architecture/release record
- PROJECT_STATE.md            — roadmap/status update
- CODEX_HANDOFF.md            — this review packet
+src/79-favorites-sort-layout.js
+  Explicit Sort portal owner binding, pruning/disposal, rebuild cleanup, and fenced module-69 open/close lifetime hooks.
+
+tests/favorites-v01526-sort-portal-lifetime.test.mjs
+  Regression coverage for detached roots, deferred orphan pruning, 20 replacements, close-after-detach,
+  cleared connected-predecessor backlinks, and no-new-observer/lifecycle invariant.
+
+CODEX_HANDOFF.md
+  This review packet.
 ```
 
-Explain any intentional load-order changes.
+After the explicit reversions, `package.json` and all pre-existing release tests match current main. The merge from current main imports only repository documentation.
 
-For wrapper/replacement functions, list the final assignment chain when relevant.
+## 4. Invariants checked
 
----
+- A detached or already orphaned Sort portal cannot remain hidden under `document.body` indefinitely.
+- A disposed menu cannot retain or be retained by a connected predecessor root.
+- The current connected menu is preserved while its stale predecessor is pruned.
+- Module 69 still owns menu positioning/visibility; module 79 only fences its lifecycle boundary.
+- The change adds no MutationObserver, ResizeObserver, polling loop, or duplicate route controller.
+- No persistent Favorites data, owner/profile identity, metadata, or grid/pager ownership path is changed.
 
-## 4. Architecture / invariants checked
-
-State which invariants were specifically considered:
-
-- owner/profile isolation;
-- immutable complete membership;
-- atomic IndexedDB latest-row merge;
-- cross-tab lease/generation fencing;
-- native query generation;
-- metadata destination generation;
-- local/native grid/pager ownership;
-- filter known/unknown semantics;
-- native heart confirmation;
-- route/BFCache/lifecycle;
-- duplicate delivery runtimes;
-- UI/focus/accessibility;
-- diagnostics privacy.
-
-For each relevant invariant, explain briefly why the patch preserves it.
-
----
-
-## 5. Tests and local validation
-
-Report commands and exact results, for example:
+## 5. Validation
 
 ```text
-npm run check     PASS
-npm test          PASS — X/X tests
-npm run build     PASS
-npm run ci        PASS
+Node 22.23.2 (matches GitHub Actions):
+  portal + v0.15.19/20/21/23/24 boundary tests     PASS — 61/61
+  node scripts/check.mjs                            PASS — 121 files, 86 modules, v0.15.25
+  node scripts/build.mjs                            PASS — Chrome, Firefox, Diagnostics Chrome
+
+Native desktop Node 26.1.0:
+  npm test is not a parity signal; VM fixtures fail due Node 26 behavior.
 ```
 
-If only focused tests were run during iteration, list them too.
+The full Node 22 suite retains one pre-existing Windows CRLF-only static-marker failure in `favorites-v01511-count-authority.test.mjs`; Linux CI checks out LF and is the authoritative full-suite gate. All portal and affected release/load-order tests pass locally.
 
-Do not say "all tests pass" unless the complete suite actually ran on the final head.
+## 6. Artifact audit
 
----
+The v0.15.25 build produces Chrome, Firefox, and Diagnostics Chrome with 86 shared modules. The userscript places module 79 before modules 80–106, and the generated Chrome/Firefox content artifacts need fresh-CI inspection on the pushed head for the final module-79 hook presence. No delivery-target-specific source was introduced.
 
-## 6. GitHub CI
+## 7. GitHub CI and manual testing
 
-```text
-Workflow:
-Run ID:
-Exact head SHA tested:
-Status:
-Conclusion:
-```
+PR #69’s previous green run `33404379002` tested the prematurely promoted identity and predates the stale-backlink fix. Push the repaired branch and require a fresh green `CI and extension builds` run before merge.
 
-List job/step results that matter:
+Manual browser checks before merge:
 
-- whitespace;
-- repository checks;
-- tests;
-- Chrome build;
-- Firefox build;
-- Diagnostics build;
-- artifact uploads.
+1. Repeatedly soft-route or replace the Favorites toolbar while opening/closing Sort; only one Sort menu portal remains in body.
+2. Open Sort immediately after a toolbar/root replacement; the visible current menu positions normally.
+3. Change sort/layout preferences, then close/reopen; ensure the correct current root/menu remains functional.
+4. Repeat in Chrome extension, Firefox extension, and Tampermonkey, and verify no duplicate menus after returning to Favorites.
 
-If CI is pending, say pending; do not describe it as green.
+## 8. Risks and reviewer focus
 
----
+Review portal disposal when Etsy supplies an unexpected toolbar ownership transition: the patch deliberately relies on natural Sort lifecycle calls rather than global observation. Focus on the new owner-reference clearing branch and on the rule that only detached or module-69-marked orphan menus are removed. Browser Preact root timing remains to be manually exercised.
 
-## 7. Artifact/build audit
+The branch deliberately does not promote a release, alter visual geometry, or touch PRs #67/#68.
 
-For release/load-order-sensitive work, record what was inspected in actual built artifacts.
+## 9. PROJECT_STATE update and next action
 
-Examples:
-
-- `BUILD_INFO.json` version;
-- manifest version;
-- final module order;
-- final assignment to a fragile symbol;
-- no later override;
-- Chrome/Firefox parity;
-- diagnostics packaging.
-
-If artifact inspection was not relevant or not performed, say so.
-
----
-
-## 8. Release promotion state
-
-If this is a release candidate, report separately:
-
-```text
-Behavior gate head:
-Behavior CI:
-Behavior artifact audit:
-Release version promoted to:
-Userscript @version aligned:
-All @require cachebusters aligned:
-package.json aligned:
-Historical identity assertions updated only where legitimate:
-Release gate head:
-Release CI:
-Release artifact audit:
-```
-
-Do not merge merely because release CI is green. Leave it for independent review unless explicitly instructed otherwise.
-
----
-
-## 9. Manual browser testing still needed
-
-Describe precise tests the user/reviewer should perform, if any.
-
-Examples:
-
-- Chrome normal extension;
-- Firefox extension;
-- Tampermonkey;
-- own Favorites All;
-- collection;
-- native search submit/clear;
-- two tabs;
-- delivery destination change;
-- heart/unfavorite timing;
-- route change during async operation;
-- responsive/focus behavior;
-- Diagnostics capture.
-
-Keep these as actionable steps, not vague "test it in browser" notes.
-
----
-
-## 10. Known limitations / unresolved risks
-
-List anything not proven:
-
-- browser-only timing not modeled by tests;
-- selector uncertainty;
-- Etsy frontend/API dependency;
-- cross-tab scenario not manually reproduced;
-- physical/user-account evidence needed;
-- intentionally deferred architecture cleanup.
-
-Also state what **was deliberately not changed** to preserve scope.
-
----
-
-## 11. Diff audit
-
-Record:
-
-- number of changed files;
-- whether unrelated files changed;
-- whether generated/temp/private diagnostics were removed;
-- whether version churn is expected;
-- whether `git diff --check` / repository whitespace check is clean.
-
----
-
-## 12. PROJECT_STATE update
-
-State what changed in `PROJECT_STATE.md`:
-
-- finding closed;
-- new live finding;
-- next-priority change;
-- release baseline update;
-- no change required.
-
----
-
-## 13. Reviewer focus
-
-Tell the independent reviewer exactly where to spend attention.
-
-Examples:
-
-- concurrency interleaving;
-- final load order;
-- stale-generation behavior;
-- owner/profile isolation;
-- transition between native/local grid ownership;
-- no-op DOM feedback;
-- release identity only vs behavior assertion changes.
-
----
-
-## 14. Recommended next action
-
-Choose one:
+`PROJECT_STATE.md` needs no product-state change: this repairs an audited unmerged behavior candidate, not current-main behavior.
 
 ```text
 AUDIT PR BEFORE MERGE
-MANUAL BROWSER TEST BEFORE MERGE
-READY FOR RELEASE PROMOTION AFTER AUDIT
-AUDIT-ONLY — NO MERGEABLE CODE CHANGE
-BLOCKED — USER INPUT REQUIRED
 ```
 
-Then identify the next independent project task that can be started from clean `main` while this PR waits for review.
-
----
-
-# Independent-review rule
-
-A reviewer should inspect the actual remote branch/PR and current `main`, not rely solely on this file.
-
-This file is a navigation packet, not a substitute for code review.
+Next: publish this PR, inspect all three new CI runs/artifacts, then begin an independent current-main Phase 1 audit/reconciliation branch. Do not merge or release-promote individual candidates.
