@@ -84,6 +84,7 @@ function favFallbackNode(record) {
     const urgency = record.urgency ? `<span class="wt-badge wt-badge--statusInformational wt-badge--small ebsf-urgency">${safe(record.urgency)}</span>` : '';
     const shipping = record.hasFreeShipping ? 'FREE shipping' : (record.shippingFormatted ? `Shipping: ${safe(record.shippingFormatted)}` : '');
     const action = record.hasVariations ? 'Multiple options' : 'Add to cart';
+    const actionKind = record.hasVariations ? 'options' : 'cart';
     const image = record.imageUrl
         ? `<img loading="lazy" class="wt-image wt-rounded-02 wt-image--cover" src="${safe(record.imageUrl)}" alt="${safe(record.title)}">`
         : '<div class="wt-image wt-rounded-02 ebsf-fallback-image" aria-hidden="true"></div>';
@@ -101,7 +102,7 @@ function favFallbackNode(record) {
                 <p class="wt-text-title-small ebsf-card-price">${safe(record.priceFormatted)}${sale}</p>
                 ${shipping ? `<p class="wt-text-caption wt-text-gray">${shipping}</p>` : ''}
                 ${record.estimatedDelivery ? `<p class="wt-text-caption wt-text-gray">Est. delivery: ${safe(record.estimatedDelivery)}</p>` : ''}
-                <div class="ebsf-card-actions"><button type="button" class="wt-btn wt-btn--transparent wt-btn--small">${action}</button></div>
+                <div class="ebsf-card-actions" data-ebsf-card-action="${actionKind}"><button type="button" class="wt-btn wt-btn--transparent wt-btn--small">${action}</button></div>
             </div>
         </div>`;
     return li;
