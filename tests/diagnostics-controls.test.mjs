@@ -189,6 +189,14 @@ test('existing pause/resume and panel safety behavior remains intact', () => {
   assert.match(backgroundHealth, /stale-active-session-without-debugger/);
 });
 
+test('the final controls owner rehydrates every active capture option after Record & Reload', () => {
+  assert.match(controls, /function restoreActiveSessionOptions\(options\)/);
+  assert.match(controls, /restoreActiveSessionOptions\(ui\.session\?\.options\)/);
+  assert.match(controls, /captureFrameTrace: 'frame-trace'/);
+  assert.match(controls, /captureBurstScreenshots: 'burst-screenshots'/);
+  assert.match(controls, /semanticMarkers: 'semantic-markers'/);
+});
+
 test('Chrome debugger banner Cancel still means Stop + Export, separate from in-panel Cancel', () => {
   assert.match(backgroundDetach, /canceled_by_user/);
   assert.match(backgroundDetach, /autoExportPending = true/);

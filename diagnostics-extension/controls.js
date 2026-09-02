@@ -90,6 +90,26 @@
     };
   }
 
+  // `controls.js` is the final recorder-panel owner.  Its replacement panel is
+  // created with unchecked opt-in fields after a Record & Reload navigation, so
+  // reflect the already-authoritative background session before the controls
+  // are locked.  Otherwise the panel can claim that the rapid capture modes
+  // are off even while a session has them enabled.
+  function restoreActiveSessionOptions(options) {
+    if (!ui.panel || !options || typeof options !== 'object') return;
+    const optionRoles = {
+      captureNetwork: 'network', captureBodies: 'bodies', captureStaticBodies: 'static-bodies',
+      captureDom: 'dom', captureDomSnapshots: 'dom-snapshots', captureScreenshots: 'screenshots',
+      captureInteractions: 'interactions', captureConsole: 'console', autoMarkers: 'auto-markers',
+      captureFrameTrace: 'frame-trace', captureBurstScreenshots: 'burst-screenshots', semanticMarkers: 'semantic-markers'
+    };
+    for (const [option, role] of Object.entries(optionRoles)) {
+      if (typeof options[option] !== 'boolean') continue;
+      const input = ui.panel.querySelector(`[data-role="${role}"]`);
+      if (input && input.checked !== options[option]) input.checked = options[option];
+    }
+  }
+
   function setText(node, value) { if (node && node.textContent !== value) node.textContent = value; }
   function setDisabled(node, value) { if (node && node.disabled !== Boolean(value)) node.disabled = Boolean(value); }
 
@@ -133,6 +153,7 @@
     ui.syncQueued = false;
     const panel = ui.panel;
     if (!panel) return;
+    restoreActiveSessionOptions(ui.session?.options);
     const reload = panel.querySelector('[data-start="reload"]');
     const pause = panel.querySelector('[data-start="start"]');
     const marker = panel.querySelector('[data-role="marker"]');
