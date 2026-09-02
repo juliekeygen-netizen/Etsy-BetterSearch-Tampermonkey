@@ -7,7 +7,8 @@ Date: 2026-09-03
 Base main SHA: b99f15f32c088ef3bea5853be784817835ffabc4
 Base main CI: 33684556447 — SUCCESS
 Branch: codex/release-v0.15.29
-Implementation head: 682d66841097e5781f4aa79db3639e5ecd195f56
+Implementation heads: 682d66841097e5781f4aa79db3639e5ecd195f56,
+9cb916e0118e84534557f6c9ad8c7462172da988
 PR: pending publication
 BetterSearch: 0.15.28 -> 0.15.29
 Diagnostics Chrome: 0.2.9 -> 0.2.10
@@ -52,19 +53,20 @@ The candidate changes only release identity and release records:
 
 ## Required candidate validation
 
-Run these commands on the exact published head, then inspect the artifacts:
+Exact candidate validation passed on `9cb916e0118e84534557f6c9ad8c7462172da988`:
 
 ```text
-npx --yes --package=node@22 node scripts/check.mjs
-npx --yes --package=node@22 node --test tests/*.test.mjs
-npx --yes --package=node@22 node scripts/build.mjs
-git diff --check
+npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.29
+npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 579/579
+npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome 0.15.29, Firefox 0.15.29, Diagnostics Chrome 0.2.10
+git diff --check                                        PASS
 ```
 
-The reviewer should focus on all cache-busters sharing the userscript version,
-both production manifests receiving v0.15.29 from the shared identity, and the
-separately versioned Diagnostics manifest reporting v0.2.10. Require fresh PR
-CI, merge this promotion PR, then require its exact push-triggered `main` CI.
+Artifact audit: all 90 userscript `@require` entries use `?v=0.15.29`; the
+Chrome and Firefox build manifests report `0.15.29`; Diagnostics Chrome reports
+`0.2.10`; and the built modules retain the final collection, card, and
+Diagnostics preference owners. Require fresh PR CI, merge this promotion PR,
+then require its exact push-triggered `main` CI.
 
 ## Next task
 
