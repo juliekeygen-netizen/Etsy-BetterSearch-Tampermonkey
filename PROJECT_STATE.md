@@ -1,6 +1,6 @@
 # Etsy BetterSearch — Current Project State
 
-**Updated:** 2026-09-02
+**Updated:** 2026-09-03
 **Purpose:** changing development brain / roadmap for Codex and human reviewers
 **Repository authority:** current source, tests, Git history, CI, and verified browser evidence override this file if they disagree.
 
@@ -10,27 +10,27 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 
 # 1. Current durable baseline
 
-Current verified behavior baseline before the v0.15.29 release promotion:
+Current verified production baseline:
 
 ```text
-main SHA: b99f15f32c088ef3bea5853be784817835ffabc4
-behavior identity: v0.15.28
-commit:   Merge pull request #88 (Diagnostics-guided Favorites correctness and fallback presentation)
+main SHA: d56664c2d23f5b484e22cfdc1fe2c63e2e8f4216
+release:  v0.15.29
+commit:   Merge pull request #89 (Release BetterSearch v0.15.29)
 ```
 
 Required independent post-merge CI was green:
 
 ```text
-GitHub Actions run: 33684556447
+GitHub Actions run: 33685137704
 workflow: CI and extension builds
 event: push
 result: success
 ```
 
-The separate release-promotion branch advances the shared BetterSearch release
-identity to v0.15.29 and Diagnostics to v0.2.10. It is deliberately limited to
-version/cache-buster/test identity updates and release records; it does not
-change the already-proven runtime behavior above.
+The shared BetterSearch release identity is v0.15.29 and its separately shipped
+Diagnostics Chrome companion is v0.2.10. The promotion was deliberately
+limited to version/cache-buster/test identity updates and release records; the
+runtime behavior had already passed the independent behavior gates.
 
 This baseline includes all implementation work completed by the previous ChatGPT development session. There is no intentionally hidden/unpublished implementation branch that Codex must recover before continuing.
 
@@ -637,19 +637,18 @@ behavior branch while identity stays at the current production version
 
 Codex should not bump the release merely because a branch exists. Promotion happens only when behavior is proven and the task is intended to ship.
 
-## 11.1 v0.15.29 promotion candidate — 2026-09-03
+## 11.1 v0.15.29 release record — 2026-09-03
 
 PRs #86, #87, and #88 were independently reviewed, merged, and each exact
 `main` SHA passed the CI/build workflow. Their combined scope is the requested
 All toolbar/Search parity, neutral Anywhere selection, and diagnostic-led
-Favorites correctness/fallback-card repairs. The v0.15.29 candidate therefore
-only advances BetterSearch's package/userscript/cache-buster identity and the
-separately shipped Diagnostics manifest identity (v0.2.10), with the release
-identity assertions updated alongside them.
+Favorites correctness/fallback-card repairs. PR #89 promoted BetterSearch's
+package/userscript/cache-buster identity to v0.15.29 and the separately shipped
+Diagnostics manifest identity to v0.2.10, with the current release-identity
+assertions updated alongside them.
 
-The candidate must still pass its own exact-head PR CI, artifact audit, merge,
-and push-triggered `main` CI before it becomes the next durable production
-baseline. See `docs/FAVORITES_V01529_RELEASE_PROMOTION_2026-09-03.md`.
+PR #89 exact-head CI `33685077464` and required merged-main CI `33685137704`
+both succeeded. See `docs/FAVORITES_V01529_RELEASE_PROMOTION_2026-09-03.md`.
 
 ---
 

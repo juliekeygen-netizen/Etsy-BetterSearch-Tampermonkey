@@ -1,76 +1,60 @@
-# Etsy BetterSearch — Codex Review Handoff
+# Etsy BetterSearch — Codex Release Handoff
 
-## v0.15.29 release-promotion candidate
+## Released baseline: v0.15.29
 
 ```text
 Date: 2026-09-03
-Base main SHA: b99f15f32c088ef3bea5853be784817835ffabc4
-Base main CI: 33684556447 — SUCCESS
-Branch: codex/release-v0.15.29
-Implementation heads: 682d66841097e5781f4aa79db3639e5ecd195f56,
-9cb916e0118e84534557f6c9ad8c7462172da988
-Published head: 82c09fbfb60d011754c0b3f3c40d17106f89b5c0
-PR: #89 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/89 — OPEN
-GitHub CI: pending exact published-head run
-BetterSearch: 0.15.28 -> 0.15.29
-Diagnostics Chrome: 0.2.9 -> 0.2.10
+Release PR: #89 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/89 — MERGED
+Release merge SHA: d56664c2d23f5b484e22cfdc1fe2c63e2e8f4216
+Release PR CI: 33685077464 — SUCCESS
+Required merged-main CI: 33685137704 — SUCCESS
+BetterSearch: 0.15.29
+Diagnostics Chrome: 0.2.10
 ```
 
-## Why this release is safe to promote
+## Released scope
 
-The three user-requested behavior gates have already merged and each passed
-the required exact-head CI:
+This release promotes the already-proven diagnostic/UI repairs:
 
-```text
-PR #86 — All toolbar/Search parity
-Merge: b97496e94cf3835f4d8f9f078000177694ad716f
-PR CI: 33667143408 — SUCCESS; main CI: 33672185684 — SUCCESS
+- All Favorites has its requested separate toolbar row and correctly placed
+  native Search clear control (PR #86).
+- Ships from -> Anywhere remains visibly selected while staying a neutral
+  filter choice (PR #87).
+- Cache fallback cards use Etsy-shaped card/heart/badge structure; stale
+  collection props cannot write memberships to a destination collection; and
+  Diagnostics capture choices persist through an ordinary reload (PR #88).
 
-PR #87 — Ships from Anywhere visual selection
-Merge: 5f935b1810ce3562f6b944fb74c74c6b96888be3
-PR CI: 33684095077 — SUCCESS; main CI: 33684153762 — SUCCESS
+The release promotion aligns all 90 userscript `@require` cache-busters with
+the shared `0.15.29` identity and promotes the independently shipped
+Diagnostics manifest to `0.2.10`. Historical release documents retain their
+historical versions. No private diagnostic archive, browser HTML, screenshot,
+URL, listing information, account data, or marker note is tracked.
 
-PR #88 — Diagnostics-guided Favorites/fallback repair
-Merge: b99f15f32c088ef3bea5853be784817835ffabc4
-PR CI: 33684497406 — SUCCESS; main CI: 33684556447 — SUCCESS
-```
-
-PR #88's repaired scope includes native-shaped cache fallback cards, the
-collection-prop currentness fence, and persisted Diagnostics capture options.
-No raw diagnostic captures or private browser data are tracked.
-
-## Candidate files and release decision
-
-The candidate changes only release identity and release records:
-
-- `package.json`, userscript `@version`, and every `@require ?v=` token are
-  aligned to `0.15.29`.
-- Diagnostics Chrome manifest and its current-version tests are aligned to
-  `0.2.10`.
-- Current release-identity assertions are updated; historical narratives stay
-  historical.
-- `PROJECT_STATE.md` and
-  `docs/FAVORITES_V01529_RELEASE_PROMOTION_2026-09-03.md` record the behavior
-  gate and release boundary.
-
-## Required candidate validation
-
-Exact candidate validation passed on `9cb916e0118e84534557f6c9ad8c7462172da988`:
+## Verification and artifact audit
 
 ```text
 npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.29
 npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 579/579
 npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome 0.15.29, Firefox 0.15.29, Diagnostics Chrome 0.2.10
 git diff --check                                        PASS
+GitHub release PR CI                                    PASS — 33685077464
+GitHub merged-main CI                                   PASS — 33685137704
 ```
 
-Artifact audit: all 90 userscript `@require` entries use `?v=0.15.29`; the
-Chrome and Firefox build manifests report `0.15.29`; Diagnostics Chrome reports
-`0.2.10`; and the built modules retain the final collection, card, and
-Diagnostics preference owners. Require fresh PR CI, merge this promotion PR,
-then require its exact push-triggered `main` CI.
+Artifact inspection confirmed 90/90 userscript cache-busters at `0.15.29`,
+Chrome and Firefox manifests at `0.15.29`, Diagnostics Chrome at `0.2.10`, and
+the built collection-currentness, fallback-card/heart, and preference-owner
+boundaries in their delivery targets.
 
-## Next task
+## Manual browser checks still valuable
 
-After the promotion lands, do browser smoke checks for the newly fixed Etsy UI
-paths and continue the documented diagnostic work plan from clean `main`.
+Test cache-backed cards at desktop and mobile widths; compare badge/action
+layout to native cards; check a live versus off-page heart; change collections
+rapidly; and verify Diagnostics options survive a normal page refresh. These
+are Etsy-selector/timing smoke checks, not known CI failures.
+
+## Next independent task
+
+Continue `docs/CODEX_NEXT_WORK_PLAN.md` from clean `main`, starting with the
+highest-value browser-verified issue rather than reimplementing historical
+findings already covered by the current runtime chain.
