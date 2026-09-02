@@ -42,13 +42,14 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 PR #77 (stable desktop Favorites toolbar geometry) was independently reviewed
 and merged to `main` at `9f18b2a`; its release identity remains v0.15.26 until
-a deliberate release promotion. Its required post-merge CI still needs to be
-recorded.
+a deliberate release promotion. Its required post-merge CI run `33640759152`
+succeeded.
 
 The active work is `codex/fix-diagnostics-valid-empty-state-marker`, now being
 integrated with that current `main`. It suppresses only the Diagnostics
 false-positive marker for a structurally verified, visible native empty
-Favorites collection. It does not alter production behavior.
+Favorites collection. Its reconciled exact-head CI run `33641358486` succeeded;
+it does not alter production behavior.
 
 The user-provided refresh and collection-transition capture also proved a
 native-to-local handoff flash. The newly added frame trace/burst exporter must

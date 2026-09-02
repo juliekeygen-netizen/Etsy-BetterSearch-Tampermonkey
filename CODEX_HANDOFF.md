@@ -53,9 +53,11 @@ valid-empty exclusion. No production userscript/extension behavior, version,
 network handling, or raw private diagnostics were changed.
 
 GitHub Actions `CI and extension builds` run `33523497323` succeeded for the
-pre-integration review head. A fresh CI run is required after pushing the
-integration head; it must pass whitespace, repository checks, tests,
-Chrome/Firefox/Diagnostics builds, and all three artifact uploads.
+pre-integration review head. Fresh exact-head run `33641358486` also succeeded
+for `8bc541b0a80ecbce05a0cd61464e83e32c8334b9`; it passed whitespace,
+repository checks, tests, Chrome/Firefox/Diagnostics builds, and all three
+artifact uploads. The merged #77 production baseline also passed its required
+push CI as run `33640759152` on `9f18b2a`.
 
 Native `npm run ci` was not used because local Node 26 conflicts with the
 repository VM fixtures; the successful Node 22 commands above are exact.
@@ -70,7 +72,6 @@ local-grid ownership failures.
 
 ## Recommended next action
 
-Push the integration head, confirm a fresh exact-head GitHub CI run, and merge
-#78 if it remains clean. Then reconcile the separate rapid trace/burst export
-PR with current `main`; use its repaired archive for the focused
-collection/navigation audit.
+Merge #78 if its GitHub mergeability remains clean. Then reconcile the separate
+rapid trace/burst export PR with current `main`; use its repaired archive for
+the focused collection/navigation audit.
