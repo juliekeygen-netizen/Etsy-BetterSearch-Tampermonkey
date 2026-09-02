@@ -348,7 +348,9 @@
       cdp: 'network/cdp-events.ndjson',
       mutations: 'dom/mutations.ndjson',
       importantStates: 'dom/important-elements.ndjson',
-      markers: 'markers/markers.json'
+      frameTraces: 'timeline/frame-traces.ndjson',
+      markers: 'markers/markers.json',
+      markerBursts: 'markers/<markerId>/burst-XXXXms.jpg'
     };
     const manifest = {
       format: 'etsy-bettersearch-diagnostics',
@@ -381,6 +383,7 @@
     await add('timeline/recorder.ndjson', 'utf8', ndjsonPieces(events, 'recorder'));
     await add('dom/mutations.ndjson', 'utf8', ndjsonPieces(events, 'dom-mutation'));
     await add('dom/important-elements.ndjson', 'utf8', ndjsonPieces(events, 'important-state'));
+    await add('timeline/frame-traces.ndjson', 'utf8', ndjsonPieces(events, 'frame-trace'));
     await add('markers/markers.json', 'utf8', jsonArrayPieces(events.filter((event) => event.stream === 'marker' || event.stream === 'marker-local')));
 
     const usedPaths = new Set(files.map((file) => file.path));
@@ -396,6 +399,12 @@
         const path = uniquePath(usedPaths, requested);
         // CHUNK_CHARS is divisible by four, so every non-final base64 chunk can
         // be decoded independently by the page without concatenating it first.
+        await add(path, 'base64', [event.data.data]);
+      }
+      if (event.stream === 'marker-burst-screenshot' && event.type === 'screenshot' && event.data?.data) {
+        const offsetMs = String(Math.max(0, Number(event.data.offsetMs) || 0)).padStart(4, '0');
+        const requested = `markers/${safeFilePart(event.data.markerId)}/burst-${offsetMs}ms.jpg`;
+        const path = uniquePath(usedPaths, requested);
         await add(path, 'base64', [event.data.data]);
       }
       if (event.stream === 'marker-dom' && event.type === 'dom-snapshot' && event.data?.snapshot) {

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const manifest = JSON.parse(await readFile(new URL('../diagnostics-extension/manifest.json', import.meta.url), 'utf8'));
 const background = await readFile(new URL('../diagnostics-extension/background.js', import.meta.url), 'utf8');
+const streamingBackground = await readFile(new URL('../diagnostics-extension/background-streaming-export.js', import.meta.url), 'utf8');
 const content = await readFile(new URL('../diagnostics-extension/content.js', import.meta.url), 'utf8');
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
@@ -96,6 +97,12 @@ test('opt-in burst trace records per-frame geometry, card fingerprints, and sema
   assert.match(content, /timeline\/frame-traces\.ndjson/);
   assert.match(background, /captureMarkerBurstScreenshots/);
   assert.match(background, /\[0, 125, 250, 375, 500, 625, 750, 875, 1000, 1125\]/);
+  assert.match(background, /burstScreenshots: count\('marker-burst-screenshot', 'screenshot'\)/);
+  assert.match(background, /frameTraceWindows: count\('frame-trace', 'marker-window'\)/);
+  assert.match(streamingBackground, /frameTraces: 'timeline\/frame-traces\.ndjson'/);
+  assert.match(streamingBackground, /await add\('timeline\/frame-traces\.ndjson', 'utf8', ndjsonPieces\(events, 'frame-trace'\)\)/);
+  assert.match(streamingBackground, /event\.stream === 'marker-burst-screenshot'/);
+  assert.match(streamingBackground, /burst-\$\{offsetMs\}ms\.jpg/);
 });
 
 test('Record & Reload is armed per-tab across navigation before the page reloads', () => {
@@ -106,6 +113,14 @@ test('Record & Reload is armed per-tab across navigation before the page reloads
   assert.doesNotMatch(content, /localStorage\.(?:setItem|getItem)\(ARM_KEY/);
   assert.match(content, /armed-document-start/);
   assert.match(content, /location\.reload\(\)/);
+});
+
+test('Record & Reload restores durable session options into the replacement panel', () => {
+  assert.match(content, /function restoreSessionOptions\(options\)/);
+  assert.match(content, /restoreSessionOptions\(state\.session\?\.options\)/);
+  assert.match(content, /captureFrameTrace: 'frame-trace'/);
+  assert.match(content, /captureBurstScreenshots: 'burst-screenshots'/);
+  assert.match(content, /semanticMarkers: 'semantic-markers'/);
 });
 
 test('diagnostic export is one ZIP containing HAR, raw CDP, DOM, timeline, markers and screenshots', () => {

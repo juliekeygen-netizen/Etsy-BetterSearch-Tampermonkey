@@ -718,6 +718,8 @@ function buildSummary(session, events, har) {
     userMarkers: events.filter((event) => event.stream === 'marker' && event.data?.kind === 'user').length,
     automaticMarkers: events.filter((event) => event.stream === 'marker' && event.data?.kind === 'auto').length,
     screenshots: count('marker-screenshot', 'screenshot'),
+    burstScreenshots: count('marker-burst-screenshot', 'screenshot'),
+    frameTraceWindows: count('frame-trace', 'marker-window'),
     domSnapshots: count('marker-dom', 'dom-snapshot'),
     omittedBodies: count('network-body', 'body-omitted'),
     debuggerDetachReason: session.debuggerDetachReason || ''

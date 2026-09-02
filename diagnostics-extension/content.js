@@ -621,6 +621,25 @@
     };
   }
 
+  // A Record & Reload session survives in the background/sessionStorage while
+  // this document (and its default checkbox markup) is replaced.  The panel
+  // must display the options that are actually recording, rather than its
+  // unchecked markup defaults.
+  function restoreSessionOptions(options) {
+    if (!state.panel || !options || typeof options !== 'object') return;
+    const optionRoles = {
+      captureNetwork: 'network', captureBodies: 'bodies', captureStaticBodies: 'static-bodies',
+      captureDom: 'dom', captureDomSnapshots: 'dom-snapshots', captureScreenshots: 'screenshots',
+      captureInteractions: 'interactions', captureConsole: 'console', autoMarkers: 'auto-markers',
+      captureFrameTrace: 'frame-trace', captureBurstScreenshots: 'burst-screenshots', semanticMarkers: 'semantic-markers'
+    };
+    for (const [option, role] of Object.entries(optionRoles)) {
+      if (typeof options[option] !== 'boolean') continue;
+      const input = state.panel.querySelector(`[data-role="${role}"]`);
+      if (input && input.checked !== options[option]) input.checked = options[option];
+    }
+  }
+
   async function beginRecording({ reload = false } = {}) {
     if (state.recording) return;
     setStatus('Attaching Chrome debugger…');
@@ -703,6 +722,7 @@
 
   function updateUi() {
     if (!state.panel) return;
+    restoreSessionOptions(state.session?.options);
     const recording = Boolean(state.recording);
     state.panel.dataset.recording = recording ? '1' : '0';
     for (const button of state.panel.querySelectorAll('[data-start]')) button.disabled = recording;
