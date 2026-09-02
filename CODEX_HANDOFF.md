@@ -2,54 +2,52 @@
 
 ## Current handoff status
 
-**Status:** Diagnostics-only behavior gate, ready for independent review and
-publication. Production BetterSearch code and release identity are unchanged.
+**Status:** production Favorites UI behavior gate, ready for independent review
+and publication. It deliberately retains release identity `v0.15.27`.
 
 ```text
 Date: 2026-09-02
-Base main: ee2abc8319c0883945bedfc9f016de4b05039ffd (v0.15.27)
-Base main push CI: 33643152934 — SUCCESS
-Branch: codex/fix-diagnostics-active-option-restore
-Implementation head: 699ad74e06b431cbe44df38f06c2dec20320e76e
-PR: #82 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/82 — OPEN
-Published handoff head: cf3fe1149e81b06dad81ba9d7001ae423b8941cd
+Base main: 9e07e4d335144ce04eaec552ea65db735a3cc96d (v0.15.27)
+Base main push CI: 33653744164 — SUCCESS
+Branch: codex/fix-collection-toolbar-row-layout
+Implementation head: 12eccf05993e63029f97b6351ad613df5983030e
+PR: #83 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/83 — OPEN
+Published handoff head: e6119881ea15c04fc4c4ec29422b3b37d12415a3
 Exact-head CI: queued after PR publication
 ```
 
 ## Verified problem and decision
 
-A new private focused capture contained three user marker snapshots and their
-notes. It also showed that all three opt-in rapid capture controls were
-unchecked while recording, and its summary contained zero animation-frame
-trace windows and zero marker screenshot bursts. That capture cannot establish
-whether a sub-frame Favorites transition occurred.
+A private marker screenshot and explicit product request establish a layout
+change for desktop collection routes: the collection identity controls and
+privacy/count metadata should occupy the first row; Sort, Settings, and Search
+should occupy the next row, matching the existing All header. This is a visual
+policy request, not a speculative fix for the separate native/local handoff.
 
-The source cause is load order: `content.js` has option rehydration, but the
-later-loaded `controls.js` is the final recorder-panel/action owner. Its
-replacement panel did not copy `session.options` before the active controls
-were locked. This branch adds the same narrow option-to-checkbox reconciliation
-in that final owner, called from every UI sync. It does not overwrite idle
-preferences or alter the authoritative background session.
+The final production owner is `favApplyExactSearchWidth0135` in
+`src/103-favorites-v0157-diagnostics-fixes.js`, loaded after the stable shell
+and earlier header/layout layers. Its established stack path safely clears the
+desktop width/translation ownership and expands the existing toolbar row. The
+patch makes that path unconditional only for non-`items` collection scopes on
+desktop. It does not reparent Etsy metadata, alter collection navigation, or
+change filters, search, rendering, or persistence.
 
-No raw archive, screenshot, network data, account/listing data, URLs, or
-marker-note text is tracked.
+No raw diagnostic archive, screenshot, account/listing data, URLs, or marker
+note text is tracked.
 
 ## Files changed
 
 ```text
-diagnostics-extension/controls.js
-  Rehydrate all durable active-session capture options, including fast frame
-  trace, problem screenshot burst, and semantic mismatch markers.
+src/103-favorites-v0157-diagnostics-fixes.js
+  Adds an explicit force-stack plan input and uses it for desktop collection
+  scopes, so the native identity/visibility row precedes the toolbar.
 
-tests/diagnostics-controls.test.mjs
-  Regression coverage for the final controls owner and its load boundary.
+tests/favorites-v0157-diagnostics-fixes.test.mjs
+  Proves the wide collection plan stacks while the equivalent non-forced plan
+  remains inline, and asserts the final scope policy.
 
-tests/diagnostics-recorder.test.mjs
-  Corrects the older test description: content keeps options available, while
-  the final controller owns replacement-panel presentation.
-
-ACTIVE_WORK.md / PROJECT_STATE.md
-  Sanitized reconciliation of the new private capture and next evidence step.
+ACTIVE_WORK.md / PROJECT_STATE.md / CODEX_HANDOFF.md
+  Sanitized current-state and reviewer packet updates.
 ```
 
 ## Validation and artifact audit
@@ -61,23 +59,19 @@ npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefo
 git diff --check                                         PASS
 ```
 
-Built Diagnostics artifact audit: `dist/diagnostics-chrome/controls.js`
-contains `restoreActiveSessionOptions` and invokes it with
-`ui.session?.options` before controls are disabled; its manifest remains
-Diagnostics `0.2.9`. This behavior gate intentionally does not bump BetterSearch
-`0.15.27`.
+The built Chrome and Firefox `content.js` artifacts both contain the final
+`forceStack:favScope().type !== 'items'` decision in module 103. Both build
+manifests report `0.15.27`; Diagnostics remains `0.2.9`.
 
 ## Remaining browser check and reviewer focus
 
-Reload the unpacked `dist/diagnostics-chrome` extension, enable all three
-rapid options, press **Record & Reload**, and verify they stay visibly checked
-and disabled while recording. Mark a focused problem, wait at least 1.2 seconds
-after the marker, then export: the summary should report one or more frame
-trace windows and ten burst screenshots per marker when Chrome permits CDP
-screenshots.
+Verify a wide desktop collection, a narrow desktop/tablet collection, and All
+Items. On a collection, the title/edit/add plus privacy/count row must remain
+above a full-width Sort/Settings/Search row, with no clipping. All Items must
+keep its existing separate All header. Also verify a route change does not
+leave stale inline width or transform on the next header.
 
-Review the final-owner boundary in `controls.js`, especially that active
-session options only update presentation and do not mutate user choices before
-recording. The next independent task is the requested collection sort/search
-row layout, after tracing its final production DOM owner; do not change
-collection routing without repaired rapid-transition evidence.
+Review that `forceStack` reaches only the final geometry planner, rather than
+changing native DOM ownership. The next work is either to merge this audited
+behavior gate and perform release promotion, or to gather the repaired rapid
+Diagnostics capture for the still-unproven collection-selector handoff issue.
