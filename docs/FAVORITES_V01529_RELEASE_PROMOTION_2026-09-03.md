@@ -40,3 +40,11 @@ After merge, require the push-triggered `main` CI run on the real merge SHA.
 
 Manual Etsy smoke testing remains valuable for selector/timing behavior, but
 does not replace these delivery checks.
+
+## Release result
+
+The promotion merged through [PR #89](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/89)
+as `d56664c2d23f5b484e22cfdc1fe2c63e2e8f4216`. Exact PR CI run
+`33685077464` and the required push-triggered `main` run `33685137704` both
+passed checks, 579 tests, all delivery builds, and their artifacts. The
+released identities are BetterSearch v0.15.29 and Diagnostics Chrome v0.2.10.
