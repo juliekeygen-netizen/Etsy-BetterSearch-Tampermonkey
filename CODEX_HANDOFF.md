@@ -2,83 +2,69 @@
 
 ## Current handoff status
 
-**Status:** the Diagnostics rapid-trace behavior gate has been reconciled and
-locally validated on current `main` after PRs #77 and #78 merged. It changes
-Diagnostics only; production release identity remains v0.15.26 and Diagnostics
-remains v0.2.9.
+**Status:** release-promotion candidate passed local validation and artifact
+audit; its fresh GitHub CI is pending. It intentionally contains no new
+behavior—only the shared release identity/cache-buster promotion after audited
+PRs #77, #78, and #79 merged.
 
 ```text
 Date: 2026-09-02
-Base main: 3f019e1998b849af2d3378236fff69743a7183f9
-Branch: codex/feature-diagnostics-burst-trace
-Original behavior head: 1dabdd5fe10d1b5eb58b3895031ac6acf0d49cb5
-Validated integration head: b1d5e1fc00667dd86030f5a7ac9923f0bf15685e
-PR: #79 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/79 (OPEN)
-Original PR CI: 33640572093 — SUCCESS
-Integration CI: pending push of this documentation update
+Base main: 259c98415dfddcfeb654c6c3943b84215dddda6d
+Base main push CI: 33642073497 — SUCCESS
+Branch: codex/release-v0.15.27
+Release content head: 190f885a595ff8b344535e1ab47557c725db0f0d
+PR: pending publication
+Release identity: production candidate 0.15.27
+Diagnostics identity: 0.2.9 (unchanged, independent)
 ```
 
-## Problem and evidence
+## Scope and decision
 
-The user supplied private Diagnostics archives, marker notes, and image-frame
-exports. They are deliberately untracked. The capture proved two Diagnostics
-defects:
+The user explicitly authorized merging the reviewed behavior gates and then
+updating the extension version. The base includes:
 
-- After **Record & Reload**, durable recorder options remained active but the
-  replacement panel visually showed every checkbox unchecked.
-- Events for frame traces and marker screenshot bursts were captured but the
-  final streaming ZIP exporter omitted both families, so the archive contained
-  neither `timeline/frame-traces.ndjson` nor burst images.
+- #77, stable desktop Favorites toolbar geometry;
+- #78, Diagnostics valid native-empty-state marker suppression; and
+- #79, opt-in rapid trace/burst export and reload option rehydration.
 
-The private evidence also shows native-to-local Favorites handoff during
-refresh and collection navigation. That production behavior is not changed by
-this Diagnostics-only gate.
+Each merge passed its required post-merge `main` CI. This promotion moves the
+shared BetterSearch userscript/package/Chrome/Firefox identity from `0.15.26`
+to `0.15.27`; Diagnostics remains separately versioned at `0.2.9`.
 
 ## Changes
 
 ```text
-diagnostics-extension/content.js
-  Adds opt-in animation-frame geometry/card/semantic trace sampling (3.2 s
-  before + 1.2 s after a marker), screenshot-burst and semantic-marker controls,
-  and rehydrates all durable options into the replacement panel after reload.
+package.json
+  package/extension source identity: 0.15.27
 
-diagnostics-extension/background.js
-  Captures ten marker-burst screenshots and records trace/burst summary counts.
+etsy-bettersearch.user.js
+  @version plus every ordered @require cache-buster: 0.15.27
 
-diagnostics-extension/background-streaming-export.js
-  Exports frame traces to timeline/frame-traces.ndjson and burst JPEGs under
-  each marker directory in the final streaming ZIP.
+tests/* release-identity assertions
+  Align only legitimate current userscript version/cache-buster assertions.
 
-tests/diagnostics-recorder.test.mjs
-  Covers the opt-in capture/export wiring, reload option rehydration, and the
-  valid-native-empty-state predicate merged from #78.
+ACTIVE_WORK.md / PROJECT_STATE.md / CODEX_HANDOFF.md
+  Record promotion state and the preceding merged behavior gates.
 ```
 
-No private payloads, screenshots, notes, listing data, or account identifiers
-are tracked. The trace only runs when its new explicit option is selected.
+Historical module filenames, module comments, and historical release documents
+remain at their original release references; they are not release identity
+assertions.
 
-## Validation / artifacts
+## Required validation / artifact audit
 
-The current-main integration head passed:
+The release content head passed:
 
 ```text
-npx --yes --package=node@22 node --test tests/diagnostics-recorder.test.mjs  PASS — 14/14
-npx --yes --package=node@22 node scripts/check.mjs                            PASS — 125 files / 90 modules
-npx --yes --package=node@22 node --test tests/*.test.mjs                      PASS — 569/569
-npx --yes --package=node@22 node scripts/build.mjs                            PASS — Chrome, Firefox, Diagnostics
-git diff --check                                                               PASS
+npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files / 90 modules
+npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 569/569
+npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics
+git diff --check                                          PASS
 ```
 
-The built Diagnostics artifact was inspected: it contains the valid native
-empty-state guard, `restoreSessionOptions`, trace collection and
-`timeline/frame-traces.ndjson`, the marker-burst JPEG writer, and both summary
-counters. A fresh exact-head CI run remains required after this documentation
-commit.
-
-## Reviewer focus and next action
-
-Review the option rehydration map and the streaming exporter’s binary JPEG
-path: the export must retain bounded frame trace text and each valid screenshot
-without reconstructing a whole recording in memory. After fresh CI is green,
-merge #79, then use the repaired Diagnostics build to capture the collection
-handoff again before changing final production navigation or grid ownership.
+Built Chrome and Firefox `manifest.json` plus `BUILD_INFO.json` each report
+`0.15.27`; the userscript header and all 90 ordered `@require` URLs use its
+cache-buster. Diagnostics still packages at `0.2.9` and reports `0.15.27` as
+its companion version. Publish a PR, require fresh exact-head CI and artifact
+uploads, merge only if that review is clean, then verify push-triggered CI on
+the actual production merge SHA.

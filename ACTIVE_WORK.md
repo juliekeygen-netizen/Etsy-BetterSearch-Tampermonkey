@@ -8,8 +8,8 @@ remain authoritative if they disagree with this snapshot.
 ## Verified merged production baseline
 
 ```text
-Release: v0.15.26
-main: 3f019e1998b849af2d3378236fff69743a7183f9
+Release promotion: v0.15.27 (candidate)
+base main: 259c98415dfddcfeb654c6c3943b84215dddda6d
 release integration PR: #75 — merged
 post-merge push CI: 33521127261 — success
 ```
@@ -41,9 +41,8 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 ## Next independent work
 
 PR #77 (stable desktop Favorites toolbar geometry) was independently reviewed
-and merged to `main` at `9f18b2a`; its release identity remains v0.15.26 until
-a deliberate release promotion. Its required post-merge CI run `33640759152`
-succeeded.
+and merged to `main` at `9f18b2a`; its required post-merge CI run `33640759152`
+succeeded and it is included in the v0.15.27 promotion.
 
 PR #78 (valid native-empty-state Diagnostics marker suppression) was merged to
 `main` at `3f019e1` after its reconciled exact-head CI run `33641504532`
@@ -52,7 +51,8 @@ succeeded. Its post-merge `main` CI still needs to be recorded.
 PR #79 is the active Diagnostics-only behavior gate. It corrects reload-panel
 option rehydration and makes the final streaming ZIP export the selected
 animation-frame trace and marker screenshot bursts. Its current-main merge
-head is locally validated and awaits fresh CI. Once merged, use it for a
-focused repeat capture before changing final production collection navigation
-or grid ownership. Do not treat shorter filter movement as source-proven
-without that evidence.
+head `259c984` passed required push CI run `33642073497`. Once the v0.15.27
+promotion is merged, use the repaired Diagnostics build for a focused repeat
+capture before changing final production collection navigation or grid
+ownership. Do not treat shorter filter movement as source-proven without that
+evidence.

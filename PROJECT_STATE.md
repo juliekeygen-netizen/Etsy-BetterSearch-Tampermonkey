@@ -10,12 +10,12 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 
 # 1. Current durable baseline
 
-Current verified production baseline at the time this file was written:
+Current release-promotion candidate at the time this file was written:
 
 ```text
-main SHA: 63c8b6453b443a2f346c20723f6c5da36793a830
-release:  v0.15.26
-commit:   Release v0.15.26: integrate audited Favorites fixes
+base main SHA: 259c98415dfddcfeb654c6c3943b84215dddda6d
+candidate:     v0.15.27
+production:    v0.15.26 until the promotion merges
 ```
 
 Required independent post-merge CI was green:
@@ -589,12 +589,14 @@ were closed as superseded by the merged integration PR #75.
 
 # 11. Versioning note
 
-The current release is v0.15.26.
+The active release-promotion candidate is v0.15.27. Production remains
+v0.15.26 until the candidate has passed exact-head CI, been audited, merged,
+and its production merge SHA has passed push CI.
 
 For future risky correctness patches, continue the established two-gate pattern when useful:
 
 ```text
-behavior branch while identity stays 0.15.26
+behavior branch while identity stays at the current production version
 → exact behavior CI/artifact audit
 → promote to next release identity
 → exact release CI/artifact audit
@@ -640,9 +642,9 @@ Whenever a task materially changes what is closed/live/next, update `PROJECT_STA
 A private user-provided Diagnostics capture produced one source-proven
 production UI finding: module 103 varied desktop toolbar width by the
 route-specific title/control width. The behavior gate
-`codex/fix-favorites-stable-toolbar-geometry` changes the final planner to use
-one canonical desktop geometry or the existing stacked layout. It retains
-v0.15.26 identity pending independent review.
+`codex/fix-favorites-stable-toolbar-geometry` changed the final planner to use
+one canonical desktop geometry or the existing stacked layout. It was audited,
+merged, and is included in the v0.15.27 promotion.
 
 The same capture also establishes that the Diagnostics no-grid marker produces
 a false positive for valid native empty collections. This should be fixed in a
