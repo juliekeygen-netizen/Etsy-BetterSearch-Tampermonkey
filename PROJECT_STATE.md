@@ -693,12 +693,13 @@ notes, but its summary correctly reported zero `frameTraceWindows` and zero
 capture controls unchecked while recording. This is not usable rapid-transition
 evidence and must not be read as absence of a browser flicker.
 
-The final runtime chain explains why the earlier option-rehydration repair was
+The final runtime chain explained why the earlier option-rehydration repair was
 incomplete: `diagnostics-extension/controls.js` loads after `content.js` and is
 the final panel/action owner, but it did not restore `session.options` before
-locking the replacement panel. The bounded Diagnostics-only follow-up restores
-every active capture option in that final owner and regression-tests the actual
-load boundary. It keeps private capture data and marker notes outside Git.
+locking the replacement panel. PR #82 restored every active capture option in
+that final owner and regression-tests the actual load boundary. It merged at
+`9e07e4d` and its required `main` push CI run `33653744164` succeeded. Private
+capture data and marker notes remain outside Git.
 
 The same capture documents a requested collection layout adjustment (placing
 sort/search below the collection identity/visibility row), but that is a
@@ -706,7 +707,21 @@ separate production UI task. First make the rapid capture controls reliable;
 then use a focused capture to distinguish a lasting collection-selector issue
 from the already source-proven full-navigation handoff.
 
-## 13.4 Collection/native-local handoff audit — 2026-09-02
+## 13.4 Requested collection toolbar row layout — 2026-09-02
+
+The same marker screenshot captured a direct product/UI request: on a desktop
+collection page, keep the collection name, edit/add controls, privacy, and
+count together first, then place Sort/Settings/Search on the following row as
+the existing All header already does. This is a deliberate layout policy, not
+an inference from an unobserved flicker.
+
+The final owner is `favApplyExactSearchWidth0135` in module 103. The bounded
+behavior gate forces its established stacked-header path for non-`items`
+collection scopes on desktop; it leaves the All scope and narrow responsive
+path unchanged. This uses the existing width cleanup and stack CSS rather than
+reparenting native collection metadata or changing navigation/filter state.
+
+## 13.5 Collection/native-local handoff audit — 2026-09-02
 
 The latest private capture source-proves that collection selection currently
 forces a new document through the final copied-pill handler's `location.assign`

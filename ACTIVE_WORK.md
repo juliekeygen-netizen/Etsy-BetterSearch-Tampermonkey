@@ -40,19 +40,23 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 ## Next independent work
 
-PRs #77–#81 are merged. Their `main` merge heads were independently verified
+PRs #77–#82 are merged. Their `main` merge heads were independently verified
 by push CI: #77 `33640759152`, #78 `33641562157`, #79 `33642073497`, #80
-`33642624166`, and #81 `33643152934`, all successful. Current `main` is
-`ee2abc8`.
+`33642624166`, #81 `33643152934`, and #82 `33653744164`, all successful.
+Current `main` is `9e07e4d`.
 
 A new private focused capture has three manual markers and useful layout
 screenshots, but its rapid options were not active: its summary has zero
 animation-frame windows and zero marker-burst screenshots. Source reconciliation
 found that `controls.js`, loaded after `content.js`, is the final recorder-panel
-owner and did not rehydrate the durable session options. The active independent
-Diagnostics behavior gate repairs that final owner before requesting another
-rapid-transition capture. It does not change production Favorites routing or
-ownership.
+owner and did not rehydrate the durable session options. PR #82 repaired that
+final owner and is now on `main`.
+
+The active independent production UI task applies the marker-requested
+collection-page layout: keep the native collection identity/visibility row
+together, then place Sort/Settings/Search below it. The final desktop toolbar
+owner in module 103 now makes this an explicit collection-scope policy without
+changing native collection navigation or filter state.
 
 The collection-pill handler still intentionally performs a full document
 navigation. Do not introduce a synthetic SPA route or inferred filtering fix
