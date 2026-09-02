@@ -309,7 +309,7 @@ test('load order makes atomic integration the module-75 fallback at release vers
   const integration = userscript.indexOf('/src/74a-favorites-atomic-mutable-rows.js?v=0.15.29');
   const lease = userscript.indexOf('/src/75-favorites-phase5-multitab-lease.js?v=0.15.29');
   assert.ok(primitive >= 0 && hardening > primitive && runtimeGuard > hardening && integration > runtimeGuard && lease > integration);
-  assert.match(userscript, /@version\s+0\.15\.28/);
+  assert.match(userscript, /@version\s+0\.15\.29/);
 });
 
 test('integration replaces module-73 captured base failure instead of discarding hardening wrapper', async () => {

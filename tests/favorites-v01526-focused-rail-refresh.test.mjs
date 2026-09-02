@@ -141,5 +141,5 @@ test('module is wired after native-heart guard and before final ownership chain 
   const ownership = userscript.indexOf('/src/102-favorites-v0155-stable-ownership-final.js?v=0.15.29');
   const metadata = userscript.indexOf('/src/106-favorites-v01524-metadata-context-generation.js?v=0.15.29');
   assert.ok(heart >= 0 && focus > heart && ownership > focus && metadata > ownership);
-  assert.match(userscript, /@version\s+0\.15\.28/);
+  assert.match(userscript, /@version\s+0\.15\.29/);
 });

@@ -182,7 +182,7 @@ test('release load order is 99 -> 99a -> 100 at 0.15.29 identity', () => {
   const p99a = userscript.indexOf('/src/99a-favorites-native-query-ack.js?v=0.15.29');
   const p100 = userscript.indexOf('/src/100-favorites-all-search-clear-parity.js?v=0.15.29');
   assert.ok(p99 >= 0 && p99a > p99 && p100 > p99a);
-  assert.match(userscript, /@version\s+0\.15\.28/);
+  assert.match(userscript, /@version\s+0\.15\.29/);
 });
 
 test('source proves historical module99 timeout promoted unacknowledged pending text', () => {

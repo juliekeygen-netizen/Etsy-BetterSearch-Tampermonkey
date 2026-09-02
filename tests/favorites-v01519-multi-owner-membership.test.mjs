@@ -316,5 +316,5 @@ test('module loads between cache bootstrap and immutable snapshot writer at rele
   const membership = userscript.indexOf('/src/61eb-favorites-multi-owner-membership.js?v=0.15.29');
   const snapshot = userscript.indexOf('/src/61ea-favorites-immutable-snapshots.js?v=0.15.29');
   assert.ok(cache >= 0 && membership > cache && snapshot > membership);
-  assert.match(userscript, /@version\s+0\.15\.28/);
+  assert.match(userscript, /@version\s+0\.15\.29/);
 });

@@ -41,7 +41,7 @@ test('final userscript order reasserts owner maintenance after 61h at release id
   const ui = userscript.indexOf('/src/62-favorites-ui.js?v=0.15.29');
 
   assert.ok(membership >= 0 && coordinator > membership && finalOwner > coordinator && ui > finalOwner);
-  assert.match(userscript, /@version\s+0\.15\.28/);
+  assert.match(userscript, /@version\s+0\.15\.29/);
 });
 
 test('61h stale global gate is inverted by the final owner-aware maintenance boundary', async () => {

@@ -114,7 +114,7 @@ test('behavior gate keeps release identity at 0.15.29 and module79 remains befor
   const p79 = userscript.indexOf('/src/79-favorites-sort-layout.js?v=0.15.29');
   const p80 = userscript.indexOf('/src/80-favorites-layout-editor-core.js?v=0.15.29');
   assert.ok(p79 >= 0 && p80 > p79);
-  assert.match(userscript, /@version\s+0\.15\.28/);
+  assert.match(userscript, /@version\s+0\.15\.29/);
 });
 
 test('detached-root portal is disposed and its stale state references are cleared', () => {
