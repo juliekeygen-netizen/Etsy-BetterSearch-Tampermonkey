@@ -13,7 +13,7 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 Current verified production baseline at the time this file was written:
 
 ```text
-main SHA: 4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5
+main SHA: 63c8b6453b443a2f346c20723f6c5da36793a830
 release:  v0.15.26
 commit:   Release v0.15.26: integrate audited Favorites fixes
 ```
@@ -21,7 +21,7 @@ commit:   Release v0.15.26: integrate audited Favorites fixes
 Required independent post-merge CI was green:
 
 ```text
-GitHub Actions run: 33391628427
+GitHub Actions run: 33521127261
 workflow: CI and extension builds
 event: push
 result: success
@@ -589,12 +589,12 @@ were closed as superseded by the merged integration PR #75.
 
 # 11. Versioning note
 
-The current release is v0.15.25.
+The current release is v0.15.26.
 
 For future risky correctness patches, continue the established two-gate pattern when useful:
 
 ```text
-behavior branch while identity stays 0.15.25
+behavior branch while identity stays 0.15.26
 → exact behavior CI/artifact audit
 → promote to next release identity
 → exact release CI/artifact audit
@@ -635,10 +635,36 @@ Whenever a task materially changes what is closed/live/next, update `PROJECT_STA
 
 ---
 
-# 13. Immediate next task
+# 13. Diagnostics-guided UI reconciliation — 2026-09-01
+
+A private user-provided Diagnostics capture produced one source-proven
+production UI finding: module 103 varied desktop toolbar width by the
+route-specific title/control width. The behavior gate
+`codex/fix-favorites-stable-toolbar-geometry` changes the final planner to use
+one canonical desktop geometry or the existing stacked layout. It retains
+v0.15.26 identity pending independent review.
+
+The same capture also establishes that the Diagnostics no-grid marker produces
+a false positive for valid native empty collections. This should be fixed in a
+separate Diagnostics-only task. Reported startup filter-rail flicker remains
+browser-evidenced but not source-proven; module 104 already owns final drawer
+state reconciliation, so gather a focused capture before adding another
+production wrapper. See
+`docs/FAVORITES_DIAGNOSTIC_RECONCILIATION_2026-09-01.md`.
+
+# 14. Immediate next task
 
 If no newer user instruction supersedes this file, the next Codex task is:
 
 > Perform a fresh post-v0.15.25 audit reconciliation against the historical Favorites audit index, identify the highest-severity **still-live** bounded correctness issue from current source/build/runtime ownership, implement and regression-test it if evidence is sufficient, publish it as an unmerged PR, and update `PROJECT_STATE.md` + `CODEX_HANDOFF.md`.
+
+## 13.1 Diagnostics valid-empty-state behavior gate — 2026-09-01
+
+The private Diagnostics capture also source-proved an instrumentation false
+positive: a valid native empty collection satisfied the generic no-grid marker.
+`codex/fix-diagnostics-valid-empty-state-marker` is an independent,
+Diagnostics-only behavior gate. It recognizes Etsy's visible structural empty
+card without weakening the marker for actual missing grids. See
+`docs/DIAGNOSTICS_VALID_EMPTY_STATE_MARKER_2026-09-01.md`.
 
 The detailed autonomous sequence is in `docs/CODEX_NEXT_WORK_PLAN.md`.

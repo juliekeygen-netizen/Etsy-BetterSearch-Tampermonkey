@@ -16,7 +16,11 @@
     toolbar: '[data-ebsf-toolbar-row]',
     collectionStrip: '[data-ebsf-collection-strip]',
     allHeader: '[data-ebsf-all-header]',
-    listingSection: '.phase3-listing-cards-section'
+    listingSection: '.phase3-listing-cards-section',
+    // Etsy's native empty-collection card is a valid no-grid state. Keep this
+    // narrowly structural so a transient empty listing section remains useful
+    // diagnostic evidence.
+    nativeEmptyState: '.phase3-listing-cards-section > div.wt-display-flex-xs.wt-flex-direction-column-xs.wt-align-items-center'
   });
 
   const state = {
@@ -334,6 +338,16 @@
     }
   }
 
+  function shouldMarkNoGridVisible(current, readyState = document.readyState) {
+    return Boolean(
+      current.listingSection?.exists
+      && readyState !== 'loading'
+      && !current.nativeGrid?.visible
+      && !current.localGrid?.visible
+      && !current.nativeEmptyState?.visible
+    );
+  }
+
   function captureImportantSnapshot(trigger) {
     if (!state.recording) return null;
     const snapshot = pageState(trigger);
@@ -352,7 +366,7 @@
     if (current.nativeGrid?.visible && current.localGrid?.visible) {
       autoMarker('both-grids-visible', 'Native and BetterSearch grids are both visible', snapshot);
     }
-    if (current.listingSection?.exists && document.readyState !== 'loading' && !current.nativeGrid?.visible && !current.localGrid?.visible) {
+    if (shouldMarkNoGridVisible(current)) {
       autoMarker('no-grid-visible', 'Neither Favorites result grid is visible', snapshot);
     }
     if (current.nativePager?.visible && current.localPager?.visible) {

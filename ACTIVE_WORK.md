@@ -1,6 +1,6 @@
 # Etsy BetterSearch — Active Work Queue
 
-**Updated:** 2026-09-01
+**Updated:** 2026-09-02
 
 GitHub PR state, exact remote heads, CI, source, tests, and verified artifacts
 remain authoritative if they disagree with this snapshot.
@@ -9,9 +9,9 @@ remain authoritative if they disagree with this snapshot.
 
 ```text
 Release: v0.15.26
-main: 4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5
+main: 9f18b2acc572b744f87400114ebeedfd7d96878b
 release integration PR: #75 — merged
-post-merge push CI: 33520898859 — success
+post-merge push CI: 33521127261 — success
 ```
 
 The release combined the independently reviewed behavior gates from PRs #67,
@@ -40,7 +40,19 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 ## Next independent work
 
-Take the next source-proven item from `docs/CODEX_NEXT_WORK_PLAN.md` from clean
-`main`.
-Prefer lifecycle/accessibility evidence or Diagnostics-guided work; do not
-reopen stale pre-v0.15.25 count-authority branches without final-owner proof.
+PR #77 (stable desktop Favorites toolbar geometry) was independently reviewed
+and merged to `main` at `9f18b2a`; its release identity remains v0.15.26 until
+a deliberate release promotion. Its required post-merge CI run `33640759152`
+succeeded.
+
+The active work is `codex/fix-diagnostics-valid-empty-state-marker`, now being
+integrated with that current `main`. It suppresses only the Diagnostics
+false-positive marker for a structurally verified, visible native empty
+Favorites collection. Its reconciled exact-head CI run `33641358486` succeeded;
+it does not alter production behavior.
+
+The user-provided refresh and collection-transition capture also proved a
+native-to-local handoff flash. The newly added frame trace/burst exporter must
+be merged and used for a focused repeat capture before changing the final
+collection-navigation or grid-ownership owner. Do not treat shorter filter
+movement as source-proven without that evidence.
