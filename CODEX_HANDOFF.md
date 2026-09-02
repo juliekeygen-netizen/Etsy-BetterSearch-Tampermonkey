@@ -3,14 +3,15 @@
 ## Current handoff status
 
 **Status:** PR #77 was reviewed and merged to `main`; this Diagnostics-only
-fix is being reconciled with that merge before revalidation. Release identity
+fix has now been reconciled and revalidated on top of it. Release identity
 remains v0.15.26.
 
 ```text
 Date: 2026-09-02
 Base main: 9f18b2acc572b744f87400114ebeedfd7d96878b
 Branch: codex/fix-diagnostics-valid-empty-state-marker
-Behavior head: 1762992e5d0f54b6c0cc616513ddfdd2d6cbee18
+Original behavior head: 1762992e5d0f54b6c0cc616513ddfdd2d6cbee18
+Validated integration head: d6470764f865801729aa1c11b1a6349b4c537ebc
 PR: #78 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/78 (OPEN)
 Validated review head: 43d4c3e7bbbf80e97c39b59dc54e3c3fcae31bc6
 Release identity: production 0.15.26; Diagnostics 0.2.9 (unchanged)
@@ -40,20 +41,20 @@ CODEX_HANDOFF.md                       — this packet
 ## Validation and artifacts
 
 ```text
-focused Diagnostics recorder tests     PASS — 12/12
 Node 22 repository check               PASS — 125 files / 90 modules
-Node 22 full test suite                PASS — 566/566
+Node 22 full test suite                PASS — 567/567
 Node 22 all-target build               PASS — Chrome, Firefox, Diagnostics
 git diff --check                       PASS
 ```
 
-The built Diagnostics Chrome content script was inspected: it contains
-`nativeEmptyState`, `shouldMarkNoGridVisible`, and the valid-empty exclusion.
-No production userscript/extension behavior, version, network handling, or
-raw private diagnostics were changed.
+The built Diagnostics Chrome content script was inspected on the integration
+head: it contains `nativeEmptyState`, `shouldMarkNoGridVisible`, and the
+valid-empty exclusion. No production userscript/extension behavior, version,
+network handling, or raw private diagnostics were changed.
 
 GitHub Actions `CI and extension builds` run `33523497323` succeeded for the
-validated review head. It passed whitespace, repository checks, tests,
+pre-integration review head. A fresh CI run is required after pushing the
+integration head; it must pass whitespace, repository checks, tests,
 Chrome/Firefox/Diagnostics builds, and all three artifact uploads.
 
 Native `npm run ci` was not used because local Node 26 conflicts with the
@@ -69,7 +70,7 @@ local-grid ownership failures.
 
 ## Recommended next action
 
-Run the full suite and all delivery-target builds on the resulting merge head,
-push it, confirm a fresh exact-head GitHub CI run, and merge #78 if it remains
-clean. Then reconcile the separate rapid trace/burst export PR with current
-`main`; use its repaired archive for the focused collection/navigation audit.
+Push the integration head, confirm a fresh exact-head GitHub CI run, and merge
+#78 if it remains clean. Then reconcile the separate rapid trace/burst export
+PR with current `main`; use its repaired archive for the focused
+collection/navigation audit.
