@@ -9,7 +9,9 @@ Base main CI: 33684556447 — SUCCESS
 Branch: codex/release-v0.15.29
 Implementation heads: 682d66841097e5781f4aa79db3639e5ecd195f56,
 9cb916e0118e84534557f6c9ad8c7462172da988
-PR: pending publication
+Published head: 82c09fbfb60d011754c0b3f3c40d17106f89b5c0
+PR: #89 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/89 — OPEN
+GitHub CI: pending exact published-head run
 BetterSearch: 0.15.28 -> 0.15.29
 Diagnostics Chrome: 0.2.9 -> 0.2.10
 ```
