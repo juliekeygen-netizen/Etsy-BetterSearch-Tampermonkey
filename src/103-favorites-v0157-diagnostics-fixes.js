@@ -27,6 +27,9 @@
 
 var FAV_TOOLBAR_MIN_SEARCH0157 = 160;
 var FAV_TOOLBAR_TITLE_GAP0157 = 16;
+// The title area varies by Favorites route. On desktop, choose one canonical
+// toolbar geometry or stack; do not shrink the search slot per route.
+var FAV_TOOLBAR_STABLE_MAX_RATIO01526 = 0.68;
 var favSimilarListingsFrame0157 = 0;
 
 function favShippingCodesAvailable0157(bindingKey, codesInput, currentCountry = '') {
@@ -56,16 +59,19 @@ function favToolbarPlan0157({ viewportWidth, headerWidth, leftWidth, sortWidth }
     }
 
     const desiredSearch = width * FAV_EXACT_SEARCH_RATIO0135;
-    const toolbarCap = width * FAV_EXACT_TOOLBAR_MAX_RATIO0135;
+    const toolbarCap = width * FAV_TOOLBAR_STABLE_MAX_RATIO01526;
     const searchWidth = Math.max(0, Math.min(
         desiredSearch,
         toolbarCap - reserved,
-        available - reserved,
     ));
     if (searchWidth < FAV_TOOLBAR_MIN_SEARCH0157) {
         return { stacked:true, reserved, searchWidth:0, toolbarWidth:0, available };
     }
-    return { stacked:false, reserved, searchWidth, toolbarWidth:reserved + searchWidth, available };
+    const toolbarWidth = reserved + searchWidth;
+    if (available < toolbarWidth) {
+        return { stacked:true, reserved, searchWidth:0, toolbarWidth:0, available };
+    }
+    return { stacked:false, reserved, searchWidth, toolbarWidth, available };
 }
 
 function favStyleSet0157(node, property, value, priority = 'important') {

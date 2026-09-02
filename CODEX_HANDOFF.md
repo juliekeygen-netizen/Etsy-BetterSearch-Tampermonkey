@@ -2,9 +2,13 @@
 
 ## Current handoff status
 
+**Status:** PR #77 was reviewed and merged to `main`; this Diagnostics-only
+fix is being reconciled with that merge before revalidation. Release identity
+remains v0.15.26.
+
 ```text
-Date: 2026-09-01
-Base main: 63c8b6453b443a2f346c20723f6c5da36793a830
+Date: 2026-09-02
+Base main: 9f18b2acc572b744f87400114ebeedfd7d96878b
 Branch: codex/fix-diagnostics-valid-empty-state-marker
 Behavior head: 1762992e5d0f54b6c0cc616513ddfdd2d6cbee18
 PR: #78 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/78 (OPEN)
@@ -65,6 +69,7 @@ local-grid ownership failures.
 
 ## Recommended next action
 
-**AUDIT PR BEFORE MERGE.** Publish this branch as a separate PR; do not combine
-it with #77. The startup drawer-flicker report still needs focused capture
-evidence before implementation.
+Run the full suite and all delivery-target builds on the resulting merge head,
+push it, confirm a fresh exact-head GitHub CI run, and merge #78 if it remains
+clean. Then reconcile the separate rapid trace/burst export PR with current
+`main`; use its repaired archive for the focused collection/navigation audit.
