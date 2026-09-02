@@ -8,8 +8,8 @@ remain authoritative if they disagree with this snapshot.
 ## Verified merged production baseline
 
 ```text
-Release promotion: v0.15.27 (candidate)
-base main: 259c98415dfddcfeb654c6c3943b84215dddda6d
+Release: v0.15.27
+main: 936325e0b70723005fc8c05dacbb3534ff0c2236
 release integration PR: #75 — merged
 post-merge push CI: 33521127261 — success
 ```
@@ -51,8 +51,11 @@ succeeded. Its post-merge `main` CI still needs to be recorded.
 PR #79 is the active Diagnostics-only behavior gate. It corrects reload-panel
 option rehydration and makes the final streaming ZIP export the selected
 animation-frame trace and marker screenshot bursts. Its current-main merge
-head `259c984` passed required push CI run `33642073497`. Once the v0.15.27
-promotion is merged, use the repaired Diagnostics build for a focused repeat
-capture before changing final production collection navigation or grid
-ownership. Do not treat shorter filter movement as source-proven without that
-evidence.
+head `259c984` passed required push CI run `33642073497`.
+
+The v0.15.27 promotion merged at `936325e` and passed required push CI run
+`33642624166`. The active task is a collection/native-local handoff audit:
+use the repaired Diagnostics build for a focused repeat capture before changing
+production SPA routing or ownership. The final copied-pill handler intentionally
+forces full navigation, so do not treat shorter filter movement as source-proven
+without that evidence.
