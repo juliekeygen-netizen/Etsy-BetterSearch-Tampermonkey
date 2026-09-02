@@ -1,67 +1,62 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-## Current review packet
-
-**Status:** `v0.15.28` remains the released `main` baseline. One focused,
-unmerged UI behavior branch is ready for independent review.
+## Released baseline
 
 ```text
-Date: 2026-09-02
-Base main SHA: 7d24e95d6014500e3dea87f307a782d167bae559
-Branch: codex/fix-all-toolbar-search-parity
-Implementation head: 74c60e6b2c00d3a2b24c6cc89cd27dbc6c2837a5
-Published review-document head: c9a9db675045db9ef36572159eb34bf995149caf
-PR: #86 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/86 — OPEN
-CI: pending GitHub Actions
+Main before this PR: b97496e94cf3835f4d8f9f078000177694ad716f
+Release identity: v0.15.28
+Required main CI: 33672185684 — SUCCESS
+```
+
+## Merged PR #86 — All Favorites toolbar and Search clear parity
+
+```text
+Merge commit: b97496e94cf3835f4d8f9f078000177694ad716f
+PR CI: 33667143408 — SUCCESS
+Merged-main CI: 33672185684 — SUCCESS
+```
+
+All now has the requested full-width Sort/Settings/Search row and its native
+clear X is placed beside Etsy's Search button without recreating that native
+control.
+
+## PR #87 — Ships from Anywhere selection
+
+```text
+Branch: codex/fix-ships-anywhere-selection
+Implementation head: 440f2b6baa9ac97cbe8f1eb8e6d86a2f37becdd8
+Previous published head: 6613529438316bb7b449aa7f3fbaee495d8cc2ee
+PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/87 — OPEN
+Base before branch update: 7d24e95d6014500e3dea87f307a782d167bae559
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
 
-## All Favorites toolbar/Search parity
+This branch has been updated with merged PR #86 without rewriting history.
+The final filter-state owner distinguishes a radio's visual selection from an
+active filtering value: Anywhere stays neutral but visibly selected after a
+switch from Europe or another origin. It does not auto-open the drawer.
 
-### Problem and evidence
+Changed files: `src/104-favorites-v0157-filter-state-sync.js`, its focused
+test, and this handoff. The resolution merge also contains the already-merged
+toolbar implementation from `main`.
 
-Annotated current-browser screenshots show that All Items retained a compact
-inline title/toolbar layout while collection pages used the preferred separate,
-full-width Sort/Settings/Search row. The same All view can position the native
-Search clear X too far left after Etsy inserts its extra button-group wrapper.
-
-Private page HTML was inspected locally only. It is not tracked or included in
-this branch.
-
-### Changed files and decisions
-
-- `src/103-favorites-v0157-diagnostics-fixes.js` is the final toolbar owner;
-  it now intentionally stacks All as well as collection desktop headers.
-- `src/100-favorites-all-search-clear-parity.js` marks the actual native
-  button-group wrapper and accepts either wrapper shape, preserving Etsy's own
-  clear button rather than recreating it.
-- The UI contract and two focused regression suites now describe/test this
-  requested presentation.
-- `PROJECT_STATE.md` records the current main SHA and the private-evidence
-  boundary. No production data, screenshots, URLs, accounts, or diagnostic
-  archives were committed.
-
-### Validation and artifact audit
+Validation before the branch update:
 
 ```text
 npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.28
 npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 572/572
 npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics Chrome
 git diff --check                                        PASS
-Artifact inspection                                      PASS — Chrome/Firefox content bundles contain wrapper-safe clear parity and final All forceStack owner
+Artifact inspection                                      PASS — final selection owner in Chrome/Firefox bundles
 ```
 
-### Reviewer focus and manual browser check
+Re-run the complete validation set after this sync and wait for its new PR CI
+before merge. Manual review: choose Europe, then Anywhere, reload, and confirm
+Anywhere remains visibly selected while Ships from remains neutral.
 
-Confirm at desktop and narrow widths that All has title/privacy on its own row,
-with Sort/Settings/Search spanning the next row, and that typing/clearing
-Search keeps the X immediately before Etsy's search button. Confirm the native
-Search control and collection edit/add controls remain Etsy-owned.
+## Privacy and next work
 
-## Next independent task
-
-Investigate and, if source-proven, fix the Ships from -> Anywhere visual radio
-selection without redefining its neutral/non-active filter semantics. The
-fallback-card fidelity issue is separate and higher risk: local evidence shows
-it is a real fallback renderer path, but it needs a native-card template audit
-before any markup change.
+No raw private diagnostics, page HTML, screenshots, URLs, listing details,
+account identifiers, or marker notes are tracked. After PR #87 merges, update
+and publish PR #88 (native-shaped fallback cards, collection-observation fence,
+and persisted Diagnostics options), then perform the release-version promotion.

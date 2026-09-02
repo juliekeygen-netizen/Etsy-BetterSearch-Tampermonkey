@@ -75,6 +75,24 @@ function favBindingMeaningfullyActive0157(bindingKey, config = favCfg) {
     return false;
 }
 
+/* Selection and meaningful activity are deliberately different for radio
+ * groups. In particular, Anywhere is the selected baseline for Ships from,
+ * even though it must remain neutral so it neither filters results nor opens
+ * the drawer as an active filter. */
+function favBindingVisuallySelected0157(bindingKey, config = favCfg) {
+    const key = String(bindingKey || '');
+    const source = config && typeof config === 'object' ? config : {};
+    const filters = source.filters && typeof source.filters === 'object' ? source.filters : {};
+    const shipsFrom = String(filters.shipsFrom || 'anywhere').toLowerCase();
+
+    if (key === 'ships-anywhere') return shipsFrom === 'anywhere';
+    if (key === 'ships-country') return shipsFrom === 'country';
+    if (key === 'ships-europe') return shipsFrom === 'europe';
+    if (key === 'ships-eu') return shipsFrom === 'eu';
+    if (key === 'ships-local') return shipsFrom === 'local';
+    return favBindingMeaningfullyActive0157(key, config);
+}
+
 function favDrawerShouldOpen0157(drawer, config = favCfg, autoOpen = favUiPrefs?.autoOpenActiveSections === true, manualOpen = false) {
     if (manualOpen) return true;
     if (!autoOpen || !drawer || drawer.hidden === true) return false;
@@ -101,10 +119,10 @@ function favSetAttribute0157(node, name, value) {
     if (node.getAttribute(name) !== text) node.setAttribute(name, text);
 }
 
-function favSyncOneBindingRoot0157(root, active) {
+function favSyncOneBindingRoot0157(root, active, selected = active) {
     favToggleClass0157(root, 'is-active', active);
     for (const input of root.querySelectorAll?.('input[type="checkbox"],input[type="radio"]') || []) {
-        if (input.checked !== active) input.checked = active;
+        if (input.checked !== selected) input.checked = selected;
     }
     for (const button of root.querySelectorAll?.('[aria-pressed]') || []) {
         favSetAttribute0157(button, 'aria-pressed', active);
@@ -119,8 +137,9 @@ function favSyncOneBindingRoot0157(root, active) {
 favSyncBindingControls0120 = function favSyncBindingControls0157(bindingKey) {
     const key = String(bindingKey || '');
     const active = favBindingActive0120(key);
+    const selected = favBindingVisuallySelected0157(key);
     for (const root of document.querySelectorAll('[data-ebsf-binding]')) {
-        if (root.dataset.ebsfBinding === key) favSyncOneBindingRoot0157(root, active);
+        if (root.dataset.ebsfBinding === key) favSyncOneBindingRoot0157(root, active, selected);
     }
 
     /* Category behaves like a radio group and historical callers use the
