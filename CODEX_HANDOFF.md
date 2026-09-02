@@ -2,69 +2,52 @@
 
 ## Current handoff status
 
-**Status:** release-promotion gate for BetterSearch `v0.15.28`, ready for
-independent review and publication after the merged Diagnostics and collection
-toolbar behavior gates.
+**Status:** BetterSearch `v0.15.28` released and verified on `main`.
 
 ```text
 Date: 2026-09-02
-Base main: ab6335f3755c61cf208535ba301e99587848f565 (PR #83 merge)
-Base main push CI: 33654028937 — SUCCESS
-Branch: codex/release-v0.15.28
-Implementation head: a31670b4dfb4221fdd1e5df64e66a926efd30589
-PR: #84 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/84 — OPEN
-Published handoff head: 69d82766e75d02ab5c60ff60d279a29a4bab2b80
-Exact-head CI: queued after PR publication
+Release merge SHA: fd63c43704f11aa4283316805f1432f4736d30fc
+Release PR: #84 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/84 — MERGED
+Release exact-head CI: 33654460398 — SUCCESS
+Required main push CI: 33654527080 — SUCCESS
+Artifacts: Chrome 0.15.28, Firefox 0.15.28, Diagnostics 0.2.9 (companion 0.15.28)
 ```
 
-## Release contents and decision
+## Released work
 
-This is release identity promotion only. The behavior it releases is already
-on `main` and has passed its post-merge CI:
+- PR #82 fixed the final Diagnostics control owner: an active Record & Reload
+  session now rehydrates all durable capture options before the controls lock.
+  This corrects the private capture's zero frame-trace/burst evidence caused by
+  the opt-in rapid modes not actually being active.
+- PR #83 implements the marked collection-page layout request: collection
+  identity and privacy/count remain above a separate full toolbar row for Sort,
+  Settings, and Search on desktop collection scopes.
+- PR #84 promoted package/userscript/Chrome/Firefox identity and all 90
+  userscript cache-busters to BetterSearch `v0.15.28`.
 
-- PR #82: the final Diagnostics controls owner restores durable active capture
-  options after Record & Reload (`9e07e4d`, main CI `33653744164`);
-- PR #83: desktop collection identity/visibility precedes the Sort/Settings/
-  Search row (`ab6335f`, main CI `33654028937`).
+No private diagnostic archive, screenshot, network data, account/listing data,
+URLs, or marker-note text is tracked.
 
-The promotion updates BetterSearch from `0.15.27` to `0.15.28` in
-`package.json`, the userscript metadata, every one of the 90 module
-`@require` cache-busters, and only the tests that explicitly assert release
-identity/load order. Diagnostics stays independently versioned at `0.2.9`.
-
-## Files changed
-
-```text
-package.json / etsy-bettersearch.user.js
-  v0.15.28 package/userscript identity plus 90 aligned @require cache-busters.
-
-tests/favorites-v01519-*.test.mjs through v01526-*.test.mjs
-  Legitimate release-identity assertions updated to v0.15.28; behavioral
-  regression semantics are unchanged.
-
-ACTIVE_WORK.md / CODEX_HANDOFF.md
-  Release promotion state and durable reviewer packet.
-```
-
-## Validation and artifact audit
+## Validation already completed
 
 ```text
 npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.28
 npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 571/571
 npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics Chrome
-git diff --check                                         PASS
+GitHub PR CI #84                                       PASS — 33654460398
+GitHub main CI on actual release merge                 PASS — 33654527080
 ```
 
-Built artifact audit confirms: package/userscript/Chrome/Firefox are all
-`0.15.28`; the userscript has 90 `@require` lines and zero stale `?v=0.15.27`
-tokens; Diagnostics remains `0.2.9` with companion BetterSearch version
-`0.15.28`.
+## Remaining browser evidence
 
-## Reviewer focus and post-merge gate
+Reload the unpacked Diagnostics extension before recording. Enable Fast
+layout/frame trace, Problem screenshot burst, and Semantic mismatch markers;
+after Record & Reload, verify they remain checked and disabled. Mark a focused
+problem, wait at least 1.2 seconds, then export: frame-trace windows and burst
+screenshots should be present.
 
-Review the version-only diff for accidental source changes and verify every
-delivery target reports `0.15.28` after building. Once exact-head CI is green,
-merge this promotion; then verify the mandatory push-triggered `main` CI on the
-actual merge SHA before declaring the release complete. Manual browser checks
-remain: the collection two-row desktop layout and a short Diagnostics capture
-with all rapid options selected.
+Manually verify desktop collection pages show identity/privacy/count above the
+full Sort/Settings/Search row, while All Items and narrow responsive layouts
+retain their intended existing presentation. Do not replace the source-proven
+full collection navigation with a synthetic SPA route until a repaired capture
+establishes a lasting post-settle problem.
