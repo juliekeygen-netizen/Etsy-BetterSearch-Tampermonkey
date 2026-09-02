@@ -1,79 +1,72 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-## Released baseline
+## v0.15.29 release-promotion candidate
 
 ```text
-Main before this PR: 5f935b1810ce3562f6b944fb74c74c6b96888be3
-Release identity: v0.15.28
-PR #86 merged-main CI: 33672185684 — SUCCESS
+Date: 2026-09-03
+Base main SHA: b99f15f32c088ef3bea5853be784817835ffabc4
+Base main CI: 33684556447 — SUCCESS
+Branch: codex/release-v0.15.29
+Implementation head: 682d66841097e5781f4aa79db3639e5ecd195f56
+PR: pending publication
+BetterSearch: 0.15.28 -> 0.15.29
+Diagnostics Chrome: 0.2.9 -> 0.2.10
 ```
 
-## Merged diagnostic/UI behavior gates
+## Why this release is safe to promote
+
+The three user-requested behavior gates have already merged and each passed
+the required exact-head CI:
 
 ```text
-PR #86 — All Favorites toolbar and Search clear parity
-Merge commit: b97496e94cf3835f4d8f9f078000177694ad716f
-PR CI: 33667143408 — SUCCESS; merged-main CI: 33672185684 — SUCCESS
+PR #86 — All toolbar/Search parity
+Merge: b97496e94cf3835f4d8f9f078000177694ad716f
+PR CI: 33667143408 — SUCCESS; main CI: 33672185684 — SUCCESS
 
-PR #87 — Ships from Anywhere selection
-Merge commit: 5f935b1810ce3562f6b944fb74c74c6b96888be3
-PR CI after branch update: 33684095077 — SUCCESS
+PR #87 — Ships from Anywhere visual selection
+Merge: 5f935b1810ce3562f6b944fb74c74c6b96888be3
+PR CI: 33684095077 — SUCCESS; main CI: 33684153762 — SUCCESS
+
+PR #88 — Diagnostics-guided Favorites/fallback repair
+Merge: b99f15f32c088ef3bea5853be784817835ffabc4
+PR CI: 33684497406 — SUCCESS; main CI: 33684556447 — SUCCESS
 ```
 
-All uses the requested separate toolbar row and wrapper-safe native clear-X.
-Anywhere is still neutral for filtering, but remains visibly selected after a
-switch from a specific shipping origin.
+PR #88's repaired scope includes native-shaped cache fallback cards, the
+collection-prop currentness fence, and persisted Diagnostics capture options.
+No raw diagnostic captures or private browser data are tracked.
 
-## PR #88 — Diagnostics-guided Favorites correctness and fallback presentation
+## Candidate files and release decision
+
+The candidate changes only release identity and release records:
+
+- `package.json`, userscript `@version`, and every `@require ?v=` token are
+  aligned to `0.15.29`.
+- Diagnostics Chrome manifest and its current-version tests are aligned to
+  `0.2.10`.
+- Current release-identity assertions are updated; historical narratives stay
+  historical.
+- `PROJECT_STATE.md` and
+  `docs/FAVORITES_V01529_RELEASE_PROMOTION_2026-09-03.md` record the behavior
+  gate and release boundary.
+
+## Required candidate validation
+
+Run these commands on the exact published head, then inspect the artifacts:
 
 ```text
-Branch: codex/fix-fallback-card-native-presentation
-Implementation heads: a5532b94dec472f6e885705961379e76616caf33,
-b157e1f88bd3babd3caab2903f949f9757fdd2e3
-PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/88 — OPEN
-Base before this branch sync: 7d24e95d6014500e3dea87f307a782d167bae559
-Current base target: 5f935b1810ce3562f6b944fb74c74c6b96888be3
-Release identity: unchanged (v0.15.28 behavior gate)
+npx --yes --package=node@22 node scripts/check.mjs
+npx --yes --package=node@22 node --test tests/*.test.mjs
+npx --yes --package=node@22 node scripts/build.mjs
+git diff --check
 ```
 
-This branch was updated with both merged behavior gates without rewriting
-history (merge commit `3fbf6234924dd964941bb34121487c9a111a51cb`). Its
-diagnostic-led repair:
+The reviewer should focus on all cache-busters sharing the userscript version,
+both production manifests receiving v0.15.29 from the shared identity, and the
+separately versioned Diagnostics manifest reporting v0.2.10. Require fresh PR
+CI, merge this promotion PR, then require its exact push-triggered `main` CI.
 
-- replaces synthetic cached-card markup with Etsy-shaped card structure while
-  retaining only the requested BetterSearch shop/rating row;
-- allows native-shaped product badges to share their natural row and keeps the
-  add-to-cart control beneath it, revealed on hover or keyboard focus;
-- blocks a stale collection page's props from adding IDs to a new collection;
-- persists Diagnostics capture choices across a normal reload, while an active
-  session remains authoritative during panel rehydration; and
-- preserves a visibly actionable off-page fallback heart in the original user
-  gesture rather than relying on a later browser-blocked popup.
+## Next task
 
-Changed files: `src/61a-favorites-index.js`, `src/63-favorites-runtime.js`,
-`src/65-favorites-style.js`, `diagnostics-extension/controls.js`, focused
-regression tests, `PROJECT_STATE.md`, and this handoff.
-
-Validation after this sync and native-heart wrapper audit:
-
-```text
-npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.28
-npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 579/579
-npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics Chrome
-git diff --check                                        PASS
-Artifact inspection                                      PASS — fallback markup/scope gate in Chrome+Firefox; preference owner in Diagnostics Chrome
-```
-
-The Chrome/Firefox bundles contain the collection-props fence and the
-native-shaped fallback card/heart; Diagnostics Chrome contains the final
-preference owner. Publish the branch and await its new PR CI before merge.
-Manual browser review remains: cache-backed cards at desktop/mobile; badge/action layout; heart
-behavior for a live versus off-page card; rapid collection navigation; and
-persisted Diagnostics options after a normal refresh.
-
-## Privacy and next work
-
-No raw private diagnostics, page HTML, screenshots, URLs, listing details,
-account identifiers, or marker notes are tracked. Once PR #88's refreshed CI
-is green, merge it, wait for its exact `main` CI, then create and merge the
-separate release-promotion PR with the BetterSearch and Diagnostics versions.
+After the promotion lands, do browser smoke checks for the newly fixed Etsy UI
+paths and continue the documented diagnostic work plan from clean `main`.
