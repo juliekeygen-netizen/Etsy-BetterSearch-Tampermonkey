@@ -1,6 +1,6 @@
 # Etsy BetterSearch — Current Project State
 
-**Updated:** 2026-09-01
+**Updated:** 2026-09-02
 **Purpose:** changing development brain / roadmap for Codex and human reviewers
 **Repository authority:** current source, tests, Git history, CI, and verified browser evidence override this file if they disagree.
 
@@ -13,15 +13,15 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 Current verified production baseline at the time this file was written:
 
 ```text
-main SHA: 936325e0b70723005fc8c05dacbb3534ff0c2236
-release:  v0.15.27
-commit:   Release v0.15.27: promote BetterSearch identity
+main SHA: fd63c43704f11aa4283316805f1432f4736d30fc
+release:  v0.15.28
+commit:   Release v0.15.28: promote BetterSearch identity
 ```
 
 Required independent post-merge CI was green:
 
 ```text
-GitHub Actions run: 33521127261
+GitHub Actions run: 33654527080
 workflow: CI and extension builds
 event: push
 result: success
@@ -589,9 +589,10 @@ were closed as superseded by the merged integration PR #75.
 
 # 11. Versioning note
 
-The current production release is v0.15.27. It passed exact-head CI as PR #80
-run `33642538133` and its production merge SHA passed push CI run
-`33642624166`.
+The current production release is v0.15.28. It passed exact-head CI as PR #84
+run `33654460398` and its production merge SHA passed push CI run
+`33654527080`. The release includes Diagnostics active-option rehydration
+(PR #82) and the requested collection two-row desktop toolbar (PR #83).
 
 For future risky correctness patches, continue the established two-gate pattern when useful:
 

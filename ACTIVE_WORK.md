@@ -8,10 +8,10 @@ remain authoritative if they disagree with this snapshot.
 ## Verified merged production baseline
 
 ```text
-Release: v0.15.27
-main: 936325e0b70723005fc8c05dacbb3534ff0c2236
-release integration PR: #75 — merged
-post-merge push CI: 33521127261 — success
+Release: v0.15.28
+main: fd63c43704f11aa4283316805f1432f4736d30fc
+release integration PR: #84 — merged
+post-merge push CI: 33654527080 — success
 ```
 
 The release combined the independently reviewed behavior gates from PRs #67,
@@ -40,30 +40,15 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 ## Next independent work
 
-PRs #77–#82 are merged. Their `main` merge heads were independently verified
-by push CI: #77 `33640759152`, #78 `33641562157`, #79 `33642073497`, #80
-`33642624166`, #81 `33643152934`, and #82 `33653744164`, all successful.
-Current `main` is `9e07e4d`.
+PR #82 repaired final-owner rehydration of Diagnostics rapid-capture options;
+PR #83 applied the requested desktop collection two-row toolbar layout. Both
+were merged and their `main` CI runs succeeded before release PR #84 promoted
+them to v0.15.28. The exact release merge also passed its required `main` CI.
 
-A new private focused capture has three manual markers and useful layout
-screenshots, but its rapid options were not active: its summary has zero
-animation-frame windows and zero marker-burst screenshots. Source reconciliation
-found that `controls.js`, loaded after `content.js`, is the final recorder-panel
-owner and did not rehydrate the durable session options. PR #82 repaired that
-final owner and is now on `main`.
-
-The active independent production UI task applies the marker-requested
-collection-page layout: keep the native collection identity/visibility row
-together, then place Sort/Settings/Search below it. The final desktop toolbar
-owner in module 103 now makes this an explicit collection-scope policy without
-changing native collection navigation or filter state.
-
-The collection-pill handler still intentionally performs a full document
-navigation. Do not introduce a synthetic SPA route or inferred filtering fix
-until a repaired capture proves a lasting semantic mismatch after the route has
-settled.
-
-The `v0.15.28` release-promotion branch follows merged PR #83 and its green
-`main` CI. It aligns package/userscript identity, all 90 userscript
-cache-busters, and release-identity regression assertions. Merge only after
-its exact-head CI and artifact audit are green.
+The next high-value task is manual browser validation, not another speculative
+routing rewrite: reload the unpacked Diagnostics build, enable all rapid
+options, reproduce a short focused collection handoff, then inspect the frame
+trace/burst output. Separately confirm the collection title/privacy row remains
+above Sort/Settings/Search at desktop and narrow responsive widths. The final
+collection-pill handler still intentionally performs full navigation; do not
+introduce a synthetic SPA route without that repaired evidence.
