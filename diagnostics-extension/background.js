@@ -207,6 +207,9 @@ function normalizedOptions(options = {}) {
     captureInteractions: options.captureInteractions !== false,
     captureConsole: options.captureConsole !== false,
     autoMarkers: options.autoMarkers !== false,
+    captureFrameTrace: Boolean(options.captureFrameTrace),
+    captureBurstScreenshots: Boolean(options.captureBurstScreenshots),
+    semanticMarkers: Boolean(options.semanticMarkers),
     bodyLimitBytes: Math.max(128 * 1024, Math.min(25 * 1024 * 1024, Number(options.bodyLimitBytes) || DEFAULT_BODY_LIMIT))
   };
 }
@@ -364,6 +367,24 @@ async function captureMarker(tabId, session, marker) {
 
   await Promise.allSettled(captures);
   return { ok: true, markerId };
+}
+
+async function captureMarkerBurstScreenshots(tabId, session, markerId) {
+  if (!session.options?.captureBurstScreenshots) return { ok:true, skipped:true };
+  const delays = [0, 125, 250, 375, 500, 625, 750, 875, 1000, 1125];
+  for (const delay of delays) {
+    setTimeout(() => void (async () => {
+      const active = await getActive(tabId);
+      if (!active?.recording || active.sessionId !== session.sessionId) return;
+      try {
+        const result = await cdp(tabId, 'Page.captureScreenshot', { format:'jpeg', quality:70, fromSurface:true, captureBeyondViewport:false });
+        await addEvent(session.sessionId, 'marker-burst-screenshot', 'screenshot', { markerId, offsetMs:delay, format:'jpeg', data:String(result?.data || '') });
+      } catch (error) {
+        await addEvent(session.sessionId, 'marker-burst-screenshot', 'screenshot-error', { markerId, offsetMs:delay, message:error?.message || String(error) });
+      }
+    })(), delay);
+  }
+  return { ok:true, count:delays.length };
 }
 
 async function backgroundAutoMarker(tabId, session, key, label, detail = {}) {
@@ -751,6 +772,11 @@ async function handleMessage(message, sender) {
       const active = await getActive(tabId);
       if (!active?.recording) return { ok: false, error: 'No recording is active.' };
       return captureMarker(tabId, active, message.marker || {});
+    }
+    case 'marker_burst_screenshots': {
+      const active = await getActive(tabId);
+      if (!active?.recording) return { ok:false, error:'No recording is active.' };
+      return captureMarkerBurstScreenshots(tabId, active, String(message.markerId || ''));
     }
     case 'marker_note':
       return markerNote(tabId, message);

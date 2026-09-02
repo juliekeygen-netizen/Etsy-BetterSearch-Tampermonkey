@@ -84,6 +84,20 @@ test('automatic markers cover known BetterSearch lifecycle and owner\/request fa
   assert.match(background, /runtime-exception/);
 });
 
+test('opt-in burst trace records per-frame geometry, card fingerprints, and semantic mismatches around a marker', () => {
+  assert.match(content, /Fast layout\/frame trace/);
+  assert.match(content, /Problem screenshot burst/);
+  assert.match(content, /Semantic mismatch markers/);
+  assert.match(content, /requestAnimationFrame\(tick\)/);
+  assert.match(content, /beforeMs:3200, afterMs:1200/);
+  assert.match(content, /visibleCardTrace/);
+  assert.match(content, /collection-strip-mismatch/);
+  assert.match(content, /visible-grid-zero-count/);
+  assert.match(content, /timeline\/frame-traces\.ndjson/);
+  assert.match(background, /captureMarkerBurstScreenshots/);
+  assert.match(background, /\[0, 125, 250, 375, 500, 625, 750, 875, 1000, 1125\]/);
+});
+
 test('Record & Reload is armed per-tab across navigation before the page reloads', () => {
   assert.match(content, /Record &amp; Reload/);
   assert.match(content, /ARM_KEY/);

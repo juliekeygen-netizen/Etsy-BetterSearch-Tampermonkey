@@ -84,7 +84,9 @@
       captureStaticBodies: checked('static-bodies', false), captureDom: checked('dom'),
       captureDomSnapshots: checked('dom-snapshots'), captureScreenshots: checked('screenshots'),
       captureInteractions: checked('interactions'), captureConsole: checked('console'),
-      autoMarkers: checked('auto-markers'), bodyLimitBytes: 5 * 1024 * 1024
+      autoMarkers: checked('auto-markers'), captureFrameTrace: checked('frame-trace', false),
+      captureBurstScreenshots: checked('burst-screenshots', false), semanticMarkers: checked('semantic-markers', false),
+      bodyLimitBytes: 5 * 1024 * 1024
     };
   }
 
