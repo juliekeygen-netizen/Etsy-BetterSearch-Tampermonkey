@@ -49,8 +49,8 @@ function loadStreamingTestHooks() {
   return context.__EBSF_DIAG_STREAM_TEST__;
 }
 
-test('Diagnostics 0.2.9 keeps passive startup and resumable bounded exporter in safe script order', () => {
-  assert.equal(manifest.version, '0.2.9');
+test('Diagnostics 0.2.10 keeps passive startup and resumable bounded exporter in safe script order', () => {
+  assert.equal(manifest.version, '0.2.10');
   assert.deepEqual(manifest.content_scripts[0].js, [
     'transport.js', 'bootstrap-guard.js', 'content.js', 'controls.js', 'export-resume-guard.js', 'export-ui-polish.js', 'export-streaming.js', 'controls-detach-autoexport.js'
   ]);
