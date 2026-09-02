@@ -28,15 +28,17 @@ switch from a specific shipping origin.
 
 ```text
 Branch: codex/fix-fallback-card-native-presentation
-Implementation head: a5532b94dec472f6e885705961379e76616caf33
+Implementation heads: a5532b94dec472f6e885705961379e76616caf33,
+b157e1f88bd3babd3caab2903f949f9757fdd2e3
 PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/88 — OPEN
 Base before this branch sync: 7d24e95d6014500e3dea87f307a782d167bae559
 Current base target: 5f935b1810ce3562f6b944fb74c74c6b96888be3
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
 
-This branch has been updated with both merged behavior gates without rewriting
-history. Its diagnostic-led repair:
+This branch was updated with both merged behavior gates without rewriting
+history (merge commit `3fbf6234924dd964941bb34121487c9a111a51cb`). Its
+diagnostic-led repair:
 
 - replaces synthetic cached-card markup with Etsy-shaped card structure while
   retaining only the requested BetterSearch shop/rating row;
@@ -52,19 +54,20 @@ Changed files: `src/61a-favorites-index.js`, `src/63-favorites-runtime.js`,
 `src/65-favorites-style.js`, `diagnostics-extension/controls.js`, focused
 regression tests, `PROJECT_STATE.md`, and this handoff.
 
-Validation before this sync:
+Validation after this sync and native-heart wrapper audit:
 
 ```text
 npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.28
-npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 577/577
+npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 579/579
 npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics Chrome
 git diff --check                                        PASS
 Artifact inspection                                      PASS — fallback markup/scope gate in Chrome+Firefox; preference owner in Diagnostics Chrome
 ```
 
-Re-run complete validation and artifact inspection after this branch sync, then
-publish the branch and await the new PR CI before merge. Manual browser review
-remains: cache-backed cards at desktop/mobile; badge/action layout; heart
+The Chrome/Firefox bundles contain the collection-props fence and the
+native-shaped fallback card/heart; Diagnostics Chrome contains the final
+preference owner. Publish the branch and await its new PR CI before merge.
+Manual browser review remains: cache-backed cards at desktop/mobile; badge/action layout; heart
 behavior for a live versus off-page card; rapid collection navigation; and
 persisted Diagnostics options after a normal refresh.
 
