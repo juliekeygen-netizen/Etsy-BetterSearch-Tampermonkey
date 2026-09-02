@@ -1,56 +1,70 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-## Current handoff status
-
-**Status:** BetterSearch `v0.15.28` released and verified on `main`.
+## Released baseline
 
 ```text
-Date: 2026-09-02
-Release merge SHA: fd63c43704f11aa4283316805f1432f4736d30fc
-Release PR: #84 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/84 — MERGED
-Release exact-head CI: 33654460398 — SUCCESS
-Required main push CI: 33654527080 — SUCCESS
-Artifacts: Chrome 0.15.28, Firefox 0.15.28, Diagnostics 0.2.9 (companion 0.15.28)
-Release-record branch: codex/docs-v0.15.28-release-record
-Release-record PR: #85 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/85 — OPEN
-Release-record exact-head CI: queued after PR publication
+Released main: 7d24e95d6014500e3dea87f307a782d167bae559
+Release identity: v0.15.28
+Required release main CI: 33654527080 — SUCCESS
 ```
 
-## Released work
+## Open independent review packets
 
-- PR #82 fixed the final Diagnostics control owner: an active Record & Reload
-  session now rehydrates all durable capture options before the controls lock.
-  This corrects the private capture's zero frame-trace/burst evidence caused by
-  the opt-in rapid modes not actually being active.
-- PR #83 implements the marked collection-page layout request: collection
-  identity and privacy/count remain above a separate full toolbar row for Sort,
-  Settings, and Search on desktop collection scopes.
-- PR #84 promoted package/userscript/Chrome/Firefox identity and all 90
-  userscript cache-busters to BetterSearch `v0.15.28`.
+### PR #86 — All Favorites toolbar and Search clear parity
 
-No private diagnostic archive, screenshot, network data, account/listing data,
-URLs, or marker-note text is tracked.
+```text
+Branch: codex/fix-all-toolbar-search-parity
+Published head: 7e5e66dfb94c6e51c0a873044f312f754a797415
+PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/86 — OPEN
+GitHub CI: 33667143408 — SUCCESS
+Base: 7d24e95d6014500e3dea87f307a782d167bae559
+```
 
-## Validation already completed
+This behavior gate gives All the explicitly requested separate, full-width
+Sort/Settings/Search row and makes native Search-clear placement tolerant of
+Etsy's extra All-only wrapper. It preserves native Search, collection controls,
+and release identity. Local checks, 572/572 Node 22 tests, all three delivery
+builds, whitespace audit, and Chrome/Firefox artifact inspection passed.
+
+Manual review: desktop/narrow All toolbar placement; type then clear Search and
+verify the X sits immediately before Etsy's Search button. `PROJECT_STATE.md`
+and the visual contract changed on this branch. It has no dependency on the
+next PR.
+
+### Pending publication — Ships from Anywhere selection
+
+```text
+Branch: codex/fix-ships-anywhere-selection
+Implementation head: 440f2b6baa9ac97cbe8f1eb8e6d86a2f37becdd8
+PR: pending publication
+Base: 7d24e95d6014500e3dea87f307a782d167bae559
+Release identity: unchanged (v0.15.28 behavior gate)
+```
+
+The final filter state owner now distinguishes a radio's visible selection from
+a meaningful active filter. Selecting Anywhere remains neutral—no result
+filtering and no auto-opened drawer—while its radio check remains visible after
+switching from Europe or another origin. It also handles the selected but
+incomplete country mode without misrepresenting it as active.
+
+Changed files: `src/104-favorites-v0157-filter-state-sync.js` and its focused
+regression test. `PROJECT_STATE.md` did not change on this branch.
 
 ```text
 npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.28
-npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 571/571
+npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 572/572
 npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics Chrome
-GitHub PR CI #84                                       PASS — 33654460398
-GitHub main CI on actual release merge                 PASS — 33654527080
+git diff --check                                        PASS
+Artifact inspection                                      PASS — final selection owner present in Chrome/Firefox content bundles
 ```
 
-## Remaining browser evidence
+Manual review: choose Europe, then Anywhere, reload, and confirm Anywhere's
+radio remains visibly selected while the Ships from drawer remains neutral.
 
-Reload the unpacked Diagnostics extension before recording. Enable Fast
-layout/frame trace, Problem screenshot burst, and Semantic mismatch markers;
-after Record & Reload, verify they remain checked and disabled. Mark a focused
-problem, wait at least 1.2 seconds, then export: frame-trace windows and burst
-screenshots should be present.
+## Privacy and next work
 
-Manually verify desktop collection pages show identity/privacy/count above the
-full Sort/Settings/Search row, while All Items and narrow responsive layouts
-retain their intended existing presentation. Do not replace the source-proven
-full collection navigation with a synthetic SPA route until a repaired capture
-establishes a lasting post-settle problem.
+No raw private diagnostics, page HTML, screenshots, URLs, listing details,
+account identifiers, or marker notes are tracked. The supplied page snapshot
+proved that the product-card issue is predominantly BetterSearch fallback-card
+rendering (not merely CSS), but fallback-card/native-template compatibility is
+a separate higher-risk audit before any markup change.
