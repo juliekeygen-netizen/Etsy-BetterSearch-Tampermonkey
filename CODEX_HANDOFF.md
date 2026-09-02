@@ -1,5 +1,7 @@
 # Etsy BetterSearch — Codex Review Handoff
 
+> **Active behavior gate (2026-09-02):** [PR #79](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/79), branch `codex/feature-diagnostics-burst-trace`, behavior head `bd037e2`. It adds opt-in 3.2-second animation-frame pre-marker traces, 1.2-second post-marker capture, ten-frame screenshot bursts, and bounded semantic mismatch markers for visible-grid/zero-count and collection-strip contradictions. Node 22 check, 566/566 tests, and all-target builds passed; built Diagnostics artifact was inspected. CI is pending. It changes Diagnostics only, retains 0.2.9 identity, and contains no raw user capture data.
+
 > **Codex:** rewrite this file on every coherent task branch before handing the task off for review. Do not merely append raw terminal logs. Keep it concise enough to review, but include exact durable identifiers and all material engineering decisions.
 
 The purpose of this file is to let the user hand a completed Codex PR to another ChatGPT session for an independent audit without requiring access to the original Codex conversation.
