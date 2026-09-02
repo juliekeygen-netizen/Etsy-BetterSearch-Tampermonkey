@@ -1,305 +1,145 @@
 # Etsy BetterSearch — Codex Review Handoff
 
-> **Codex:** rewrite this file on every coherent task branch before handing the task off for review. Do not merely append raw terminal logs. Keep it concise enough to review, but include exact durable identifiers and all material engineering decisions.
-
-The purpose of this file is to let the user hand a completed Codex PR to another ChatGPT session for an independent audit without requiring access to the original Codex conversation.
-
----
-
 ## Current handoff status
 
-**Status:** v0.15.26 merged and verified on `main`.
-**Base main:** `614ec3d26caa3ce9602b2e47261a15359e24be4a`
-**Branch:** `codex/release-v0.15.26-integration` (merged)
-**PR:** [#75](https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/75) — merged
-**Release head:** `fccb28ba56f4682344ad4c27f16ce488bf794443`
-**Merge commit:** `4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5`
-**Release identity:** `0.15.26` (userscript, package, cache-busters, built extension manifests)
-
-This branch deliberately integrates the substantive work from green PRs #67,
-#68, #69, #71, #72, #73, and #74. It does not merge the original behavior
-branches independently, because their historical intermediate release bumps
-would be both conflicting and misleading. After release CI is green, merge this
-single integration PR; close the original PRs as superseded while retaining
-their audit history.
-
-Combined behavior gate before promotion, with v0.15.25 identity:
+**Status:** behavior gate ready to publish for independent audit; release identity
+remains v0.15.26.
 
 ```text
-npx --yes --package=node@22 node scripts/check.mjs  PASS — 125 files, 90 modules
-npx --yes --package=node@22 node --test tests/*.test.mjs  PASS — 565/565
-npx --yes --package=node@22 node scripts/build.mjs  PASS — Chrome, Firefox, Diagnostics
+Date: 2026-09-01
+Base main SHA: 63c8b6453b443a2f346c20723f6c5da36793a830
+Branch: codex/fix-favorites-stable-toolbar-geometry
+Behavior head: 7d03cc01c034b7c62178c738156dc41c825a9967
+PR: #77 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/77
+PR state: OPEN
+Validated review head: a3daae98d46792f23040add0e0048de2219c59c2
+Release identity: 0.15.26 (intentionally unchanged)
 ```
 
-Built Chrome/Firefox output was inspected for final runtime-owner, DB-opener,
-sort-portal, native-heart, and focused-rail assignment order. Diagnostics stays
-at its separate 0.2.9 identity. No browser/manual test was performed; validate
-rapid heart, focused draft, collection route change, upgrade, and duplicate
-delivery runtime behavior before relying on Etsy-specific timing.
+## Problem and evidence
 
-The exact release head passed CI run `33520794029` (whitespace, repository
-checks, tests, Chrome/Firefox/Diagnostics builds, and all three artifact
-uploads). The actual merged `main` commit passed required push CI run
-`33520898859`. PRs #67, #68, #69, #71, #72, #73, and #74 are closed as
-superseded; their branches remain available as review evidence.
+A user-provided private Diagnostics capture recorded Favorites route,
+collection, filter, and pagination transitions. The raw archive, screenshots,
+DOM snapshots, network bodies, and marker notes remain outside the repository.
 
----
+One production UI issue is both browser-evidenced and source-proven: at an
+unchanged desktop viewport, route snapshots measured several toolbar widths
+(about 764–804 CSS pixels). The final toolbar owner,
+`src/103-favorites-v0157-diagnostics-fixes.js`, reduced its inline search
+width by the current route's title/control width. This matches the reported
+All-versus-collection Search width shift.
 
-# Review packet
+The same reconciliation found a Diagnostics false-positive marker for a valid
+native empty collection, not a missing-grid product failure. It also recorded
+a report of startup drawer flicker, but current source already has a final
+drawer-state reassertion in module 104 and the capture does not prove an
+incorrect settled state. Neither received speculative production changes.
 
-## 1. Task identity
+Sanitized evidence and the follow-up order are in
+`docs/FAVORITES_DIAGNOSTIC_RECONCILIATION_2026-09-01.md`.
+
+## Changes made
 
 ```text
-Date/time:
-Task summary:
-Base main SHA:
-Branch:
-Exact head SHA:
-PR number:
-PR URL:
-PR state: OPEN / DRAFT / OTHER
-Release identity on branch:
+src/103-favorites-v0157-diagnostics-fixes.js
+  Final desktop toolbar plan uses a canonical width per header width; if a
+  title/control area cannot accommodate it, it selects the existing stacked
+  layout rather than shrinking Search for that route.
+
+tests/favorites-v0157-diagnostics-fixes.test.mjs
+  Proves fitting title widths get identical geometry and a non-fitting title
+  stacks rather than producing a route-specific reduced width.
+
+docs/FAVORITES_DIAGNOSTIC_RECONCILIATION_2026-09-01.md
+  Sanitized capture reconciliation; no private diagnostic material tracked.
+
+PROJECT_STATE.md / ACTIVE_WORK.md
+  Records the current merged baseline and the Diagnostics-guided work order.
 ```
 
-If this PR depends on another unmerged PR/branch, state that explicitly here.
+Module 103 remains the final toolbar owner; no load-order change was made.
+Earlier toolbar modules and their historical constants were deliberately left
+untouched.
 
----
+## Invariants checked
 
-## 2. Problem / evidence
+- UI responsiveness: a non-fitting title stacks, avoiding overlap.
+- Rendering/ownership: only the final toolbar planner changes; native/local
+  grid, pager, route, and filter-state ownership are untouched.
+- Lifecycle: no observer, timer, or persistent-state behavior changed.
+- Diagnostics privacy: raw private capture data is not committed.
 
-Describe:
-
-- what user-visible or architectural problem was investigated;
-- how the issue was proven to still exist in the **current final runtime**, rather than merely an older module/audit;
-- relevant historical audit/release documents;
-- relevant source symbols/final owners;
-- browser/Diagnostics evidence if used;
-- why the chosen patch boundary is the semantic owner or narrowest safe integration point.
-
-If the task was audit-only and no bug was confirmed, say so clearly.
-
----
-
-## 3. Changes made
-
-List every changed file and its purpose.
-
-Example:
+## Local validation
 
 ```text
-src/...                     — production behavior
-src/...                     — integration boundary
- tests/...                   — adversarial regressions
- docs/...                    — architecture/release record
- PROJECT_STATE.md            — roadmap/status update
- CODEX_HANDOFF.md            — this review packet
+npx --yes --package=node@22 node --test tests/favorites-v0157-diagnostics-fixes.test.mjs
+PASS — 10/10 tests
+
+npx --yes --package=node@22 node scripts/check.mjs
+PASS — 125 files, 90 userscript modules, v0.15.26 cache-busters
+
+npx --yes --package=node@22 node --test tests/*.test.mjs
+PASS — 566/566 tests
+
+npx --yes --package=node@22 node scripts/build.mjs
+PASS — Chrome, Firefox, Diagnostics Chrome
+
+git diff --check
+PASS
 ```
 
-Explain any intentional load-order changes.
+Native `npm run ci` was not used because the repository's current Node 26
+runtime is incompatible with its VM fixtures; the documented Node 22 commands
+above are the exact successful validation environment.
 
-For wrapper/replacement functions, list the final assignment chain when relevant.
+## Artifact audit
 
----
+Built Chrome and Firefox `content.js` artifacts were inspected after the build.
+Both contain module 103's `FAV_TOOLBAR_STABLE_MAX_RATIO01526` and final
+`favToolbarPlan0157` implementation, with the canonical cap and stack check.
+Diagnostics Chrome builds separately at its independent 0.2.9 identity.
 
-## 4. Architecture / invariants checked
-
-State which invariants were specifically considered:
-
-- owner/profile isolation;
-- immutable complete membership;
-- atomic IndexedDB latest-row merge;
-- cross-tab lease/generation fencing;
-- native query generation;
-- metadata destination generation;
-- local/native grid/pager ownership;
-- filter known/unknown semantics;
-- native heart confirmation;
-- route/BFCache/lifecycle;
-- duplicate delivery runtimes;
-- UI/focus/accessibility;
-- diagnostics privacy.
-
-For each relevant invariant, explain briefly why the patch preserves it.
-
----
-
-## 5. Tests and local validation
-
-Report commands and exact results, for example:
+## GitHub CI and PR
 
 ```text
-npm run check     PASS
-npm test          PASS — X/X tests
-npm run build     PASS
-npm run ci        PASS
+PR: #77 (OPEN)
+Workflow: CI and extension builds
+Run ID: 33523301062
+Exact head tested: a3daae98d46792f23040add0e0048de2219c59c2
+State: COMPLETED
+Conclusion: SUCCESS
 ```
 
-If only focused tests were run during iteration, list them too.
+The successful workflow included repository checks, the complete Node suite,
+Chrome/Firefox/Diagnostics builds, and artifact uploads.
 
-Do not say "all tests pass" unless the complete suite actually ran on the final head.
+## Manual browser testing still needed
 
----
+At the same desktop viewport, compare Favorites All and several collections:
 
-## 6. GitHub CI
+- routes with adequate title space should retain the same inline Search width;
+- a long title/control combination should stack cleanly with no overlap;
+- resize through the inline/stack threshold and back;
+- confirm Search, Sort, settings, and keyboard focus still work;
+- repeat on Chrome extension, Firefox extension, and Tampermonkey as practical.
 
-```text
-Workflow:
-Run ID:
-Exact head SHA tested:
-Status:
-Conclusion:
-```
+## Known limitations and reviewer focus
 
-List job/step results that matter:
+The 0.68 canonical desktop cap is selected to preserve the narrowest
+capture-proven desktop geometry while eliminating route-specific intermediate
+widths. It has not yet received live Etsy visual testing across every browser
+and localization. Review the inline/stack boundary, transform alignment in the
+same final module, and whether the fixed cap appropriately preserves the
+existing visual contract.
 
-- whitespace;
-- repository checks;
-- tests;
-- Chrome build;
-- Firefox build;
-- Diagnostics build;
-- artifact uploads.
+The reported startup drawer flicker and valid-empty-state Diagnostics false
+positive are deliberately deferred to separate evidence/fix work.
 
-If CI is pending, say pending; do not describe it as green.
+## Recommended next action
 
----
+**AUDIT PR BEFORE MERGE.** Do not release-promote or merge this behavior gate
+until it has independent code review and manual desktop route/resize testing.
 
-## 7. Artifact/build audit
-
-For release/load-order-sensitive work, record what was inspected in actual built artifacts.
-
-Examples:
-
-- `BUILD_INFO.json` version;
-- manifest version;
-- final module order;
-- final assignment to a fragile symbol;
-- no later override;
-- Chrome/Firefox parity;
-- diagnostics packaging.
-
-If artifact inspection was not relevant or not performed, say so.
-
----
-
-## 8. Release promotion state
-
-If this is a release candidate, report separately:
-
-```text
-Behavior gate head:
-Behavior CI:
-Behavior artifact audit:
-Release version promoted to:
-Userscript @version aligned:
-All @require cachebusters aligned:
-package.json aligned:
-Historical identity assertions updated only where legitimate:
-Release gate head:
-Release CI:
-Release artifact audit:
-```
-
-Do not merge merely because release CI is green. Leave it for independent review unless explicitly instructed otherwise.
-
----
-
-## 9. Manual browser testing still needed
-
-Describe precise tests the user/reviewer should perform, if any.
-
-Examples:
-
-- Chrome normal extension;
-- Firefox extension;
-- Tampermonkey;
-- own Favorites All;
-- collection;
-- native search submit/clear;
-- two tabs;
-- delivery destination change;
-- heart/unfavorite timing;
-- route change during async operation;
-- responsive/focus behavior;
-- Diagnostics capture.
-
-Keep these as actionable steps, not vague "test it in browser" notes.
-
----
-
-## 10. Known limitations / unresolved risks
-
-List anything not proven:
-
-- browser-only timing not modeled by tests;
-- selector uncertainty;
-- Etsy frontend/API dependency;
-- cross-tab scenario not manually reproduced;
-- physical/user-account evidence needed;
-- intentionally deferred architecture cleanup.
-
-Also state what **was deliberately not changed** to preserve scope.
-
----
-
-## 11. Diff audit
-
-Record:
-
-- number of changed files;
-- whether unrelated files changed;
-- whether generated/temp/private diagnostics were removed;
-- whether version churn is expected;
-- whether `git diff --check` / repository whitespace check is clean.
-
----
-
-## 12. PROJECT_STATE update
-
-State what changed in `PROJECT_STATE.md`:
-
-- finding closed;
-- new live finding;
-- next-priority change;
-- release baseline update;
-- no change required.
-
----
-
-## 13. Reviewer focus
-
-Tell the independent reviewer exactly where to spend attention.
-
-Examples:
-
-- concurrency interleaving;
-- final load order;
-- stale-generation behavior;
-- owner/profile isolation;
-- transition between native/local grid ownership;
-- no-op DOM feedback;
-- release identity only vs behavior assertion changes.
-
----
-
-## 14. Recommended next action
-
-Choose one:
-
-```text
-AUDIT PR BEFORE MERGE
-MANUAL BROWSER TEST BEFORE MERGE
-READY FOR RELEASE PROMOTION AFTER AUDIT
-AUDIT-ONLY — NO MERGEABLE CODE CHANGE
-BLOCKED — USER INPUT REQUIRED
-```
-
-Then identify the next independent project task that can be started from clean `main` while this PR waits for review.
-
----
-
-# Independent-review rule
-
-A reviewer should inspect the actual remote branch/PR and current `main`, not rely solely on this file.
-
-This file is a navigation packet, not a substitute for code review.
+While it waits, start from clean `main` on the Diagnostics-only empty-native-
+state false-positive predicate. Do not mix that instrumentation fix into this
+production toolbar PR.

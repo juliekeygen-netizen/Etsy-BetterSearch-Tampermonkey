@@ -17,6 +17,7 @@ function loadPureHelpers() {
     FAV_TOOLBAR_GAP_TOTAL0135:12,
     FAV_EXACT_SEARCH_RATIO0135:0.5,
     FAV_EXACT_TOOLBAR_MAX_RATIO0135:0.74,
+    FAV_TOOLBAR_STABLE_MAX_RATIO01526:0.68,
     FAV_EUROPE_COUNTRY_CODES0101:new Set(['FI','NO','GB']),
     FAV_EU_COUNTRY_CODES0120:new Set(['FI']),
   });
@@ -54,13 +55,22 @@ test('active Ships-from values remain controllable while inactive values use the
   assert.doesNotMatch(source, /!caps\.shipsFromCodes\?\.size\s*\|\|/);
 });
 
-test('diagnostic-like 994px header shrinks the toolbar to the actual side-by-side space without overlap', () => {
+test('desktop toolbar keeps one canonical width across titles that can fit it', () => {
+  const { toolbar } = loadPureHelpers();
+  const compactTitle = toolbar({ viewportWidth:994, headerWidth:702, leftWidth:170, sortWidth:190 });
+  const longerTitle = toolbar({ viewportWidth:994, headerWidth:702, leftWidth:190, sortWidth:190 });
+  assert.equal(compactTitle.stacked, false);
+  assert.equal(longerTitle.stacked, false);
+  assert.equal(compactTitle.searchWidth, longerTitle.searchWidth);
+  assert.equal(compactTitle.toolbarWidth, longerTitle.toolbarWidth);
+  assert.ok(compactTitle.toolbarWidth <= compactTitle.available);
+  assert.ok(longerTitle.toolbarWidth <= longerTitle.available);
+});
+
+test('desktop toolbar stacks rather than shrinking for a route-specific title width', () => {
   const { toolbar } = loadPureHelpers();
   const plan = toolbar({ viewportWidth:994, headerWidth:702, leftWidth:250, sortWidth:190 });
-  assert.equal(plan.stacked, false);
-  assert.ok(plan.searchWidth >= 160);
-  assert.ok(plan.toolbarWidth <= plan.available);
-  assert.ok(250 + 16 + plan.toolbarWidth <= 702 + 0.001);
+  assert.equal(plan.stacked, true);
 });
 
 test('desktop header stacks early when the title/edit controls leave less than a useful Search width', () => {

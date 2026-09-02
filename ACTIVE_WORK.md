@@ -9,9 +9,9 @@ remain authoritative if they disagree with this snapshot.
 
 ```text
 Release: v0.15.26
-main: 4c42b36cd51f328f24d2bd8e59c8468ac4cb67e5
+main: 63c8b6453b443a2f346c20723f6c5da36793a830
 release integration PR: #75 — merged
-post-merge push CI: 33520898859 — success
+post-merge push CI: 33521127261 — success
 ```
 
 The release combined the independently reviewed behavior gates from PRs #67,
@@ -40,7 +40,13 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 ## Next independent work
 
-Take the next source-proven item from `docs/CODEX_NEXT_WORK_PLAN.md` from clean
-`main`.
-Prefer lifecycle/accessibility evidence or Diagnostics-guided work; do not
-reopen stale pre-v0.15.25 count-authority branches without final-owner proof.
+The active behavior gate is `codex/fix-favorites-stable-toolbar-geometry`,
+based on `63c8b6453b443a2f346c20723f6c5da36793a830`. It keeps the v0.15.26
+identity and addresses a private 2026-09-01 Diagnostics capture finding: the
+final desktop toolbar planner varied width by route-specific title controls.
+The branch makes width canonical per viewport or stacks when it cannot fit.
+
+While that branch awaits independent review, start the Diagnostics-only valid
+empty-state false-positive audit/fix from clean `main`. Do not treat the
+reported startup drawer flicker as a source-proven bug without a focused
+before/after capture.
