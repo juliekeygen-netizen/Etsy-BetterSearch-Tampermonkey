@@ -10,7 +10,9 @@ Date: 2026-09-02
 Base main SHA: 7d24e95d6014500e3dea87f307a782d167bae559
 Branch: codex/fix-all-toolbar-search-parity
 Implementation head: 74c60e6b2c00d3a2b24c6cc89cd27dbc6c2837a5
-PR: pending publication
+Published branch head: c9a9db63f3fda52a76370ed6ae35fd2acfd411d6
+PR: #86 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/86 — OPEN
+CI: pending GitHub Actions
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
 
