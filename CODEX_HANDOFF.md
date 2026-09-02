@@ -3,70 +3,56 @@
 ## Released baseline
 
 ```text
-Released main: b97496e94cf3835f4d8f9f078000177694ad716f
+Main before this PR: 5f935b1810ce3562f6b944fb74c74c6b96888be3
 Release identity: v0.15.28
-Latest required main CI: 33672185684 — SUCCESS
+PR #86 merged-main CI: 33672185684 — SUCCESS
 ```
 
-## Open independent review packets
-
-### PR #86 — All Favorites toolbar and Search clear parity
+## Merged diagnostic/UI behavior gates
 
 ```text
-Branch: codex/fix-all-toolbar-search-parity
-Published head: 7e5e66dfb94c6e51c0a873044f312f754a797415
-PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/86 — MERGED
-PR CI: 33667143408 — SUCCESS
+PR #86 — All Favorites toolbar and Search clear parity
 Merge commit: b97496e94cf3835f4d8f9f078000177694ad716f
-Required merged-main CI: 33672185684 — SUCCESS
+PR CI: 33667143408 — SUCCESS; merged-main CI: 33672185684 — SUCCESS
+
+PR #87 — Ships from Anywhere selection
+Merge commit: 5f935b1810ce3562f6b944fb74c74c6b96888be3
+PR CI after branch update: 33684095077 — SUCCESS
 ```
 
-All gets the explicitly requested separate, full-width Sort/Settings/Search row
-and wrapper-safe native Search-clear placement. Local checks, 572/572 Node 22
-tests, all delivery builds, whitespace audit, and Chrome/Firefox artifact
-inspection passed. Manual review: desktop/narrow All placement and clear-X
-position immediately before Etsy's Search button. This branch updated
-`PROJECT_STATE.md` and the visual contract.
+All uses the requested separate toolbar row and wrapper-safe native clear-X.
+Anywhere is still neutral for filtering, but remains visibly selected after a
+switch from a specific shipping origin.
 
-### PR #87 — Ships from Anywhere selection
-
-```text
-Branch: codex/fix-ships-anywhere-selection
-Published head: 6613529438316bb7b449aa7f3fbaee495d8cc2ee
-PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/87 — OPEN
-Last checked GitHub CI: 33667554145 — SUCCESS
-Base: b97496e94cf3835f4d8f9f078000177694ad716f (needs branch update before merge)
-```
-
-The final filter-state owner distinguishes a radio's visual selection from a
-meaningful active filter. Anywhere remains neutral but stays visibly checked.
-Local checks, 572/572 Node 22 tests, all delivery builds, whitespace audit,
-and Chrome/Firefox artifact inspection passed. Manual review: Europe → Anywhere
-then reload; Anywhere stays checked without auto-opening Ships from.
-
-### PR #88 — fallback Favorites card presentation
+## PR #88 — Diagnostics-guided Favorites correctness and fallback presentation
 
 ```text
 Branch: codex/fix-fallback-card-native-presentation
-Prior published head: 3902cbed2eb09a6d4d635866f58ca463fc883cf5
+Implementation head: a5532b94dec472f6e885705961379e76616caf33
 PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/88 — OPEN
-Last checked GitHub CI: 33667878658 — SUCCESS
-Base: b97496e94cf3835f4d8f9f078000177694ad716f (will be merged before publication)
+Base before this branch sync: 7d24e95d6014500e3dea87f307a782d167bae559
+Current base target: 5f935b1810ce3562f6b944fb74c74c6b96888be3
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
 
-The latest diagnostic-guided repair replaces synthetic cached-card markup with
-the relevant Etsy card structural contract while retaining only the requested
-BetterSearch shop/rating row. Native-shaped product badges can share their
-natural row and the add-to-cart control stays below it, while lower controls
-remain available on hover or keyboard focus. It also fences collection partial
-observations against stale collection props, preserves Diagnostics capture
-preferences across a normal reload, and keeps an off-page fallback heart
-visibly actionable in the original user gesture.
+This branch has been updated with both merged behavior gates without rewriting
+history. Its diagnostic-led repair:
+
+- replaces synthetic cached-card markup with Etsy-shaped card structure while
+  retaining only the requested BetterSearch shop/rating row;
+- allows native-shaped product badges to share their natural row and keeps the
+  add-to-cart control beneath it, revealed on hover or keyboard focus;
+- blocks a stale collection page's props from adding IDs to a new collection;
+- persists Diagnostics capture choices across a normal reload, while an active
+  session remains authoritative during panel rehydration; and
+- preserves a visibly actionable off-page fallback heart in the original user
+  gesture rather than relying on a later browser-blocked popup.
 
 Changed files: `src/61a-favorites-index.js`, `src/63-favorites-runtime.js`,
 `src/65-favorites-style.js`, `diagnostics-extension/controls.js`, focused
 regression tests, `PROJECT_STATE.md`, and this handoff.
+
+Validation before this sync:
 
 ```text
 npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.28
@@ -76,15 +62,15 @@ git diff --check                                        PASS
 Artifact inspection                                      PASS — fallback markup/scope gate in Chrome+Firefox; preference owner in Diagnostics Chrome
 ```
 
-Manual review: cache-backed fallback cards at desktop/mobile; verify native
-badge/action layout, hover and keyboard focus behavior, heart behavior for a
-live versus off-page card, rapid collection navigation, and persisted
-Diagnostics options after a normal refresh.
+Re-run complete validation and artifact inspection after this branch sync, then
+publish the branch and await the new PR CI before merge. Manual browser review
+remains: cache-backed cards at desktop/mobile; badge/action layout; heart
+behavior for a live versus off-page card; rapid collection navigation; and
+persisted Diagnostics options after a normal refresh.
 
-## Privacy and dependency status
+## Privacy and next work
 
 No raw private diagnostics, page HTML, screenshots, URLs, listing details,
-account identifiers, or marker notes are tracked. PR #86 is merged and its
-main CI passed. PR #87 must be updated onto that main before merge. PR #88
-will then be updated onto the new main; its only dependency is shared handoff
-documentation, not runtime code.
+account identifiers, or marker notes are tracked. Once PR #88's refreshed CI
+is green, merge it, wait for its exact `main` CI, then create and merge the
+separate release-promotion PR with the BetterSearch and Diagnostics versions.

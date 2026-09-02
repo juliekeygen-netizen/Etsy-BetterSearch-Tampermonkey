@@ -29,6 +29,7 @@ function loadPureHelpers() {
   const context = vm.createContext({ String, Array, Boolean });
   vm.runInContext(`${source.slice(0, end)}\nglobalThis.testApi={
     active:favBindingMeaningfullyActive0157,
+    selected:favBindingVisuallySelected0157,
     drawer:favDrawerShouldOpen0157,
   };`, context);
   return context.testApi;
@@ -82,12 +83,15 @@ test('normalized default configuration has no meaningfully active v2 filter bind
 });
 
 test('Ships from Anywhere and incomplete country mode stay neutral while real origin choices are active', () => {
-  const { active } = loadPureHelpers();
+  const { active, selected } = loadPureHelpers();
   const config = defaultConfig();
   assert.equal(active('ships-anywhere', config), false);
+  assert.equal(selected('ships-anywhere', config), true, 'neutral Anywhere is still the selected radio');
 
   config.filters.shipsFrom = 'country';
   assert.equal(active('ships-country', config), false, 'country mode without a selected country is incomplete, not active');
+  assert.equal(selected('ships-anywhere', config), false);
+  assert.equal(selected('ships-country', config), true, 'the selected mode remains visibly selected while its country is incomplete');
   config.filters.shipsFromCountry = 'FI';
   assert.equal(active('ships-country', config), true);
   assert.equal(active('ships-origin:FI', config), true);
@@ -96,6 +100,8 @@ test('Ships from Anywhere and incomplete country mode stay neutral while real or
   config.filters.shipsFromCountry = '';
   assert.equal(active('ships-europe', config), true);
   assert.equal(active('ships-anywhere', config), false);
+  assert.equal(selected('ships-europe', config), true);
+  assert.equal(selected('ships-anywhere', config), false);
   config.filters.shipsFrom = 'eu';
   assert.equal(active('ships-eu', config), true);
   config.filters.shipsFrom = 'local';
@@ -192,9 +198,25 @@ test('Strict and Multi visual state follows config in both ON and OFF directions
   assert.equal(input.checked, false);
 });
 
+test('a neutral selected radio keeps its check without acquiring active-filter styling', () => {
+  const sync = loadVisualSyncHelper();
+  const rootClasses = classList();
+  const input = { checked:false };
+  const root = {
+    classList:rootClasses,
+    querySelectorAll:(selector) => selector === 'input[type="checkbox"],input[type="radio"]' ? [input] : [],
+  };
+
+  sync(root, false, true);
+  assert.equal(rootClasses.has('is-active'), false, 'neutral selection does not become an active filter');
+  assert.equal(input.checked, true, 'the selected radio remains visibly checked');
+});
+
 test('final binding sync updates every duplicate instance and keeps category radio-group refresh behavior', () => {
   assert.match(source, /for \(const root of document\.querySelectorAll\('\[data-ebsf-binding\]'\)\)/);
   assert.match(source, /root\.dataset\.ebsfBinding === key/);
+  assert.match(source, /const selected = favBindingVisuallySelected0157\(key\)/);
+  assert.match(source, /favSyncOneBindingRoot0157\(root, active, selected\)/);
   assert.match(source, /querySelectorAll\?\.\('\.ebsf-search-split'\)/);
   assert.match(source, /favToggleClass0157\(split, 'ebs-active', active\)/);
   assert.match(source, /\[data-ebsf-binding\^="category:"\]/);

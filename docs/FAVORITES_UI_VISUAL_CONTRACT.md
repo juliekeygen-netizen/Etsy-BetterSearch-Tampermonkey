@@ -23,8 +23,9 @@ Visible structure:
 ```text
 [ collection strip: All | + | real collections ... ]
 
-All                                  [ Sort ] [ Settings ] [ Search ... ]
+All
 Private collection | N favorites · M shown
+[ Sort ] [ Settings ] [ Search ... ]
 
 [ product grid ]
 ```
@@ -32,11 +33,13 @@ Private collection | N favorites · M shown
 Requirements:
 
 - `All` uses Etsy's collection title typography and baseline.
-- All retains invisible, non-interactive edit/+ geometry twins so its title/toolbar dimensions remain identical to a real collection header.
+- All retains invisible, non-interactive edit/+ geometry twins so its title and metadata dimensions remain identical to a real collection header.
 - The invisible geometry must never be focusable, clickable, or visible.
 - The complete metadata wording is always used: `Private collection | N favorites · M shown`.
 - No compact `Private | N · M` mode may return.
-- The metadata row remains below the title/toolbar row.
+- The metadata row remains below the title row.
+- On desktop, All uses the same separate, full-width Sort/Settings/Search row
+  as a collection page. A short `All` title must not pull the toolbar beside it.
 
 ## Desktop collection
 
@@ -45,8 +48,9 @@ Visible structure remains Etsy-native:
 ```text
 [ collection strip: All | + | real collections ... ]
 
-Collection title [edit] [+]            [ Sort ] [ Settings ] [ Search ... ]
+Collection title [edit] [+]
 Public/Private collection | N favorites · M shown
+[ Sort ] [ Settings ] [ Search ... ]
 
 [ product grid ]
 ```
@@ -55,6 +59,7 @@ Requirements:
 
 - Native collection edit/+ controls remain real Etsy controls.
 - BetterSearch must not replace their behavior.
+- Collection identity/privacy and the toolbar occupy separate desktop rows.
 - Sort width remains the measured baseline width from the final v0.12.15 geometry.
 - Search remains within the listing/content right boundary.
 - The collection toolbar and All toolbar align to the same right edge.
