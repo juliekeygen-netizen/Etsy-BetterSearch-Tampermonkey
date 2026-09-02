@@ -1,12 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 const manifest = JSON.parse(await readFile(new URL('../diagnostics-extension/manifest.json', import.meta.url), 'utf8'));
 const background = await readFile(new URL('../diagnostics-extension/background.js', import.meta.url), 'utf8');
 const content = await readFile(new URL('../diagnostics-extension/content.js', import.meta.url), 'utf8');
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+
+function noGridMarkerPredicate() {
+  const start = content.indexOf('function shouldMarkNoGridVisible');
+  const end = content.indexOf('\n  function captureImportantSnapshot', start);
+  assert.ok(start >= 0 && end > start, 'no-grid predicate must remain a standalone pure helper');
+  const context = vm.createContext({ document: { readyState: 'complete' } });
+  vm.runInContext(`${content.slice(start, end)}\nglobalThis.shouldMarkNoGridVisible = shouldMarkNoGridVisible;`, context);
+  return context.shouldMarkNoGridVisible;
+}
 
 test('diagnostics extension is isolated, MV3, Etsy-scoped and starts at document_start', () => {
   assert.equal(manifest.manifest_version, 3);
@@ -79,9 +89,25 @@ test('automatic markers cover known BetterSearch lifecycle and owner\/request fa
   assert.match(content, /both-grids-visible/);
   assert.match(content, /both-pagers-visible/);
   assert.match(content, /no-grid-visible/);
+  assert.match(content, /nativeEmptyState/);
+  assert.match(content, /wt-flex-direction-column-xs\.wt-align-items-center/);
+  assert.match(content, /shouldMarkNoGridVisible\(current\)/);
   assert.match(background, /ownerless-collection-request/);
   assert.match(background, /users\\\/\\\/collections/);
   assert.match(background, /runtime-exception/);
+});
+
+test('a visible native empty collection is not marked as a missing Favorites grid', () => {
+  const shouldMark = noGridMarkerPredicate();
+  const ordinaryMissingGrid = {
+    listingSection: { exists: true },
+    nativeGrid: { visible: false },
+    localGrid: { visible: false },
+    nativeEmptyState: { visible: false }
+  };
+  assert.equal(shouldMark(ordinaryMissingGrid, 'complete'), true);
+  assert.equal(shouldMark({ ...ordinaryMissingGrid, nativeEmptyState: { visible: true } }, 'complete'), false);
+  assert.equal(shouldMark(ordinaryMissingGrid, 'loading'), false);
 });
 
 test('Record & Reload is armed per-tab across navigation before the page reloads', () => {

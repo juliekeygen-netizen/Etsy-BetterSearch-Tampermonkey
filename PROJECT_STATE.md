@@ -658,4 +658,13 @@ If no newer user instruction supersedes this file, the next Codex task is:
 
 > Perform a fresh post-v0.15.25 audit reconciliation against the historical Favorites audit index, identify the highest-severity **still-live** bounded correctness issue from current source/build/runtime ownership, implement and regression-test it if evidence is sufficient, publish it as an unmerged PR, and update `PROJECT_STATE.md` + `CODEX_HANDOFF.md`.
 
+## 13.1 Diagnostics valid-empty-state behavior gate — 2026-09-01
+
+The private Diagnostics capture also source-proved an instrumentation false
+positive: a valid native empty collection satisfied the generic no-grid marker.
+`codex/fix-diagnostics-valid-empty-state-marker` is an independent,
+Diagnostics-only behavior gate. It recognizes Etsy's visible structural empty
+card without weakening the marker for actual missing grids. See
+`docs/DIAGNOSTICS_VALID_EMPTY_STATE_MARKER_2026-09-01.md`.
+
 The detailed autonomous sequence is in `docs/CODEX_NEXT_WORK_PLAN.md`.
