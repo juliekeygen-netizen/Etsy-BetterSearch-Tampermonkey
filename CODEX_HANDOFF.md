@@ -11,6 +11,9 @@ Release PR: #84 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tam
 Release exact-head CI: 33654460398 — SUCCESS
 Required main push CI: 33654527080 — SUCCESS
 Artifacts: Chrome 0.15.28, Firefox 0.15.28, Diagnostics 0.2.9 (companion 0.15.28)
+Release-record branch: codex/docs-v0.15.28-release-record
+Release-record PR: #85 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/85 — OPEN
+Release-record exact-head CI: queued after PR publication
 ```
 
 ## Released work
