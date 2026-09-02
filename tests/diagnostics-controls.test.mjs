@@ -197,6 +197,17 @@ test('the final controls owner rehydrates every active capture option after Reco
   assert.match(controls, /semanticMarkers: 'semantic-markers'/);
 });
 
+test('idle diagnostic capture options persist through ordinary page reloads and gate Record until restored', () => {
+  assert.match(controls, /OPTION_PREFERENCES_KEY = 'ebsf-diagnostics:option-preferences:v1'/);
+  assert.match(controls, /async function restoreSavedOptionPreferences\(\)/);
+  assert.match(controls, /chrome\.storage\.local\.get\(OPTION_PREFERENCES_KEY\)/);
+  assert.match(controls, /async function saveOptionPreferences\(\)/);
+  assert.match(controls, /chrome\.storage\.local\.set\(\{ \[OPTION_PREFERENCES_KEY\]: optionPreferences\(\) \}\)/);
+  assert.match(controls, /input\?\.matches\?\.\('\[data-option\]'\)/);
+  assert.match(controls, /await ui\.optionPreferencesReady/);
+  assert.match(controls, /ui\.optionPreferencesReady = restoreSavedOptionPreferences\(\)/);
+});
+
 test('Chrome debugger banner Cancel still means Stop + Export, separate from in-panel Cancel', () => {
   assert.match(backgroundDetach, /canceled_by_user/);
   assert.match(backgroundDetach, /autoExportPending = true/);

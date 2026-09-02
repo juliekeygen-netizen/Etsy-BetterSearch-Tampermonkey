@@ -5,23 +5,33 @@ import test from 'node:test';
 const runtime = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../src/65-favorites-style.js', import.meta.url), 'utf8');
 
-test('fallback cards distinguish native-style cart and options affordances without changing their bridge action text', () => {
+test('fallback cards preserve Etsy card structure while adding only the requested shop/rating row', () => {
   const fallback = runtime.slice(runtime.indexOf('function favFallbackNode'), runtime.indexOf('function favPrepareOwnedCard0141'));
-  assert.match(fallback, /const action = record\.hasVariations \? 'Multiple options' : 'Add to cart'/);
-  assert.match(fallback, /const actionKind = record\.hasVariations \? 'options' : 'cart'/);
-  assert.match(fallback, /data-ebsf-card-action="\$\{actionKind\}"/);
-  assert.match(fallback, /aria-label="Remove from favorites"/);
+  assert.match(fallback, /li\.setAttribute\('data-clg-id', 'WtListItem'\)/);
+  assert.match(fallback, /implicit-comparison-listing-card-title/);
+  assert.match(fallback, /data-testid="price-details"/);
+  assert.match(fallback, /data-testid="delivery-and-returns-details"/);
+  assert.match(fallback, /class="wt-text-body-small wt-sem-text-secondary wt-pb-xs-1 ebsf-card-shop-rating"/);
+  assert.match(fallback, /data-accessible-btn-fave="true"/);
+  assert.match(fallback, /data-testid="add-to-cart-button"/);
 });
 
-test('fallback heart uses a fixed centered circular hit target', () => {
-  assert.match(styles, /\.ebsf-fallback-card \.ebsf-heart\{[^}]*display:inline-flex!important[^}]*align-items:center!important[^}]*justify-content:center!important[^}]*width:40px!important[^}]*height:40px!important/s);
-  assert.match(styles, /\.ebsf-fallback-card \.ebsf-heart \.etsy-icon\{[^}]*width:18px!important[^}]*height:18px!important/s);
-  assert.match(styles, /\.ebsf-fallback-card \.ebsf-heart svg\{[^}]*flex:0 0 18px!important/s);
+test('fallback heart uses Etsy’s native Favorites control contract', () => {
+  const fallback = runtime.slice(runtime.indexOf('function favFallbackNode'), runtime.indexOf('function favPrepareOwnedCard0141'));
+  assert.match(fallback, /favorites-landing-heart-button/);
+  assert.match(fallback, /data-listing-id="\$\{safe\(record\.id\)\}"/);
+  assert.match(fallback, /data-favorited-icon="true"/);
+  assert.match(runtime, /const url=String\(card\.dataset\.ebsfUrl\|\|card\.dataset\.ebsListingUrl\|\|''\)\.trim\(\)/);
+  assert.match(runtime, /window\.open\(url,'_blank','noopener'\)/);
+  assert.match(styles, /\.ebsf-fallback-card \.ebsf-fallback-heart\{[^}]*display:inline-flex!important[^}]*align-items:center!important[^}]*justify-content:center!important/s);
 });
 
-test('fallback actions stay unobtrusive until pointer or keyboard focus reaches the card', () => {
+test('fallback option badges and cart action retain Etsy semantics while actions reveal on hover or focus', () => {
+  const fallback = runtime.slice(runtime.indexOf('function favFallbackNode'), runtime.indexOf('function favPrepareOwnedCard0141'));
+  assert.match(fallback, /record\.hasVariations \? '<span[^']*Multiple options/);
+  assert.match(fallback, /record\.isPersonalizable \? '<span[^']*Personalizable/);
+  assert.match(fallback, /class="wt-mt-xs-2 ebsf-card-options"/);
   assert.match(styles, /\.ebsf-fallback-card \.ebsf-card-actions\{[^}]*max-height:0[^}]*opacity:0[^}]*pointer-events:none/s);
-  assert.match(styles, /\.ebsf-fallback-card:hover \.ebsf-card-actions,\.ebsf-fallback-card:focus-within \.ebsf-card-actions\{[^}]*max-height:44px[^}]*opacity:1[^}]*pointer-events:auto/s);
-  assert.match(styles, /\[data-ebsf-card-action="cart"\]>button/);
-  assert.match(styles, /\[data-ebsf-card-action="options"\]>button/);
+  assert.match(styles, /\.ebsf-fallback-card:hover \.ebsf-card-actions,\.ebsf-fallback-card:focus-within \.ebsf-card-actions\{[^}]*max-height:52px[^}]*opacity:1[^}]*pointer-events:auto/s);
+  assert.match(styles, /\.ebsf-fallback-card \.ebsf-card-options\{[^}]*display:flex[^}]*flex-wrap:wrap/s);
 });
