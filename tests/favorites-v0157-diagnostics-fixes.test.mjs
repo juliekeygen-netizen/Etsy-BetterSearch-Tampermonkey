@@ -79,14 +79,14 @@ test('desktop header stacks early when the title/edit controls leave less than a
   assert.equal(plan.stacked, true);
 });
 
-test('collection identity and visibility get their own desktop row before the toolbar', () => {
+test('All and collection identity/visibility get their own desktop row before the toolbar', () => {
   const { toolbar } = loadPureHelpers();
-  const inlineAllPlan = toolbar({ viewportWidth:1440, headerWidth:1040, leftWidth:180, sortWidth:190, forceStack:false });
+  const allPlan = toolbar({ viewportWidth:1440, headerWidth:1040, leftWidth:180, sortWidth:190, forceStack:true });
   const collectionPlan = toolbar({ viewportWidth:1440, headerWidth:1040, leftWidth:180, sortWidth:190, forceStack:true });
-  assert.equal(inlineAllPlan.stacked, false);
+  assert.equal(allPlan.stacked, true);
   assert.equal(collectionPlan.stacked, true);
-  assert.match(source, /forceStack:favScope\(\)\.type !== 'items'/);
-  assert.match(source, /Collection routes deliberately give the native[\s\S]*Sort\/Settings\/Search below it/);
+  assert.match(source, /forceStack:true/);
+  assert.match(source, /All scopes deliberately give the native[\s\S]*Sort\/Settings\/Search below it/);
 });
 
 test('885px resize path deliberately releases desktop width ownership for the responsive full-remainder track', () => {

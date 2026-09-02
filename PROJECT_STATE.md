@@ -13,9 +13,9 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 Current verified production baseline at the time this file was written:
 
 ```text
-main SHA: fd63c43704f11aa4283316805f1432f4736d30fc
+main SHA: 7d24e95d6014500e3dea87f307a782d167bae559
 release:  v0.15.28
-commit:   Release v0.15.28: promote BetterSearch identity
+commit:   Merge pull request #85 (v0.15.28 release-record documentation)
 ```
 
 Required independent post-merge CI was green:
@@ -30,6 +30,12 @@ result: success
 This baseline includes all implementation work completed by the previous ChatGPT development session. There is no intentionally hidden/unpublished implementation branch that Codex must recover before continuing.
 
 Future sessions must verify `origin/main` again because this SHA will become historical as the project advances.
+
+The screenshots supplied after this baseline are current browser evidence for
+three separate UI candidates: All-page toolbar/Search parity, visual selection
+of neutral Ships from -> Anywhere, and fallback-card fidelity. Treat the card
+markup as a separate native-compatibility task: private page HTML establishes
+that fallback reconstruction is live, but must not be committed.
 
 ---
 
