@@ -19,6 +19,8 @@ test('All copies collection Search form width semantics without touching collect
   assert.match(parity, /\[data-ebsf-all-header\]/);
   assert.match(parity, /input\[placeholder="Search your favorites"\]/);
   assert.match(parity, /form\.dataset\.ebsfAllSearchForm/);
+  assert.match(parity, /form\.closest\?\.\('\.wt-input-btn-group'\)/);
+  assert.match(parity, /group\.dataset\.ebsfAllSearchGroup/);
   assert.match(parity, /flex:1 1 100%!important/);
   assert.match(parity, /width:100%!important/);
   assert.match(parity, /max-width:100%!important/);
@@ -27,11 +29,17 @@ test('All copies collection Search form width semantics without touching collect
 });
 
 test('All reuses Etsy native Favorites clear-button geometry instead of inventing a replacement', () => {
-  assert.match(parity, /> \.favorites-landing-search-clear-button/);
+  assert.match(parity, /form\[data-ebsf-all-search-form\] \.favorites-landing-search-clear-button/);
   assert.match(parity, /right:62px!important/);
   assert.match(parity, /left:auto!important/);
   assert.doesNotMatch(parity, /createElement\(['"]button['"]\)/);
   assert.doesNotMatch(parity, /innerHTML\s*=.*clear/i);
+});
+
+test('All tolerates Etsy either keeping or inserting its extra button-group wrapper', () => {
+  assert.match(parity, /\.ebsf-native-search-slot \[data-ebsf-all-search-group\]/);
+  assert.match(parity, /\.ebsf-native-search-slot form\[data-ebsf-all-search-form\]/);
+  assert.doesNotMatch(parity, /\.ebsf-native-search-slot > form\[data-ebsf-all-search-form\]/);
 });
 
 test('clear parity self-heals after shell repair, typing, search clearing and resize', () => {

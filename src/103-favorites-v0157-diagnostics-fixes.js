@@ -348,11 +348,13 @@ function favAlignToolbarX0157(header, right) {
     if (right.dataset.ebsfExactXOwns !== '1') right.dataset.ebsfExactXOwns = '1';
 }
 
-/* Final toolbar owner. Collection routes deliberately give the native
+/* Final toolbar owner. All scopes deliberately give the native
  * collection identity/visibility row its own line, then place
- * Sort/Settings/Search below it like the BetterSearch All header. Other
- * desktop headers are constrained by actual intrinsic title/control width; if
- * a minimum useful Search control cannot coexist with the title, stack early.
+ * Sort/Settings/Search below it. This gives All the same predictable full-row
+ * toolbar as collection routes, instead of letting a short "All" title pull
+ * the controls beside it. Other desktop headers are constrained by actual
+ * intrinsic title/control width; if a minimum useful Search control cannot
+ * coexist with the title, stack early.
  * 761-899px is already stacked by the responsive shell and uses a 1fr Search
  * track via the CSS below. */
 favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
@@ -390,7 +392,7 @@ favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
         headerWidth,
         leftWidth,
         sortWidth,
-        forceStack:favScope().type !== 'items'
+        forceStack:true
     });
     if (plan.stacked) {
         favSetDynamicToolbarStack0157(header, true);
