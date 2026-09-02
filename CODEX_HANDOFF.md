@@ -38,7 +38,7 @@ Branch: codex/fix-ships-anywhere-selection
 Implementation head: 440f2b6baa9ac97cbe8f1eb8e6d86a2f37becdd8
 Published head: dd4b988f2a284603ea75ef1a4f2626f387406884
 PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/87 — OPEN
-GitHub CI: pending (run 33667380614)
+Last checked GitHub CI: 33667428507 — SUCCESS
 Base: 7d24e95d6014500e3dea87f307a782d167bae559
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
