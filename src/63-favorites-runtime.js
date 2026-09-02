@@ -78,14 +78,31 @@ function favRestoreNative() {
 function favFallbackNode(record) {
     const li = document.createElement('li');
     li.className = 'favorites-landing-listing-card-container wt-mb-xs-2 favorites-landing-listing-card-container__ungrouped ebsf-fallback-card';
+    li.setAttribute('data-clg-id', 'WtListItem');
     const safe = (value) => String(value || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const ratingText = Number.isFinite(record.rating) ? `${record.rating.toFixed(1)} ★${Number.isFinite(record.reviews) ? ` (${Math.round(record.reviews)})` : ''}` : '';
-    const sale = record.discountPercent > 0 ? ` <span class="ebsf-old-price">${safe(record.originalPriceFormatted)}</span> <span>(${record.discountPercent}% off)</span>` : '';
-    const urgency = record.urgency ? `<span class="wt-badge wt-badge--statusInformational wt-badge--small ebsf-urgency">${safe(record.urgency)}</span>` : '';
+    const sale = record.discountPercent > 0 ? ` <span class="wt-text-title-small ebsf-old-price">${safe(record.originalPriceFormatted)}</span> <span class="wt-text-body-small">(${record.discountPercent}% off)</span>` : '';
+    const urgency = record.urgency
+        ? `<span data-clg-id="WtBadge" class="wt-badge implicit-comparison-urgency-signal-badge wt-display-block wt-position-absolute wt-position-top wt-position-left wt-ml-xs-2 wt-mt-xs-2 wt-pl-xs-1 wt-pr-xs-1 wt-z-index-1 wt-badge--statusInformational">${safe(record.urgency)}</span>`
+        : '';
+    const ratingBadge = Number.isFinite(record.rating)
+        ? `<span data-clg-id="WtBadge" class="wt-badge implicit-comparison-rating-badge wt-position-absolute wt-position-bottom wt-position-right wt-mr-xs-2 wt-mb-xs-2 wt-z-index-1 wt-badge--default wt-badge--small"><span class="wt-icon--smallest-xs wt-badge__icon etsy-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" focusable="false"><path d="M11.082 2.133C11.429 1.327 12.572 1.327 12.919 2.133L15.244 7.534 21.101 8.077C21.974 8.16 22.328 9.245 21.669 9.824L17.249 13.706 18.544 19.443C18.736 20.298 17.812 20.97 17.058 20.523L12 17.52 9.998 18.707V18.708L6.944 20.523C6.19 20.97 5.265 20.299 5.458 19.443L6.75 13.706 3.122 10.52V10.518L2.332 9.824C1.672 9.245 2.026 8.16 2.899 8.077L4.623 7.917 8.756 7.533 10.665 3.098z"></path></svg></span>${safe(record.rating.toFixed(1))}</span>`
+        : '';
     const shipping = record.hasFreeShipping ? 'FREE shipping' : (record.shippingFormatted ? `Shipping: ${safe(record.shippingFormatted)}` : '');
-    const action = record.hasVariations ? 'Multiple options' : 'Add to cart';
+    const deliveryRows = [
+        shipping ? `<li data-clg-id="WtListItem" class="wt-text-body-small wt-sem-text-secondary wt-pb-xs-1">${record.hasFreeShipping ? safe(shipping) : `<span class="wt-text-title-small">Shipping:&nbsp;</span>${safe(record.shippingFormatted)}`}</li>` : '',
+        record.estimatedDelivery ? `<li data-clg-id="WtListItem" class="wt-text-body-small wt-sem-text-secondary wt-pb-xs-1"><span class="wt-text-title-small">Est. delivery:&nbsp;</span>${safe(record.estimatedDelivery)}</li>` : '',
+        record.acceptsReturns ? '<li data-clg-id="WtListItem" class="wt-text-body-small wt-sem-text-secondary"><span class="wt-text-title-small">Returns:&nbsp;</span>Accepted</li>' : '',
+    ].filter(Boolean).join('');
+    const optionBadges = [
+        record.hasVariations ? '<span data-clg-id="WtBadge" class="wt-badge wt-badge--default wt-badge--small wt-badge--border">Multiple options</span>' : '',
+        record.isPersonalizable ? '<span data-clg-id="WtBadge" class="wt-badge wt-badge--default wt-badge--small wt-badge--border">Personalizable</span>' : '',
+    ].filter(Boolean).join('');
+    const shopRating = ratingText || record.shopName
+        ? `<p class="wt-text-body-small wt-sem-text-secondary wt-pb-xs-1 ebsf-card-shop-rating">${ratingText ? `<span>${safe(ratingText)}</span>` : ''}${ratingText && record.shopName ? ' ' : ''}${record.shopName ? (record.shopUrl ? `<a class="wt-text-link ebsf-card-shop-link" href="${safe(record.shopUrl)}" target="_blank" rel="noreferrer">By ${safe(record.shopName)}</a>` : `<span>By ${safe(record.shopName)}</span>`) : ''}</p>`
+        : '';
     const image = record.imageUrl
-        ? `<img loading="lazy" class="wt-image wt-rounded-02 wt-image--cover" src="${safe(record.imageUrl)}" alt="${safe(record.title)}">`
+        ? `<img data-clg-id="WtImage" loading="lazy" style="aspect-ratio:1.2592592592592593;" class="wt-image wt-rounded-02 wt-image--cover" src="${safe(record.imageUrl)}" alt="${safe(record.title)}">`
         : '<div class="wt-image wt-rounded-02 ebsf-fallback-image" aria-hidden="true"></div>';
     li.innerHTML = `
         <div data-clg-id="WtCard" class="wt-card wt-width-full wt-height-full wt-display-flex-xs wt-card--transparent">
@@ -94,14 +111,17 @@ function favFallbackNode(record) {
                 <div class="wt-position-relative wt-display-block">
                     ${image}
                     ${urgency}
-                    <button type="button" aria-label="Remove from favorites" aria-pressed="true" class="wt-btn wt-btn--icon wt-btn--small ebsf-heart"><span class="etsy-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.54 4Q19.195 4 20.437 4.76A5.05 5.05 0 0 1 22.338 6.82Q23 8.122 23 9.73C23 10.945 22.735 12 22.214 12.9A8.1 8.1 0 0 1 20.288 15.164C19.528 15.772 18.326 16.5 17 17.35 15.443 18.339 13.576 19.607 12.456 20.905A.614.614 0 0 1 11.545 20.905C10.435 19.615 8.605 18.37 7 17.35 5.674 16.499 4.472 15.772 3.712 15.164A8.1 8.1 0 0 1 1.786 12.901C1.265 12.001 1 10.945 1 9.73Q1.001 8.122 1.661 6.82A5.05 5.05 0 0 1 3.563 4.76Q4.802 4 6.46 4C9.16 4 10.75 5.5 12 7 13.25 5.5 14.745 4 17.54 4"></path></svg></span></button>
+                    ${ratingBadge}
+                    <div class="implicit-comparison-favorite-button wt-position-absolute wt-position-top wt-position-right wt-mr-xs-1 wt-mt-xs-1 wt-z-index-1"><button type="button" aria-label="Remove from Favorites" aria-pressed="true" data-accessible-btn-fave="true" data-listing-id="${safe(record.id)}" data-source="ebsf-fallback" data-always-show="true" data-clg-id="WtButton" class="wt-btn wt-btn--secondary wt-sem-bg-elevation-0 favorites-landing-heart-button wt-btn--small wt-btn--icon wt-btn--light ebsf-fallback-heart"><div class="favorited-icon-container should-animate wt-nudge-l-1 wt-nudge-b-1"><span data-favorited-icon="true" class="should-animate etsy-icon wt-nudge-t-2 wt-icon--smaller-xs wt-text-favorite-heart favorited-icon-container wt-display-block"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.54 4Q19.195 4 20.437 4.76A5.05 5.05 0 0 1 22.338 6.82Q23 8.122 23 9.73C23 10.945 22.735 12 22.214 12.9A8.1 8.1 0 0 1 20.288 15.164C19.528 15.772 18.326 16.5 17 17.35 15.443 18.339 13.576 19.607 12.456 20.905A.614.614 0 0 1 11.545 20.905C10.435 19.615 8.605 18.37 7 17.35 5.674 16.499 4.472 15.772 3.712 15.164A8.1 8.1 0 0 1 1.786 12.901C1.265 12.001 1 10.945 1 9.73Q1.001 8.122 1.661 6.82A5.05 5.05 0 0 1 3.563 4.76Q4.802 4 6.46 4C9.16 4 10.75 5.5 12 7 13.25 5.5 14.745 4 17.54 4"></path></svg></span></div></button></div>
                 </div>
-                <p class="wt-text-caption wt-text-truncate ebsf-card-title">${safe(record.title)}</p>
-                ${ratingText ? `<p class="wt-text-caption">${safe(ratingText)}${record.shopName ? ` By ${safe(record.shopName)}` : ''}</p>` : (record.shopName ? `<p class="wt-text-caption">By ${safe(record.shopName)}</p>` : '')}
-                <p class="wt-text-title-small ebsf-card-price">${safe(record.priceFormatted)}${sale}</p>
-                ${shipping ? `<p class="wt-text-caption wt-text-gray">${shipping}</p>` : ''}
-                ${record.estimatedDelivery ? `<p class="wt-text-caption wt-text-gray">Est. delivery: ${safe(record.estimatedDelivery)}</p>` : ''}
-                <div class="ebsf-card-actions"><button type="button" class="wt-btn wt-btn--transparent wt-btn--small">${action}</button></div>
+                <div class="wt-p-xs-1 wt-flex-grow-xs-1">
+                    <h3 data-testid="listing-title" class="wt-text-title-small implicit-comparison-listing-card-title wt-pb-xs-1"><span data-test-id="unsanitize">${safe(record.title)}</span></h3>
+                    ${shopRating}
+                    <section data-testid="price-details"><div class="wt-display-flex-xs wt-align-items-center"><span class="wt-text-title-large wt-sem-text-primary">${safe(record.priceFormatted)}</span>${sale}</div></section>
+                    ${deliveryRows ? `<section data-testid="delivery-and-returns-details" class="wt-mt-xs-1"><ul data-clg-id="WtList" role="list" class="wt-list-unstyled">${deliveryRows}</ul></section>` : ''}
+                    ${optionBadges ? `<div data-testid="item-options" class="wt-mt-xs-2 ebsf-card-options">${optionBadges}</div>` : ''}
+                </div>
+                <div class="wt-p-xs-1 ebsf-card-actions"><div data-testid="add-to-cart-button" class="favorites-landing-card-checkout-buttons implicit-comparison-card-checkout-button-container"><button type="button" data-clg-id="WtButton" class="wt-btn wt-btn--secondary wt-width-full wt-p-xs-1 wt-btn--small">Add to cart</button></div></div>
             </div>
         </div>`;
     return li;
@@ -273,6 +293,16 @@ function favHandleTransplantedClick(event) {
                 setFavoriteVisual(favorite,stillFavorited);
                 if(!stillFavorited&&favRemoveLocalFavorite(card.dataset.ebsfId))favRenderCurrent();
             },900);
+            return;
+        }
+        /* An off-page cached card has no connected Preact button to open
+         * Etsy's collection picker. Open Etsy visibly while the original click
+         * still has a user activation; delegating through the async bridge
+         * loses that activation in browsers and can look like a dead heart. */
+        const url=String(card.dataset.ebsfUrl||card.dataset.ebsListingUrl||'').trim();
+        if(url){
+            favorite.setAttribute?.('title','Open this listing to change its Favorite with Etsy.');
+            window.open(url,'_blank','noopener');
             return;
         }
         bridgeFavorite(card,favorite).then(()=>{if(!isFavoritedButton(favorite)&&favRemoveLocalFavorite(card.dataset.ebsfId))favRenderCurrent();});

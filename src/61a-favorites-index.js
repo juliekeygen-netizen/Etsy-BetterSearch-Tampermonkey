@@ -389,13 +389,35 @@ function favIndexObserveRecords(records, options = {}) {
     return favIndexEnqueue(() => favIndexObserveRecordsNow(records, options));
 }
 
+function favIndexCollectionPropsMatchScope(scope, props) {
+    if (scope?.type !== 'collection') return true;
+    const expected = String(scope?.id || '').trim();
+    if (!expected || !props || typeof props !== 'object') return false;
+    const collection = props.collection && typeof props.collection === 'object' ? props.collection : {};
+    const candidates = [collection.slug, collection.key, props.slug]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+    try {
+        const collectionPath = new URL(String(collection.url || ''), location.origin).pathname;
+        const pathSlug = collectionPath.match(/\/favorites\/([^/?#]+)/i)?.[1];
+        if (pathSlug) candidates.push(decodeURIComponent(pathSlug));
+    } catch (_) {}
+    return candidates.includes(expected);
+}
+
 function favIndexObserveCurrentPage() {
+    const scope = favIndexCurrentScope();
     const props = favProps();
+    /* Etsy soft-navigates the route before it necessarily swaps the old
+     * collection's props and native cards. A partial observation from that
+     * short gap must never be attached to the new collection's complete
+     * snapshot: it would make an old listing appear as a member there. */
+    if (!favIndexCollectionPropsMatchScope(scope, props)) return Promise.resolve([]);
     const liveNodes = favCardMap(document);
     const listings = favListingsFromProps(props).filter((listing) => liveNodes.has(String(listing?.listingId ?? listing?.listing_id ?? '')));
     if (!listings.length) return Promise.resolve([]);
     const records = favRecordsFromListings(listings, 0, liveNodes);
-    return favIndexObserveRecords(records, { scope: favIndexCurrentScope(), complete: false });
+    return favIndexObserveRecords(records, { scope, complete: false });
 }
 
 async function favIndexMarkUnfavoriteNow(listingId, observedAt = Date.now()) {

@@ -5,12 +5,14 @@
   const ARM_KEY = 'ebsf-diagnostics:armed:v1';
   const STOPPED_KEY = 'ebsf-diagnostics:stopped:v1';
   const PANEL_OPEN_KEY = 'ebsf-diagnostics:panel-open:v1';
+  const OPTION_PREFERENCES_KEY = 'ebsf-diagnostics:option-preferences:v1';
   const CONTROL_STYLE_ID = `${PANEL_ID}-controls-style`;
   const encoder = new TextEncoder();
 
   const ui = {
     mode: 'idle', session: null, stopped: null, panel: null,
-    syncQueued: false, busy: false, elapsedTimer: 0
+    syncQueued: false, busy: false, elapsedTimer: 0,
+    optionPreferencesReady: Promise.resolve()
   };
 
   function send(message) {
@@ -90,24 +92,46 @@
     };
   }
 
+  const optionRoles = {
+    captureNetwork: 'network', captureBodies: 'bodies', captureStaticBodies: 'static-bodies',
+    captureDom: 'dom', captureDomSnapshots: 'dom-snapshots', captureScreenshots: 'screenshots',
+    captureInteractions: 'interactions', captureConsole: 'console', autoMarkers: 'auto-markers',
+    captureFrameTrace: 'frame-trace', captureBurstScreenshots: 'burst-screenshots', semanticMarkers: 'semantic-markers'
+  };
+
+  function restoreOptionValues(options) {
+    if (!ui.panel || !options || typeof options !== 'object') return;
+    for (const [option, role] of Object.entries(optionRoles)) {
+      if (typeof options[option] !== 'boolean') continue;
+      const input = ui.panel.querySelector(`[data-role="${role}"]`);
+      if (input && input.checked !== options[option]) input.checked = options[option];
+    }
+  }
+
+  function optionPreferences(panel = ui.panel) {
+    const options = readOptions(panel);
+    return Object.fromEntries(Object.keys(optionRoles).map((key) => [key, options[key] === true]));
+  }
+
+  async function restoreSavedOptionPreferences() {
+    try {
+      const stored = await chrome.storage.local.get(OPTION_PREFERENCES_KEY);
+      restoreOptionValues(stored?.[OPTION_PREFERENCES_KEY]);
+    } catch (_) {}
+  }
+
+  async function saveOptionPreferences() {
+    try { await chrome.storage.local.set({ [OPTION_PREFERENCES_KEY]: optionPreferences() }); }
+    catch (_) {}
+  }
+
   // `controls.js` is the final recorder-panel owner.  Its replacement panel is
   // created with unchecked opt-in fields after a Record & Reload navigation, so
   // reflect the already-authoritative background session before the controls
   // are locked.  Otherwise the panel can claim that the rapid capture modes
   // are off even while a session has them enabled.
   function restoreActiveSessionOptions(options) {
-    if (!ui.panel || !options || typeof options !== 'object') return;
-    const optionRoles = {
-      captureNetwork: 'network', captureBodies: 'bodies', captureStaticBodies: 'static-bodies',
-      captureDom: 'dom', captureDomSnapshots: 'dom-snapshots', captureScreenshots: 'screenshots',
-      captureInteractions: 'interactions', captureConsole: 'console', autoMarkers: 'auto-markers',
-      captureFrameTrace: 'frame-trace', captureBurstScreenshots: 'burst-screenshots', semanticMarkers: 'semantic-markers'
-    };
-    for (const [option, role] of Object.entries(optionRoles)) {
-      if (typeof options[option] !== 'boolean') continue;
-      const input = ui.panel.querySelector(`[data-role="${role}"]`);
-      if (input && input.checked !== options[option]) input.checked = options[option];
-    }
+    restoreOptionValues(options);
   }
 
   function setText(node, value) { if (node && node.textContent !== value) node.textContent = value; }
@@ -221,8 +245,14 @@
   }
 
   async function startAndReload() {
-    if (ui.busy || !(await discardStoppedIfNeeded())) return;
-    ui.busy = true; setStatus('Attaching Chrome debugger…'); syncUi();
+    if (ui.busy) return;
+    /* Do not race Record & Reload against the asynchronous durable-preference
+     * read. Otherwise a quick click after refresh can capture HTML defaults
+     * instead of the user's previous opt-in trace settings. */
+    ui.busy = true; setStatus('Loading capture options…'); syncUi();
+    await ui.optionPreferencesReady;
+    if (!(await discardStoppedIfNeeded())) { ui.busy = false; syncUi(); return; }
+    setStatus('Attaching Chrome debugger…'); syncUi();
     const response = await send({ action: 'start_recording', options: readOptions(ui.panel) });
     ui.busy = false;
     if (!response?.ok) { ui.mode = 'idle'; syncUi(); appendActivity(response?.error || 'Could not start recording.'); return; }
@@ -403,8 +433,14 @@
   function install(panel) {
     if (ui.panel) return;
     ui.panel = panel; injectControlStyle(); ensureOwnedStatus(panel); ensureCancelButton(panel); applyPanelOpen(readPanelOpen(), false); panel.addEventListener('click', handlePanelClick, true);
+    panel.addEventListener('change', (event) => {
+      const input = event.target;
+      if (input?.matches?.('[data-option]')) void saveOptionPreferences();
+    });
     new MutationObserver(() => { ensureOwnedStatus(panel); ensureCancelButton(panel); queueSync(); }).observe(panel, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'data-recording', 'data-collapsed', 'hidden'] });
-    ui.stopped = readStopped(); ensureElapsedTimer(); void refreshMode();
+    ui.stopped = readStopped(); ensureElapsedTimer();
+    ui.optionPreferencesReady = restoreSavedOptionPreferences();
+    void ui.optionPreferencesReady.then(() => refreshMode());
   }
 
   function waitForPanel() { const panel = document.getElementById(PANEL_ID); if (panel) install(panel); else requestAnimationFrame(waitForPanel); }

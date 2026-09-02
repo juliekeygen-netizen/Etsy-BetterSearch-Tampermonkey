@@ -106,6 +106,10 @@ These are the most important conclusions accumulated from real-browser diagnosti
 - In-progress pages/partial observations cannot rewrite the previous complete generation.
 - Failed/cancelled replacement crawls leave the active complete generation intact.
 - Partial observations provide positive evidence only; they cannot infer absence.
+- A collection-page observation must prove that its page-prop collection identity
+  still matches the current collection scope before it can add membership IDs.
+  During soft navigation, stale props/DOM are positive evidence only for their
+  own scope, never for the destination collection.
 
 ## 3.3 Multi-owner membership
 
@@ -150,6 +154,9 @@ These are the most important conclusions accumulated from real-browser diagnosti
 - Native page identity and local page identity must not alias.
 - Stale local results cannot hide a newer useful Etsy grid.
 - Async completion paths should return through the established reapply/currentness pipeline.
+- When a cache-backed fallback card is necessary, it keeps Etsy's structural
+  card contract and adds only the explicit BetterSearch shop/rating row; it
+  must not invent a separate option or action presentation.
 
 ## 3.9 Native heart confirmation
 
@@ -159,6 +166,9 @@ These are the most important conclusions accumulated from real-browser diagnosti
 - Stable same-view card disappearance can confirm removal only through the bounded confirmation path.
 - Superseding clicks, route/view changes, rollback, or unresolved timeouts fail closed.
 - Public-profile viewer-personal hearts remain isolated from profile membership.
+- A local fallback card without a connected native Preact instance cannot
+  promise an Etsy collection picker. Its action must remain visibly actionable
+  in the originating click rather than relying on a later blocked popup.
 
 ## 3.10 Production runtime ownership
 
@@ -170,6 +180,14 @@ These are the most important conclusions accumulated from real-browser diagnosti
   production Favorites runtime active and later isolated-world copies inert.
 - Diagnostics remains an independent observational build and must not be
   mistaken for a second production Favorites owner.
+
+## 3.11 Diagnostics capture-option persistence
+
+- Idle Diagnostics capture preferences persist in extension storage, so a
+  normal reload does not silently revert opt-in capture modes.
+- An active recording session remains authoritative over idle preferences when
+  a recorder panel is rehydrated, preventing the controls from misreporting
+  what that session is actually collecting.
 
 ---
 
