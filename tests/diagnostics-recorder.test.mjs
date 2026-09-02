@@ -141,7 +141,7 @@ test('Record & Reload is armed per-tab across navigation before the page reloads
   assert.match(content, /location\.reload\(\)/);
 });
 
-test('Record & Reload restores durable session options into the replacement panel', () => {
+test('the base recorder keeps durable session options available to the final panel controller', () => {
   assert.match(content, /function restoreSessionOptions\(options\)/);
   assert.match(content, /restoreSessionOptions\(state\.session\?\.options\)/);
   assert.match(content, /captureFrameTrace: 'frame-trace'/);

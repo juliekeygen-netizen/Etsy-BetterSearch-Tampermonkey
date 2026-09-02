@@ -2,62 +2,82 @@
 
 ## Current handoff status
 
-**Status:** documentation-only audit. No production or Diagnostics code was
-changed because the observed collection transition is source-proven full
-navigation and a SPA workaround is unsafe without a focused browser capture.
+**Status:** Diagnostics-only behavior gate, ready for independent review and
+publication. Production BetterSearch code and release identity are unchanged.
 
 ```text
 Date: 2026-09-02
-Base main: 936325e0b70723005fc8c05dacbb3534ff0c2236 (v0.15.27)
-Base main push CI: 33642624166 — SUCCESS
-Branch: codex/audit-collection-handoff
-Audit content head: ac7e5373cca6ec686beb7c51080dcc87aa1f28c1
-PR: pending publication
-CI: pending publication
+Base main: ee2abc8319c0883945bedfc9f016de4b05039ffd (v0.15.27)
+Base main push CI: 33643152934 — SUCCESS
+Branch: codex/fix-diagnostics-active-option-restore
+Implementation head: 699ad74e06b431cbe44df38f06c2dec20320e76e
+PR: #82 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/82 — OPEN
+Published handoff head: cf3fe1149e81b06dad81ba9d7001ae423b8941cd
+Exact-head CI: queued after PR publication
 ```
 
-## Verified conclusions
+## Verified problem and decision
 
-Private Diagnostics evidence showed a native-to-BetterSearch transition during
-collection changes and reported missing collection selectors. The final
-production collection-pill owner, `favBindCollectionLink0128` in
-`src/94-favorites-native-boundary.js`, prevents the copied pill's default
-event, stops propagation, then uses `location.assign(link.href)`. A collection
-click therefore replaces the document; the recorded native shell followed by
-BetterSearch reinstallation is expected from that explicit route boundary.
+A new private focused capture contained three user marker snapshots and their
+notes. It also showed that all three opt-in rapid capture controls were
+unchecked while recording, and its summary contained zero animation-frame
+trace windows and zero marker screenshot bursts. That capture cannot establish
+whether a sub-frame Favorites transition occurred.
 
-There is no source proof that a synthetic History API route or a fetched DOM
-swap would leave Etsy's native collection/grid/pager current. Such a patch
-could violate the local/native rendering/currentness invariant, so this audit
-does not make that speculative change.
+The source cause is load order: `content.js` has option rehydration, but the
+later-loaded `controls.js` is the final recorder-panel/action owner. Its
+replacement panel did not copy `session.options` before the active controls
+were locked. This branch adds the same narrow option-to-checkbox reconciliation
+in that final owner, called from every UI sync. It does not overwrite idle
+preferences or alter the authoritative background session.
 
-## Changes
+No raw archive, screenshot, network data, account/listing data, URLs, or
+marker-note text is tracked.
+
+## Files changed
 
 ```text
-docs/FAVORITES_DIAGNOSTIC_HANDOFF_AUDIT_2026-09-02.md
-  Sanitized diagnosis, boundaries, and exact repaired-Diagnostics repeat
-  capture protocol.
+diagnostics-extension/controls.js
+  Rehydrate all durable active-session capture options, including fast frame
+  trace, problem screenshot burst, and semantic mismatch markers.
+
+tests/diagnostics-controls.test.mjs
+  Regression coverage for the final controls owner and its load boundary.
+
+tests/diagnostics-recorder.test.mjs
+  Corrects the older test description: content keeps options available, while
+  the final controller owns replacement-panel presentation.
 
 ACTIVE_WORK.md / PROJECT_STATE.md
-  Records merged v0.15.27 state and the collection-handoff evidence boundary.
-
-CODEX_HANDOFF.md
-  This packet.
+  Sanitized reconciliation of the new private capture and next evidence step.
 ```
 
-No private raw diagnostics, screenshots, URLs, listing/account data, or marker
-notes are tracked.
-
-## Validation and reviewer focus
+## Validation and artifact audit
 
 ```text
-npx --yes --package=node@22 node scripts/check.mjs  PASS — 125 files / 90 modules, v0.15.27
-git diff --check                                     PASS
+npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files, 90 modules, v0.15.27
+npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 570/570
+npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics Chrome
+git diff --check                                         PASS
 ```
 
-Review that the audit accurately distinguishes the source-proven full-document
-handoff from the still-unproven questions: whether Etsy's native navigation
-can safely route copied pills softly, whether the collection strip is missing
-after settling, and the exact filter ownership timing. The next action is a
-focused repeat capture with all three rapid Diagnostics options enabled, not a
-production routing patch.
+Built Diagnostics artifact audit: `dist/diagnostics-chrome/controls.js`
+contains `restoreActiveSessionOptions` and invokes it with
+`ui.session?.options` before controls are disabled; its manifest remains
+Diagnostics `0.2.9`. This behavior gate intentionally does not bump BetterSearch
+`0.15.27`.
+
+## Remaining browser check and reviewer focus
+
+Reload the unpacked `dist/diagnostics-chrome` extension, enable all three
+rapid options, press **Record & Reload**, and verify they stay visibly checked
+and disabled while recording. Mark a focused problem, wait at least 1.2 seconds
+after the marker, then export: the summary should report one or more frame
+trace windows and ten burst screenshots per marker when Chrome permits CDP
+screenshots.
+
+Review the final-owner boundary in `controls.js`, especially that active
+session options only update presentation and do not mutate user choices before
+recording. The next independent task is the requested collection sort/search
+row layout, after tracing its final production DOM owner; do not change
+collection routing without repaired rapid-transition evidence.

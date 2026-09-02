@@ -40,22 +40,21 @@ intentional duplicate-runtime installation. No private diagnostics are tracked.
 
 ## Next independent work
 
-PR #77 (stable desktop Favorites toolbar geometry) was independently reviewed
-and merged to `main` at `9f18b2a`; its required post-merge CI run `33640759152`
-succeeded and it is included in the v0.15.27 promotion.
+PRs #77–#81 are merged. Their `main` merge heads were independently verified
+by push CI: #77 `33640759152`, #78 `33641562157`, #79 `33642073497`, #80
+`33642624166`, and #81 `33643152934`, all successful. Current `main` is
+`ee2abc8`.
 
-PR #78 (valid native-empty-state Diagnostics marker suppression) was merged to
-`main` at `3f019e1` after its reconciled exact-head CI run `33641504532`
-succeeded. Its post-merge `main` CI still needs to be recorded.
+A new private focused capture has three manual markers and useful layout
+screenshots, but its rapid options were not active: its summary has zero
+animation-frame windows and zero marker-burst screenshots. Source reconciliation
+found that `controls.js`, loaded after `content.js`, is the final recorder-panel
+owner and did not rehydrate the durable session options. The active independent
+Diagnostics behavior gate repairs that final owner before requesting another
+rapid-transition capture. It does not change production Favorites routing or
+ownership.
 
-PR #79 is the active Diagnostics-only behavior gate. It corrects reload-panel
-option rehydration and makes the final streaming ZIP export the selected
-animation-frame trace and marker screenshot bursts. Its current-main merge
-head `259c984` passed required push CI run `33642073497`.
-
-The v0.15.27 promotion merged at `936325e` and passed required push CI run
-`33642624166`. The active task is a collection/native-local handoff audit:
-use the repaired Diagnostics build for a focused repeat capture before changing
-production SPA routing or ownership. The final copied-pill handler intentionally
-forces full navigation, so do not treat shorter filter movement as source-proven
-without that evidence.
+The collection-pill handler still intentionally performs a full document
+navigation. Do not introduce a synthetic SPA route or inferred filtering fix
+until a repaired capture proves a lasting semantic mismatch after the route has
+settled.
