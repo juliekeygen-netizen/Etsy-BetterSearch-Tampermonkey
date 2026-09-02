@@ -62,3 +62,8 @@ The collection-pill handler still intentionally performs a full document
 navigation. Do not introduce a synthetic SPA route or inferred filtering fix
 until a repaired capture proves a lasting semantic mismatch after the route has
 settled.
+
+The `v0.15.28` release-promotion branch follows merged PR #83 and its green
+`main` CI. It aligns package/userscript identity, all 90 userscript
+cache-busters, and release-identity regression assertions. Merge only after
+its exact-head CI and artifact audit are green.
