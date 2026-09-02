@@ -11,8 +11,9 @@ Base main: ee2abc8319c0883945bedfc9f016de4b05039ffd (v0.15.27)
 Base main push CI: 33643152934 — SUCCESS
 Branch: codex/fix-diagnostics-active-option-restore
 Implementation head: 699ad74e06b431cbe44df38f06c2dec20320e76e
-PR: pending publication
-Exact-head CI: pending publication
+PR: #82 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/82 — OPEN
+Published handoff head: cf3fe1149e81b06dad81ba9d7001ae423b8941cd
+Exact-head CI: queued after PR publication
 ```
 
 ## Verified problem and decision
