@@ -2,18 +2,20 @@
 
 ## Current handoff status
 
-**Status:** the Diagnostics rapid-trace behavior gate is being reconciled with
-the current `main` after PRs #77 and #78 merged. It changes Diagnostics only;
-production release identity remains v0.15.26 and Diagnostics remains v0.2.9.
+**Status:** the Diagnostics rapid-trace behavior gate has been reconciled and
+locally validated on current `main` after PRs #77 and #78 merged. It changes
+Diagnostics only; production release identity remains v0.15.26 and Diagnostics
+remains v0.2.9.
 
 ```text
 Date: 2026-09-02
 Base main: 3f019e1998b849af2d3378236fff69743a7183f9
 Branch: codex/feature-diagnostics-burst-trace
 Original behavior head: 1dabdd5fe10d1b5eb58b3895031ac6acf0d49cb5
+Validated integration head: b1d5e1fc00667dd86030f5a7ac9923f0bf15685e
 PR: #79 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/79 (OPEN)
 Original PR CI: 33640572093 — SUCCESS
-Integration validation / CI: pending
+Integration CI: pending push of this documentation update
 ```
 
 ## Problem and evidence
@@ -57,10 +59,21 @@ are tracked. The trace only runs when its new explicit option is selected.
 
 ## Validation / artifacts
 
-Before current-main integration, the original behavior head passed Node 22
-repository checks, all-target builds, 567 tests, and GitHub Actions run
-`33640572093`. The current integration requires a full Node 22 check, suite,
-build, artifact inspection, and fresh exact-head CI before merge.
+The current-main integration head passed:
+
+```text
+npx --yes --package=node@22 node --test tests/diagnostics-recorder.test.mjs  PASS — 14/14
+npx --yes --package=node@22 node scripts/check.mjs                            PASS — 125 files / 90 modules
+npx --yes --package=node@22 node --test tests/*.test.mjs                      PASS — 569/569
+npx --yes --package=node@22 node scripts/build.mjs                            PASS — Chrome, Firefox, Diagnostics
+git diff --check                                                               PASS
+```
+
+The built Diagnostics artifact was inspected: it contains the valid native
+empty-state guard, `restoreSessionOptions`, trace collection and
+`timeline/frame-traces.ndjson`, the marker-burst JPEG writer, and both summary
+counters. A fresh exact-head CI run remains required after this documentation
+commit.
 
 ## Reviewer focus and next action
 

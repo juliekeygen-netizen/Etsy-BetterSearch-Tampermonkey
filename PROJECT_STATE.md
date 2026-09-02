@@ -667,4 +667,20 @@ Diagnostics-only behavior gate. It recognizes Etsy's visible structural empty
 card without weakening the marker for actual missing grids. See
 `docs/DIAGNOSTICS_VALID_EMPTY_STATE_MARKER_2026-09-01.md`.
 
+## 13.2 Diagnostics rapid-trace export behavior gate — 2026-09-02
+
+Private capture reconciliation showed that the new opt-in rapid diagnostics
+were only partially delivered: a replacement recorder panel did not reflect
+the durable selected options after **Record & Reload**, and the final
+streaming exporter dropped its retained frame-trace and marker-burst events.
+
+`codex/feature-diagnostics-burst-trace` is the separate Diagnostics-only
+behavior gate for that delivery path. It rehydrates the durable options,
+exports `timeline/frame-traces.ndjson`, writes valid burst JPEGs under their
+marker directories, and exposes summary counters. It does not change the
+production userscript/extension runtime or release identity. After its fresh
+CI passes and the branch merges, use its output to make the reported
+collection/native-local handoff investigation reproducible at animation-frame
+resolution before changing a production owner.
+
 The detailed autonomous sequence is in `docs/CODEX_NEXT_WORK_PLAN.md`.
