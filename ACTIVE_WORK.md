@@ -9,7 +9,7 @@ remain authoritative if they disagree with this snapshot.
 
 ```text
 Release: v0.15.26
-main: 9f18b2acc572b744f87400114ebeedfd7d96878b
+main: 3f019e1998b849af2d3378236fff69743a7183f9
 release integration PR: #75 — merged
 post-merge push CI: 33521127261 — success
 ```
@@ -45,14 +45,14 @@ and merged to `main` at `9f18b2a`; its release identity remains v0.15.26 until
 a deliberate release promotion. Its required post-merge CI run `33640759152`
 succeeded.
 
-The active work is `codex/fix-diagnostics-valid-empty-state-marker`, now being
-integrated with that current `main`. It suppresses only the Diagnostics
-false-positive marker for a structurally verified, visible native empty
-Favorites collection. Its reconciled exact-head CI run `33641358486` succeeded;
-it does not alter production behavior.
+PR #78 (valid native-empty-state Diagnostics marker suppression) was merged to
+`main` at `3f019e1` after its reconciled exact-head CI run `33641504532`
+succeeded. Its post-merge `main` CI still needs to be recorded.
 
-The user-provided refresh and collection-transition capture also proved a
-native-to-local handoff flash. The newly added frame trace/burst exporter must
-be merged and used for a focused repeat capture before changing the final
-collection-navigation or grid-ownership owner. Do not treat shorter filter
-movement as source-proven without that evidence.
+PR #79 is the active Diagnostics-only behavior gate. It corrects reload-panel
+option rehydration and makes the final streaming ZIP export the selected
+animation-frame trace and marker screenshot bursts. Its current-main merge
+head is locally validated and awaits fresh CI. Once merged, use it for a
+focused repeat capture before changing final production collection navigation
+or grid ownership. Do not treat shorter filter movement as source-proven
+without that evidence.

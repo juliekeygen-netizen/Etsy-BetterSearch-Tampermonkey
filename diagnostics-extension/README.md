@@ -13,6 +13,26 @@ Development-only Chrome extension for recording difficult Etsy BetterSearch brow
 
 Every event includes an ISO/wall-clock timestamp and monotonic timing relative to navigation/recording so network and DOM events can be correlated precisely.
 
+## Opt-in rapid-transition trace
+
+Three new unchecked recorder options target brief layout and filtering flashes
+without making every recording large:
+
+- **Fast layout/frame trace** keeps a rolling 3.2-second animation-frame buffer
+  of the Favorites toolbar, collection strip, rail, result ownership geometry,
+  card fingerprints/order, displayed count, and collection-model cardinality.
+  A manual marker exports that buffer plus 1.2 seconds after the marker to
+  `timeline/frame-traces.ndjson`.
+- **Problem screenshot burst** writes ten compressed screenshot frames over
+  roughly 1.1 seconds for each manual marker.
+- **Semantic mismatch markers** emits markers only after a 700ms stable
+  contradiction: visible cards with a zero Favorites count, or a rendered
+  All-only collection strip when current Etsy metadata reports collections.
+
+These options are intended for a short focused reproduction. They preserve
+private data within the local diagnostic ZIP and should not be enabled for
+long general recordings unless needed.
+
 ## Workflow
 
 1. Build the repo with `npm run build`.

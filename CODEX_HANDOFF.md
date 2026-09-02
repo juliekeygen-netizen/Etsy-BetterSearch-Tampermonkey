@@ -2,76 +2,83 @@
 
 ## Current handoff status
 
-**Status:** PR #77 was reviewed and merged to `main`; this Diagnostics-only
-fix has now been reconciled and revalidated on top of it. Release identity
-remains v0.15.26.
+**Status:** the Diagnostics rapid-trace behavior gate has been reconciled and
+locally validated on current `main` after PRs #77 and #78 merged. It changes
+Diagnostics only; production release identity remains v0.15.26 and Diagnostics
+remains v0.2.9.
 
 ```text
 Date: 2026-09-02
-Base main: 9f18b2acc572b744f87400114ebeedfd7d96878b
-Branch: codex/fix-diagnostics-valid-empty-state-marker
-Original behavior head: 1762992e5d0f54b6c0cc616513ddfdd2d6cbee18
-Validated integration head: d6470764f865801729aa1c11b1a6349b4c537ebc
-PR: #78 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/78 (OPEN)
-Validated review head: 43d4c3e7bbbf80e97c39b59dc54e3c3fcae31bc6
-Release identity: production 0.15.26; Diagnostics 0.2.9 (unchanged)
+Base main: 3f019e1998b849af2d3378236fff69743a7183f9
+Branch: codex/feature-diagnostics-burst-trace
+Original behavior head: 1dabdd5fe10d1b5eb58b3895031ac6acf0d49cb5
+Validated integration head: b1d5e1fc00667dd86030f5a7ac9923f0bf15685e
+PR: #79 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/79 (OPEN)
+Original PR CI: 33640572093 — SUCCESS
+Integration CI: pending push of this documentation update
 ```
 
-## Evidence and change
+## Problem and evidence
 
-A private Diagnostics capture marked a valid Etsy native empty collection as
-`no-grid-visible`. Screenshot/DOM evidence confirms that state was an intended
-empty presentation, not an absent result grid. The raw capture is not tracked.
+The user supplied private Diagnostics archives, marker notes, and image-frame
+exports. They are deliberately untracked. The capture proved two Diagnostics
+defects:
 
-`diagnostics-extension/content.js` now identifies the narrowly structural,
-visible native empty card and excludes it from the no-grid predicate. Other
-empty listing sections still emit the marker. The predicate is standalone and
-unit-tested for missing-grid, valid-empty, and loading states.
+- After **Record & Reload**, durable recorder options remained active but the
+  replacement panel visually showed every checkbox unchecked.
+- Events for frame traces and marker screenshot bursts were captured but the
+  final streaming ZIP exporter omitted both families, so the archive contained
+  neither `timeline/frame-traces.ndjson` nor burst images.
 
-Changed files:
+The private evidence also shows native-to-local Favorites handoff during
+refresh and collection navigation. That production behavior is not changed by
+this Diagnostics-only gate.
+
+## Changes
 
 ```text
-diagnostics-extension/content.js       — empty-state-aware marker predicate
-tests/diagnostics-recorder.test.mjs    — executable predicate regression
-docs/DIAGNOSTICS_VALID_EMPTY_STATE_MARKER_2026-09-01.md — sanitized evidence
-PROJECT_STATE.md / ACTIVE_WORK.md      — current behavior-gate status
-CODEX_HANDOFF.md                       — this packet
+diagnostics-extension/content.js
+  Adds opt-in animation-frame geometry/card/semantic trace sampling (3.2 s
+  before + 1.2 s after a marker), screenshot-burst and semantic-marker controls,
+  and rehydrates all durable options into the replacement panel after reload.
+
+diagnostics-extension/background.js
+  Captures ten marker-burst screenshots and records trace/burst summary counts.
+
+diagnostics-extension/background-streaming-export.js
+  Exports frame traces to timeline/frame-traces.ndjson and burst JPEGs under
+  each marker directory in the final streaming ZIP.
+
+tests/diagnostics-recorder.test.mjs
+  Covers the opt-in capture/export wiring, reload option rehydration, and the
+  valid-native-empty-state predicate merged from #78.
 ```
 
-## Validation and artifacts
+No private payloads, screenshots, notes, listing data, or account identifiers
+are tracked. The trace only runs when its new explicit option is selected.
+
+## Validation / artifacts
+
+The current-main integration head passed:
 
 ```text
-Node 22 repository check               PASS — 125 files / 90 modules
-Node 22 full test suite                PASS — 567/567
-Node 22 all-target build               PASS — Chrome, Firefox, Diagnostics
-git diff --check                       PASS
+npx --yes --package=node@22 node --test tests/diagnostics-recorder.test.mjs  PASS — 14/14
+npx --yes --package=node@22 node scripts/check.mjs                            PASS — 125 files / 90 modules
+npx --yes --package=node@22 node --test tests/*.test.mjs                      PASS — 569/569
+npx --yes --package=node@22 node scripts/build.mjs                            PASS — Chrome, Firefox, Diagnostics
+git diff --check                                                               PASS
 ```
 
-The built Diagnostics Chrome content script was inspected on the integration
-head: it contains `nativeEmptyState`, `shouldMarkNoGridVisible`, and the
-valid-empty exclusion. No production userscript/extension behavior, version,
-network handling, or raw private diagnostics were changed.
+The built Diagnostics artifact was inspected: it contains the valid native
+empty-state guard, `restoreSessionOptions`, trace collection and
+`timeline/frame-traces.ndjson`, the marker-burst JPEG writer, and both summary
+counters. A fresh exact-head CI run remains required after this documentation
+commit.
 
-GitHub Actions `CI and extension builds` run `33523497323` succeeded for the
-pre-integration review head. Fresh exact-head run `33641358486` also succeeded
-for `8bc541b0a80ecbce05a0cd61464e83e32c8334b9`; it passed whitespace,
-repository checks, tests, Chrome/Firefox/Diagnostics builds, and all three
-artifact uploads. The merged #77 production baseline also passed its required
-push CI as run `33640759152` on `9f18b2a`.
+## Reviewer focus and next action
 
-Native `npm run ci` was not used because local Node 26 conflicts with the
-repository VM fixtures; the successful Node 22 commands above are exact.
-
-## Manual test and reviewer focus
-
-Load the Diagnostics build, visit a normal empty Favorites collection, and
-verify it produces no no-grid marker. Then test a deliberately transient or
-real no-grid state if safely reproducible; it should still mark. Review the
-selector's narrowness against Etsy DOM changes and confirm it does not suppress
-local-grid ownership failures.
-
-## Recommended next action
-
-Merge #78 if its GitHub mergeability remains clean. Then reconcile the separate
-rapid trace/burst export PR with current `main`; use its repaired archive for
-the focused collection/navigation audit.
+Review the option rehydration map and the streaming exporter’s binary JPEG
+path: the export must retain bounded frame trace text and each valid screenshot
+without reconstructing a whole recording in memory. After fresh CI is green,
+merge #79, then use the repaired Diagnostics build to capture the collection
+handoff again before changing final production navigation or grid ownership.

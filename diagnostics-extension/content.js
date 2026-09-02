@@ -41,7 +41,10 @@
     activity: [],
     elapsedTimer: 0,
     performanceObservers: [],
-    listenersInstalled: false
+    listenersInstalled: false,
+    frameTraceId: 0,
+    frameTrace: [],
+    semanticMismatchSince: new Map()
   };
 
   function now() {
@@ -262,6 +265,79 @@
     log(`AUTO marker: ${label}`);
   }
 
+  function traceFingerprint(value) {
+    let hash = 2166136261;
+    for (const char of String(value || '')) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    return `f${(hash >>> 0).toString(36)}`;
+  }
+
+  function visibleCardTrace(selector) {
+    const grid = document.querySelector(selector);
+    if (!visibleElement(grid)) return { visible:false, count:0, cards:[] };
+    const cards = Array.from(grid.querySelectorAll(':scope > li,:scope > article,:scope > div')).slice(0, 40);
+    return { visible:true, count:cards.length, cards:cards.map((card, index) => {
+      const link = card.querySelector?.('a[href*="/listing/"]');
+      return `${index}:${traceFingerprint(link?.getAttribute('href') || card.textContent?.slice(0, 80) || '')}`;
+    }) };
+  }
+
+  function semanticTrace() {
+    const strip = document.querySelector(IMPORTANT.collectionStrip);
+    let expectedCollections = null;
+    for (const script of document.querySelectorAll('script[type="text/props"]')) {
+      const text = String(script.textContent || '');
+      if (!text.includes('"collectionsTabs"')) continue;
+      try { const tabs = JSON.parse(text)?.collectionsTabs; if (Array.isArray(tabs)) { expectedCollections = tabs.filter((entry) => entry?.__type === 'collection').length; break; } } catch (_) {}
+    }
+    return {
+      collections:{ visible:visibleElement(strip), renderedControls:strip?.querySelectorAll('a,button').length || 0, expectedCollections },
+      native:visibleCardTrace(IMPORTANT.nativeGrid), local:visibleCardTrace(IMPORTANT.localGrid),
+      countText:compact(document.querySelector('[data-ebsf-all-header], [data-testid="collections-landing-right-side-header"]')?.textContent, 180)
+    };
+  }
+
+  function frameTraceSample() {
+    const elements = Object.fromEntries(['toolbar', 'collectionStrip', 'allHeader', 'rail', 'sidebar', 'listingSection'].map((key) => [key, elementState(IMPORTANT[key])]));
+    return { observed:now(), frame:performance.now(), elements, semantic:semanticTrace() };
+  }
+
+  function startFrameTrace() {
+    if (!state.recording || !state.session?.options?.captureFrameTrace || state.frameTraceId) return;
+    const tick = () => {
+      state.frameTraceId = requestAnimationFrame(tick);
+      state.frameTrace.push(frameTraceSample());
+      const cutoff = performance.now() - 3200;
+      while (state.frameTrace.length && state.frameTrace[0].frame < cutoff) state.frameTrace.shift();
+    };
+    state.frameTraceId = requestAnimationFrame(tick);
+  }
+
+  function stopFrameTrace() {
+    if (state.frameTraceId) cancelAnimationFrame(state.frameTraceId);
+    state.frameTraceId = 0; state.frameTrace = [];
+  }
+
+  function traceMarkerWindow(markerId) {
+    if (!state.session?.options?.captureFrameTrace) return;
+    const before = state.frameTrace.slice();
+    setTimeout(() => { emit('frame-trace', 'marker-window', { markerId, beforeMs:3200, afterMs:1200, samples:[...before, ...state.frameTrace] }); void flush(); }, 1200);
+  }
+
+  function semanticAutoMarkers(snapshot) {
+    if (!state.session?.options?.semanticMarkers || document.readyState !== 'complete') return;
+    const trace = semanticTrace();
+    const checks = [
+      ['collection-strip-mismatch', trace.collections.expectedCollections > 0 && trace.collections.renderedControls <= 1, 'Collection selector is missing known collections'],
+      ['visible-grid-zero-count', (trace.native.visible || trace.local.visible) && /\b0 favorites\b.*\b0 shown\b/i.test(trace.countText), 'Visible Favorites cards disagree with a zero count']
+    ];
+    for (const [key, failed, label] of checks) {
+      const since = state.semanticMismatchSince.get(key) || 0;
+      if (!failed) { state.semanticMismatchSince.delete(key); continue; }
+      if (!since) { state.semanticMismatchSince.set(key, performance.now()); continue; }
+      if (performance.now() - since >= 700) autoMarker(key, label, { ...snapshot, semantic:trace });
+    }
+  }
+
   function shouldMarkNoGridVisible(current, readyState = document.readyState) {
     return Boolean(
       current.listingSection?.exists
@@ -296,6 +372,7 @@
     if (current.nativePager?.visible && current.localPager?.visible) {
       autoMarker('both-pagers-visible', 'Native and BetterSearch pagers are both visible', snapshot);
     }
+    semanticAutoMarkers(snapshot);
     state.previousImportant = current;
     return snapshot;
   }
@@ -509,6 +586,7 @@
     installGlobalListeners();
     startMutationObserver();
     startPerformanceObservers();
+    startFrameTrace();
     emit('lifecycle', 'content-recorder-start', {
       reason,
       url: location.href,
@@ -530,6 +608,7 @@
     emit('lifecycle', 'content-recorder-stop', { url: location.href, readyState: document.readyState });
     stopMutationObserver();
     stopPerformanceObservers();
+    stopFrameTrace();
     state.recording = false;
     clearInterval(state.elapsedTimer);
     state.elapsedTimer = 0;
@@ -549,8 +628,30 @@
       captureInteractions: checked('interactions'),
       captureConsole: checked('console'),
       autoMarkers: checked('auto-markers'),
+      captureFrameTrace: checked('frame-trace', false),
+      captureBurstScreenshots: checked('burst-screenshots', false),
+      semanticMarkers: checked('semantic-markers', false),
       bodyLimitBytes: 5 * 1024 * 1024
     };
+  }
+
+  // A Record & Reload session survives in the background/sessionStorage while
+  // this document (and its default checkbox markup) is replaced.  The panel
+  // must display the options that are actually recording, rather than its
+  // unchecked markup defaults.
+  function restoreSessionOptions(options) {
+    if (!state.panel || !options || typeof options !== 'object') return;
+    const optionRoles = {
+      captureNetwork: 'network', captureBodies: 'bodies', captureStaticBodies: 'static-bodies',
+      captureDom: 'dom', captureDomSnapshots: 'dom-snapshots', captureScreenshots: 'screenshots',
+      captureInteractions: 'interactions', captureConsole: 'console', autoMarkers: 'auto-markers',
+      captureFrameTrace: 'frame-trace', captureBurstScreenshots: 'burst-screenshots', semanticMarkers: 'semantic-markers'
+    };
+    for (const [option, role] of Object.entries(optionRoles)) {
+      if (typeof options[option] !== 'boolean') continue;
+      const input = state.panel.querySelector(`[data-role="${role}"]`);
+      if (input && input.checked !== options[option]) input.checked = options[option];
+    }
   }
 
   async function beginRecording({ reload = false } = {}) {
@@ -583,6 +684,8 @@
       pageState: pageState('user-marker')
     };
     emit('marker-local', 'user-marker', marker);
+    traceMarkerWindow(markerId);
+    if (state.session?.options?.captureBurstScreenshots) void send({ action:'marker_burst_screenshots', markerId });
     const response = await send({ action: 'marker_begin', marker });
     if (!response?.ok) log(`Marker capture warning: ${response?.error || 'unknown error'}`);
     openMarkerEditor(markerId);
@@ -633,6 +736,7 @@
 
   function updateUi() {
     if (!state.panel) return;
+    restoreSessionOptions(state.session?.options);
     const recording = Boolean(state.recording);
     state.panel.dataset.recording = recording ? '1' : '0';
     for (const button of state.panel.querySelectorAll('[data-start]')) button.disabled = recording;
@@ -772,7 +876,9 @@
     const markerEvents = byStream('marker');
     const localMarkers = byStream('marker-local');
     const screenshots = byStream('marker-screenshot');
+    const burstScreenshots = byStream('marker-burst-screenshot');
     const domSnapshots = byStream('marker-dom');
+    const frameTraces = byStream('frame-trace');
     const recorder = byStream('recorder');
 
     zip.addJson('manifest.json', {
@@ -810,11 +916,16 @@
     zip.addText('timeline/recorder.ndjson', ndjson(recorder));
     zip.addText('dom/mutations.ndjson', ndjson(mutations));
     zip.addText('dom/important-elements.ndjson', ndjson(important));
+    zip.addText('timeline/frame-traces.ndjson', ndjson(frameTraces));
     zip.addJson('markers/markers.json', [...markerEvents, ...localMarkers]);
 
     for (const event of screenshots) {
       if (event.type !== 'screenshot' || !event.data?.data) continue;
       zip.addBytes(`markers/${safeFilePart(event.data.markerId)}/screenshot.png`, base64Bytes(event.data.data));
+    }
+    for (const event of burstScreenshots) {
+      if (event.type !== 'screenshot' || !event.data?.data) continue;
+      zip.addBytes(`markers/${safeFilePart(event.data.markerId)}/burst-${String(event.data.offsetMs).padStart(4, '0')}ms.jpg`, base64Bytes(event.data.data));
     }
     for (const event of domSnapshots) {
       if (event.type !== 'dom-snapshot' || !event.data?.snapshot) continue;
@@ -951,6 +1062,9 @@
             <label class="ebd-check"><input data-option data-role="interactions" type="checkbox" checked><span>User interactions</span></label>
             <label class="ebd-check"><input data-option data-role="console" type="checkbox" checked><span>Console / errors</span></label>
             <label class="ebd-check"><input data-option data-role="auto-markers" type="checkbox" checked><span>Automatic problem markers</span></label>
+            <label class="ebd-check"><input data-option data-role="frame-trace" type="checkbox"><span>Fast layout/frame trace</span></label>
+            <label class="ebd-check"><input data-option data-role="burst-screenshots" type="checkbox"><span>Problem screenshot burst</span></label>
+            <label class="ebd-check"><input data-option data-role="semantic-markers" type="checkbox"><span>Semantic mismatch markers</span></label>
           </div>
           <small>All events include wall-clock + monotonic timing so DOM, network and UI changes can be correlated precisely. Keep DevTools closed while recording.</small>
         </section>
