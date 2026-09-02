@@ -20,6 +20,7 @@ test('fallback heart uses Etsy’s native Favorites control contract', () => {
   const fallback = runtime.slice(runtime.indexOf('function favFallbackNode'), runtime.indexOf('function favPrepareOwnedCard0141'));
   assert.match(fallback, /favorites-landing-heart-button/);
   assert.match(fallback, /data-listing-id="\$\{safe\(record\.id\)\}"/);
+  assert.match(fallback, /class="favorited-icon-container should-animate wt-nudge-l-1 wt-nudge-b-1"/);
   assert.match(fallback, /data-favorited-icon="true"/);
   assert.match(runtime, /const url=String\(card\.dataset\.ebsfUrl\|\|card\.dataset\.ebsListingUrl\|\|''\)\.trim\(\)/);
   assert.match(runtime, /window\.open\(url,'_blank','noopener'\)/);
