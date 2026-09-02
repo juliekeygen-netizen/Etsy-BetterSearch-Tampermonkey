@@ -31,9 +31,9 @@ position immediately before Etsy's Search button. This branch updated
 
 ```text
 Branch: codex/fix-ships-anywhere-selection
-Published head: 6613529bcf6689d10f460dbd26fc8b1579adbb34
+Published head: 6613529438316bb7b449aa7f3fbaee495d8cc2ee
 PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/87 — OPEN
-Last checked GitHub CI: 33667428507 — SUCCESS
+Last checked GitHub CI: 33667554145 — SUCCESS
 Base: 7d24e95d6014500e3dea87f307a782d167bae559
 ```
 
@@ -43,12 +43,14 @@ Local checks, 572/572 Node 22 tests, all delivery builds, whitespace audit,
 and Chrome/Firefox artifact inspection passed. Manual review: Europe → Anywhere
 then reload; Anywhere stays checked without auto-opening Ships from.
 
-### Pending publication — fallback Favorites card presentation
+### PR #88 — fallback Favorites card presentation
 
 ```text
 Branch: codex/fix-fallback-card-native-presentation
 Implementation head: ba2a8c0bc60c4282f4b593550612681e52ce0629
-PR: pending publication
+Published head: 3902cbed2eb09a6d4d635866f58ca463fc883cf5
+PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/88 — OPEN
+GitHub CI: pending (run 33667828558)
 Base: 7d24e95d6014500e3dea87f307a782d167bae559
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
