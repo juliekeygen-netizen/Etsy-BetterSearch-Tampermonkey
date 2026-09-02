@@ -44,12 +44,12 @@ function favShippingCodesAvailable0157(bindingKey, codesInput, currentCountry = 
     return true;
 }
 
-function favToolbarPlan0157({ viewportWidth, headerWidth, leftWidth, sortWidth }) {
+function favToolbarPlan0157({ viewportWidth, headerWidth, leftWidth, sortWidth, forceStack = false }) {
     const width = Math.max(0, Number(headerWidth) || 0);
     const left = Math.max(0, Number(leftWidth) || 0);
     const sort = Math.max(0, Number(sortWidth) || 180);
     const reserved = sort + FAV_SETTINGS_WIDTH0135 + FAV_TOOLBAR_GAP_TOTAL0135;
-    if (!width || Number(viewportWidth) < 900) {
+    if (forceStack || !width || Number(viewportWidth) < 900) {
         return { stacked:true, reserved, searchWidth:0, toolbarWidth:0, available:width };
     }
 
@@ -348,9 +348,11 @@ function favAlignToolbarX0157(header, right) {
     if (right.dataset.ebsfExactXOwns !== '1') right.dataset.ebsfExactXOwns = '1';
 }
 
-/* Final toolbar owner. Desktop width is constrained by the actual intrinsic
- * title/control width, not only a percentage of the complete header. If the
- * minimum useful Search control cannot coexist with the title, stack early.
+/* Final toolbar owner. Collection routes deliberately give the native
+ * collection identity/visibility row its own line, then place
+ * Sort/Settings/Search below it like the BetterSearch All header. Other
+ * desktop headers are constrained by actual intrinsic title/control width; if
+ * a minimum useful Search control cannot coexist with the title, stack early.
  * 761-899px is already stacked by the responsive shell and uses a 1fr Search
  * track via the CSS below. */
 favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
@@ -383,7 +385,13 @@ favApplyExactSearchWidth0135 = function favApplyExactSearchWidth0157() {
 
     const leftRectWidth = left?.getBoundingClientRect?.().width || 0;
     const leftWidth = Math.max(leftRectWidth, Number(left?.scrollWidth) || 0);
-    const plan = favToolbarPlan0157({ viewportWidth:innerWidth, headerWidth, leftWidth, sortWidth });
+    const plan = favToolbarPlan0157({
+        viewportWidth:innerWidth,
+        headerWidth,
+        leftWidth,
+        sortWidth,
+        forceStack:favScope().type !== 'items'
+    });
     if (plan.stacked) {
         favSetDynamicToolbarStack0157(header, true);
         favClearExactDesktopToolbarWidth0135(right);
