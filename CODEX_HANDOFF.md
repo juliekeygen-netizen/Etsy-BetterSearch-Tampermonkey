@@ -11,8 +11,9 @@ Base main: 9e07e4d335144ce04eaec552ea65db735a3cc96d (v0.15.27)
 Base main push CI: 33653744164 — SUCCESS
 Branch: codex/fix-collection-toolbar-row-layout
 Implementation head: 12eccf05993e63029f97b6351ad613df5983030e
-PR: pending publication
-Exact-head CI: pending publication
+PR: #83 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/83 — OPEN
+Published handoff head: e6119881ea15c04fc4c4ec29422b3b37d12415a3
+Exact-head CI: queued after PR publication
 ```
 
 ## Verified problem and decision
