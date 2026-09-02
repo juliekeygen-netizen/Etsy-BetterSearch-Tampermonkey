@@ -50,7 +50,7 @@ Branch: codex/fix-fallback-card-native-presentation
 Implementation head: ba2a8c0bc60c4282f4b593550612681e52ce0629
 Published head: 3902cbed2eb09a6d4d635866f58ca463fc883cf5
 PR: https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/88 — OPEN
-GitHub CI: pending (run 33667828558)
+Last checked GitHub CI: 33667878658 — SUCCESS
 Base: 7d24e95d6014500e3dea87f307a782d167bae559
 Release identity: unchanged (v0.15.28 behavior gate)
 ```
