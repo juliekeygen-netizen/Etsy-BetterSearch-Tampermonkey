@@ -25,6 +25,12 @@ function favApplyAllSearchClearParity0141() {
     const form = input?.closest?.('form.wt-input-btn-group');
     if (!header || !slot || !form || !slot.contains(form)) return;
     form.dataset.ebsfAllSearchForm = '';
+    /* The extra All-only native wrapper is not stable: depending on Etsy's
+     * hydration pass it can be the form itself or a parent button-group. Mark
+     * the actual containing group as well, rather than assuming the form is a
+     * direct child of BetterSearch's Search slot. */
+    const group = form.closest?.('.wt-input-btn-group');
+    if (group && slot.contains(group)) group.dataset.ebsfAllSearchGroup = '';
 }
 
 var favInstallPageShellBefore0141 = favInstallPageShell0120;
@@ -47,7 +53,8 @@ GM_addStyle(`
   /* Collection routes already have .ebsf-native-search-slot on the form itself.
    * All has an extra native wrapper. Make only that inner All form consume the
    * exact slot width so Etsy's own clear-button positioning resolves identically. */
-  [data-ebsf-all-header] .ebsf-native-search-slot > form[data-ebsf-all-search-form]{
+  [data-ebsf-all-header] .ebsf-native-search-slot [data-ebsf-all-search-group],
+  [data-ebsf-all-header] .ebsf-native-search-slot form[data-ebsf-all-search-form]{
     position:relative!important;
     box-sizing:border-box!important;
     flex:1 1 100%!important;
@@ -59,7 +66,7 @@ GM_addStyle(`
   /* This is Etsy's native Favorites component value, not a BetterSearch guess:
    * .favorites-landing-search-clear-button { ... right:62px }. Reassert it only
    * inside the mirrored All header so collection behavior is left untouched. */
-  [data-ebsf-all-header] form[data-ebsf-all-search-form] > .favorites-landing-search-clear-button{
+  [data-ebsf-all-header] form[data-ebsf-all-search-form] .favorites-landing-search-clear-button{
     right:62px!important;
     left:auto!important;
   }
