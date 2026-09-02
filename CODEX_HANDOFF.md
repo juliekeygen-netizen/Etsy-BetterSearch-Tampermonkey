@@ -12,8 +12,9 @@ Base main: ab6335f3755c61cf208535ba301e99587848f565 (PR #83 merge)
 Base main push CI: 33654028937 — SUCCESS
 Branch: codex/release-v0.15.28
 Implementation head: a31670b4dfb4221fdd1e5df64e66a926efd30589
-PR: pending publication
-Exact-head CI: pending publication
+PR: #84 — https://github.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/pull/84 — OPEN
+Published handoff head: 69d82766e75d02ab5c60ff60d279a29a4bab2b80
+Exact-head CI: queued after PR publication
 ```
 
 ## Release contents and decision
