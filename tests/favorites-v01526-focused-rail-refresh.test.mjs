@@ -136,10 +136,10 @@ test('an immediate refresh supersedes a previously deferred callback', async () 
 
 test('module is wired after native-heart guard and before final ownership chain at behavior-gate identity', async () => {
   const userscript = await readFile(resolve(ROOT, 'etsy-bettersearch.user.js'), 'utf8');
-  const heart = userscript.indexOf('/src/107-favorites-v01525-native-heart-confirmation.js?v=0.15.28');
-  const focus = userscript.indexOf('/src/108-favorites-v01526-focused-rail-refresh.js?v=0.15.28');
-  const ownership = userscript.indexOf('/src/102-favorites-v0155-stable-ownership-final.js?v=0.15.28');
-  const metadata = userscript.indexOf('/src/106-favorites-v01524-metadata-context-generation.js?v=0.15.28');
+  const heart = userscript.indexOf('/src/107-favorites-v01525-native-heart-confirmation.js?v=0.15.29');
+  const focus = userscript.indexOf('/src/108-favorites-v01526-focused-rail-refresh.js?v=0.15.29');
+  const ownership = userscript.indexOf('/src/102-favorites-v0155-stable-ownership-final.js?v=0.15.29');
+  const metadata = userscript.indexOf('/src/106-favorites-v01524-metadata-context-generation.js?v=0.15.29');
   assert.ok(heart >= 0 && focus > heart && ownership > focus && metadata > ownership);
   assert.match(userscript, /@version\s+0\.15\.28/);
 });
