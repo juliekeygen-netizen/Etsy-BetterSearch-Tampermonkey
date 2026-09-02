@@ -10,12 +10,12 @@ Read this together with `AGENTS.md`, `CODEX_HANDOFF.md`, and `docs/CODEX_NEXT_WO
 
 # 1. Current durable baseline
 
-Current release-promotion candidate at the time this file was written:
+Current verified production baseline at the time this file was written:
 
 ```text
-base main SHA: 259c98415dfddcfeb654c6c3943b84215dddda6d
-candidate:     v0.15.27
-production:    v0.15.26 until the promotion merges
+main SHA: 936325e0b70723005fc8c05dacbb3534ff0c2236
+release:  v0.15.27
+commit:   Release v0.15.27: promote BetterSearch identity
 ```
 
 Required independent post-merge CI was green:
@@ -589,9 +589,9 @@ were closed as superseded by the merged integration PR #75.
 
 # 11. Versioning note
 
-The active release-promotion candidate is v0.15.27. Production remains
-v0.15.26 until the candidate has passed exact-head CI, been audited, merged,
-and its production merge SHA has passed push CI.
+The current production release is v0.15.27. It passed exact-head CI as PR #80
+run `33642538133` and its production merge SHA passed push CI run
+`33642624166`.
 
 For future risky correctness patches, continue the established two-gate pattern when useful:
 
@@ -684,5 +684,18 @@ production userscript/extension runtime or release identity. After its fresh
 CI passes and the branch merges, use its output to make the reported
 collection/native-local handoff investigation reproducible at animation-frame
 resolution before changing a production owner.
+
+## 13.3 Collection/native-local handoff audit — 2026-09-02
+
+The latest private capture source-proves that collection selection currently
+forces a new document through the final copied-pill handler's `location.assign`
+call. This accounts for native Etsy content briefly appearing before the
+BetterSearch shell returns. It is not safe to substitute synthetic
+`history.pushState` or a fetched DOM swap without browser proof that Etsy's
+new route, native grid, and pager are current. The repaired Diagnostics capture
+must first establish whether Etsy can safely perform native soft navigation and
+whether the reported missing collection selector is a lasting semantic mismatch
+or only a handoff frame. See
+`docs/FAVORITES_DIAGNOSTIC_HANDOFF_AUDIT_2026-09-02.md`.
 
 The detailed autonomous sequence is in `docs/CODEX_NEXT_WORK_PLAN.md`.

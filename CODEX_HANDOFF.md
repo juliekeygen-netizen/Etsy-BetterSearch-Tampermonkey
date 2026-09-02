@@ -2,69 +2,62 @@
 
 ## Current handoff status
 
-**Status:** release-promotion candidate passed local validation and artifact
-audit; its fresh GitHub CI is pending. It intentionally contains no new
-behavior—only the shared release identity/cache-buster promotion after audited
-PRs #77, #78, and #79 merged.
+**Status:** documentation-only audit. No production or Diagnostics code was
+changed because the observed collection transition is source-proven full
+navigation and a SPA workaround is unsafe without a focused browser capture.
 
 ```text
 Date: 2026-09-02
-Base main: 259c98415dfddcfeb654c6c3943b84215dddda6d
-Base main push CI: 33642073497 — SUCCESS
-Branch: codex/release-v0.15.27
-Release content head: 190f885a595ff8b344535e1ab47557c725db0f0d
+Base main: 936325e0b70723005fc8c05dacbb3534ff0c2236 (v0.15.27)
+Base main push CI: 33642624166 — SUCCESS
+Branch: codex/audit-collection-handoff
+Audit content head: ac7e5373cca6ec686beb7c51080dcc87aa1f28c1
 PR: pending publication
-Release identity: production candidate 0.15.27
-Diagnostics identity: 0.2.9 (unchanged, independent)
+CI: pending publication
 ```
 
-## Scope and decision
+## Verified conclusions
 
-The user explicitly authorized merging the reviewed behavior gates and then
-updating the extension version. The base includes:
+Private Diagnostics evidence showed a native-to-BetterSearch transition during
+collection changes and reported missing collection selectors. The final
+production collection-pill owner, `favBindCollectionLink0128` in
+`src/94-favorites-native-boundary.js`, prevents the copied pill's default
+event, stops propagation, then uses `location.assign(link.href)`. A collection
+click therefore replaces the document; the recorded native shell followed by
+BetterSearch reinstallation is expected from that explicit route boundary.
 
-- #77, stable desktop Favorites toolbar geometry;
-- #78, Diagnostics valid native-empty-state marker suppression; and
-- #79, opt-in rapid trace/burst export and reload option rehydration.
-
-Each merge passed its required post-merge `main` CI. This promotion moves the
-shared BetterSearch userscript/package/Chrome/Firefox identity from `0.15.26`
-to `0.15.27`; Diagnostics remains separately versioned at `0.2.9`.
+There is no source proof that a synthetic History API route or a fetched DOM
+swap would leave Etsy's native collection/grid/pager current. Such a patch
+could violate the local/native rendering/currentness invariant, so this audit
+does not make that speculative change.
 
 ## Changes
 
 ```text
-package.json
-  package/extension source identity: 0.15.27
+docs/FAVORITES_DIAGNOSTIC_HANDOFF_AUDIT_2026-09-02.md
+  Sanitized diagnosis, boundaries, and exact repaired-Diagnostics repeat
+  capture protocol.
 
-etsy-bettersearch.user.js
-  @version plus every ordered @require cache-buster: 0.15.27
+ACTIVE_WORK.md / PROJECT_STATE.md
+  Records merged v0.15.27 state and the collection-handoff evidence boundary.
 
-tests/* release-identity assertions
-  Align only legitimate current userscript version/cache-buster assertions.
-
-ACTIVE_WORK.md / PROJECT_STATE.md / CODEX_HANDOFF.md
-  Record promotion state and the preceding merged behavior gates.
+CODEX_HANDOFF.md
+  This packet.
 ```
 
-Historical module filenames, module comments, and historical release documents
-remain at their original release references; they are not release identity
-assertions.
+No private raw diagnostics, screenshots, URLs, listing/account data, or marker
+notes are tracked.
 
-## Required validation / artifact audit
-
-The release content head passed:
+## Validation and reviewer focus
 
 ```text
-npx --yes --package=node@22 node scripts/check.mjs       PASS — 125 files / 90 modules
-npx --yes --package=node@22 node --test tests/*.test.mjs PASS — 569/569
-npx --yes --package=node@22 node scripts/build.mjs       PASS — Chrome, Firefox, Diagnostics
-git diff --check                                          PASS
+npx --yes --package=node@22 node scripts/check.mjs  PASS — 125 files / 90 modules, v0.15.27
+git diff --check                                     PASS
 ```
 
-Built Chrome and Firefox `manifest.json` plus `BUILD_INFO.json` each report
-`0.15.27`; the userscript header and all 90 ordered `@require` URLs use its
-cache-buster. Diagnostics still packages at `0.2.9` and reports `0.15.27` as
-its companion version. Publish a PR, require fresh exact-head CI and artifact
-uploads, merge only if that review is clean, then verify push-triggered CI on
-the actual production merge SHA.
+Review that the audit accurately distinguishes the source-proven full-document
+handoff from the still-unproven questions: whether Etsy's native navigation
+can safely route copied pills softly, whether the collection strip is missing
+after settling, and the exact filter ownership timing. The next action is a
+focused repeat capture with all three rapid Diagnostics options enabled, not a
+production routing patch.
