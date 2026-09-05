@@ -7,6 +7,9 @@ const ui = {
   catalogue:document.querySelector('#catalogue'),
   deepMetadata:document.querySelector('#deep-metadata'),
   statusPill:document.querySelector('#status-pill'),
+  profileState:document.querySelector('#profile-state'),
+  indexedState:document.querySelector('#indexed-state'),
+  coverageState:document.querySelector('#coverage-state'),
   lastRun:document.querySelector('#last-run'),
   nextRun:document.querySelector('#next-run'),
   catalogueState:document.querySelector('#catalogue-state'),
@@ -53,19 +56,31 @@ function ebsPopupSetFeedback(text = '', error = false) {
 function ebsPopupApply(state) {
   const settings = state?.settings || {};
   const status = state?.status || {};
+  const profile = state?.profile || {};
+  const stats = state?.stats || null;
   ui.enabled.checked = settings.enabled !== false;
   ui.interval.value = String(settings.intervalMinutes || 60);
   ui.catalogue.checked = settings.catalogue !== false;
   ui.deepMetadata.checked = settings.deepMetadata !== false;
+  ui.profileState.textContent = profile.initialized
+    ? (profile.login ? `@${profile.login}` : 'Initialized')
+    : 'Not initialized';
+  ui.indexedState.textContent = stats
+    ? `${Math.max(0, Number(stats.activeFavorites) || 0)} active · ${Math.max(0, Number(stats.indexedFavorites) || 0)} stored`
+    : '—';
+  ui.coverageState.textContent = stats
+    ? `${Math.max(0, Number(stats.deepMetadataFavorites) || 0)} / ${Math.max(0, Number(stats.activeFavorites) || 0)}`
+    : '—';
   ui.lastRun.textContent = ebsPopupTime(status.lastCompletedAt || status.lastDelegatedAt || status.lastWakeAt);
   ui.nextRun.textContent = settings.enabled === false ? 'Disabled' : ebsPopupTime(status.nextRunAt);
-  ui.catalogueState.textContent = ebsPopupStateLabel(status.catalogueState?.status || 'idle');
+  ui.catalogueState.textContent = ebsPopupStateLabel(status.catalogueState?.status || state?.catalog?.status || 'idle');
   ui.deepState.textContent = ebsPopupStateLabel(status.deepState?.status || 'idle');
 
   const phase = String(status.phase || 'idle');
   ui.statusPill.textContent = settings.enabled === false ? 'Disabled' : ebsPopupStateLabel(phase);
-  const noTabScanner = state?.capabilities?.noTabScanner === true;
-  ui.migrationNote.hidden = noTabScanner;
+  ui.migrationNote.hidden = profile.initialized === true;
+  ui.syncNow.title = profile.initialized ? 'Run the background Favorites catalogue worker now.' : 'Open your own Etsy Favorites once to initialize background maintenance.';
+  ui.deepNow.title = profile.initialized ? 'Run the background metadata worker now.' : 'Open your own Etsy Favorites once to initialize background maintenance.';
 }
 
 async function ebsPopupRefresh() {
@@ -99,10 +114,18 @@ async function ebsPopupSave() {
   }
 }
 
+function ebsPopupRunFeedback(kind, result) {
+  const label = kind === 'deep' ? 'Metadata scan' : 'Favorites sync';
+  if (result?.delegated && result?.initializationFallback) return `${label} started in the open Favorites page while background maintenance initializes.`;
+  if (result?.background && result?.needsContinuation) return `${label} ran in the background and will continue automatically.`;
+  if (result?.background) return `${label} completed its background work.`;
+  return `${label} started.`;
+}
+
 async function ebsPopupRun(kind) {
   const button = kind === 'deep' ? ui.deepNow : ui.syncNow;
   button.disabled = true;
-  ebsPopupSetFeedback(kind === 'deep' ? 'Starting metadata scan…' : 'Starting Favorites sync…');
+  ebsPopupSetFeedback(kind === 'deep' ? 'Running background metadata scan…' : 'Running background Favorites sync…');
   try {
     const result = await ebsPopupMessage({
       type:'maintenance-run-now',
@@ -111,9 +134,12 @@ async function ebsPopupRun(kind) {
       deepMetadata:kind === 'deep',
     });
     if (!result?.accepted) {
-      throw new Error('No eligible Etsy Favorites tab is open yet. Background-owned no-tab scanning is the next migration phase.');
+      if (result?.reason === 'profile-not-registered') {
+        throw new Error('Open your own Etsy Favorites once to initialize background maintenance for this account.');
+      }
+      throw new Error(result?.error || `Could not run ${kind === 'deep' ? 'metadata scan' : 'Favorites sync'} in the background.`);
     }
-    ebsPopupSetFeedback(kind === 'deep' ? 'Metadata scan started.' : 'Favorites sync started.');
+    ebsPopupSetFeedback(ebsPopupRunFeedback(kind, result));
     await ebsPopupRefresh();
   } catch (error) {
     ebsPopupSetFeedback(String(error?.message || error), true);
