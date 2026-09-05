@@ -176,6 +176,17 @@ function favSetCartControlBusy01530(control, busy) {
     }
 }
 
+function favCartResponseConfirmed01530(response) {
+    if (!response?.ok) return false;
+    try {
+        const finalUrl = new URL(response.url || '', location.href);
+        if (finalUrl.origin !== location.origin) return false;
+        return /^\/cart\/?$/i.test(finalUrl.pathname) || /^\/cart\/\d+/i.test(finalUrl.pathname);
+    } catch (_) {
+        return false;
+    }
+}
+
 async function favSubmitOwnedCart01530(card, control) {
     const request = favCartFormRequest01530(card, control);
     if (!request || favState.cartPending01530.has(request.id)) return false;
@@ -190,7 +201,9 @@ async function favSubmitOwnedCart01530(card, control) {
             body: request.params,
             headers: { Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8' },
         });
-        if (!response.ok) throw new Error(`Etsy cart request failed with HTTP ${response.status}`);
+        if (!favCartResponseConfirmed01530(response)) {
+            throw new Error(`Etsy did not confirm this cart add (HTTP ${response.status || 0})`);
+        }
         favSetOwnedCartState01530(request.id, true);
         return true;
     } catch (error) {
@@ -241,6 +254,8 @@ function favHandleOwnedCardClick01530(event) {
     event.preventDefault();
     event.stopImmediatePropagation();
 
+    if (favSyncOwnedCartFromNative01530(card)) return;
+
     const nativeControl = favMatchingNativeCartControl01530(card, label);
     if (nativeControl) {
         nativeControl.click();
@@ -263,8 +278,8 @@ GM_addStyle(`
 [data-ebsf-local-grid] > [data-ebsf-owned-card="1"]{align-self:stretch!important;height:100%!important}
 [data-ebsf-owned-card="1"]>[data-clg-id="WtCard"],[data-ebsf-owned-card="1"]>.wt-card{width:100%!important;height:100%!important}
 [data-ebsf-owned-card-stack="1"]{display:flex!important;flex-direction:column!important;width:100%!important;height:100%!important;min-height:100%!important}
-[data-ebsf-owned-cart-slot="1"]{position:relative!important;z-index:4!important;display:flex!important;flex:0 0 52px!important;align-items:flex-end!important;width:100%!important;height:52px!important;min-height:52px!important;max-height:52px!important;margin-top:auto!important;box-sizing:border-box!important;overflow:visible!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;transition:opacity .12s ease!important}
-[data-ebsf-owned-card="1"]:hover [data-ebsf-owned-cart-slot="1"],[data-ebsf-owned-card="1"]:focus-within [data-ebsf-owned-cart-slot="1"]{opacity:1!important;visibility:visible!important;pointer-events:auto!important}
+[data-ebsf-owned-cart-slot="1"]{position:relative!important;z-index:4!important;display:flex!important;flex:0 0 52px!important;align-items:flex-end!important;width:100%!important;height:52px!important;min-height:52px!important;max-height:52px!important;margin-top:auto!important;box-sizing:border-box!important;overflow:visible!important;opacity:0!important;pointer-events:none!important;transition:opacity .12s ease!important}
+[data-ebsf-owned-card="1"]:hover [data-ebsf-owned-cart-slot="1"],[data-ebsf-owned-card="1"]:focus-within [data-ebsf-owned-cart-slot="1"]{opacity:1!important;pointer-events:auto!important}
 [data-ebsf-owned-cart-slot="1"]>[data-testid="add-to-cart-button"],[data-ebsf-owned-cart-slot="1"]>.favorites-landing-card-checkout-buttons{width:100%!important}
 [data-ebsf-owned-cart-slot="1"] .ebsf-owned-in-cart{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-height:40px;font-size:13px}
 [data-ebsf-owned-cart-slot="1"] .ebsf-owned-in-cart-label{font-weight:600;color:#222}
