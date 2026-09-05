@@ -17,15 +17,18 @@
     </header>
 
     <section class="status-card" aria-live="polite">
+      <div class="status-row"><span>Profile</span><strong id="profile-state">—</strong></div>
+      <div class="status-row"><span>Favorites indexed</span><strong id="indexed-state">—</strong></div>
+      <div class="status-row"><span>Deep metadata</span><strong id="coverage-state">—</strong></div>
       <div class="status-row"><span>Last activity</span><strong id="last-run">—</strong></div>
       <div class="status-row"><span>Next check</span><strong id="next-run">—</strong></div>
-      <div class="status-row"><span>Catalogue</span><strong id="catalogue-state">Idle</strong></div>
-      <div class="status-row"><span>Deep metadata</span><strong id="deep-state">Idle</strong></div>
+      <div class="status-row"><span>Catalogue job</span><strong id="catalogue-state">Idle</strong></div>
+      <div class="status-row"><span>Metadata job</span><strong id="deep-state">Idle</strong></div>
     </section>
 
     <section class="settings-card">
       <label class="switch-row">
-        <span><strong>Automatic maintenance</strong><small>Schedule catalogue and metadata upkeep.</small></span>
+        <span><strong>Automatic maintenance</strong><small>Runs in the browser background; no Etsy tab is required after initialization.</small></span>
         <input id="enabled" type="checkbox">
       </label>
 
@@ -51,7 +54,7 @@
       <button id="deep-now" type="button">Scan metadata now</button>
     </section>
 
-    <p id="migration-note" class="note">Background scheduling is active. Until database ownership is migrated, scans are delegated to an open Etsy Favorites tab.</p>
+    <p id="migration-note" class="note" hidden>Open your own Etsy Favorites once to initialize background maintenance for this account.</p>
     <p id="feedback" class="feedback" aria-live="polite"></p>
   </main>
   <script src="popup.js"></script>
