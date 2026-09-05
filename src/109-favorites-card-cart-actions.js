@@ -181,7 +181,7 @@ function favCartResponseConfirmed01530(response) {
     try {
         const finalUrl = new URL(response.url || '', location.href);
         if (finalUrl.origin !== location.origin) return false;
-        return /^\/cart\/?$/i.test(finalUrl.pathname) || /^\/cart\/\d+/i.test(finalUrl.pathname);
+        return /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?cart(?:\/\d+)?\/?$/i.test(finalUrl.pathname);
     } catch (_) {
         return false;
     }
