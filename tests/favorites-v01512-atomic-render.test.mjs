@@ -20,11 +20,16 @@ function executable(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
-test('atomic render transaction stays final until the metadata-context boundary', () => {
+test('atomic render transaction stays immediately behind filter state and ahead of metadata fencing', () => {
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.equal(requires.at(-3) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`);
-  assert.equal(requires.at(-2) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`);
-  assert.equal(requires.at(-1) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/106-favorites-v01524-metadata-context-generation.js?v=${packageJson.version}`);
+  const filterState = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`;
+  const renderTransaction = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`;
+  const metadataBoundary = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/106-favorites-v01524-metadata-context-generation.js?v=${packageJson.version}`;
+  const filterIndex = requires.indexOf(filterState);
+  const renderIndex = requires.indexOf(renderTransaction);
+  const metadataIndex = requires.indexOf(metadataBoundary);
+  assert.ok(filterIndex >= 0 && renderIndex === filterIndex + 1 && metadataIndex === renderIndex + 1,
+    'filter state, atomic render, and metadata fencing must remain adjacent and ordered even when later independent finalizers exist');
   assert.doesNotMatch(smoke, /01512/, 'the rejected first draft must not remain appended to module 101');
 });
 
