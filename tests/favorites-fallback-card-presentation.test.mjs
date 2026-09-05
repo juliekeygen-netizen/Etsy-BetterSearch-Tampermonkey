@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const runtime = await readFile(new URL('../src/63-favorites-runtime.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../src/65-favorites-style.js', import.meta.url), 'utf8');
+const cartActions = await readFile(new URL('../src/109-favorites-card-cart-actions.js', import.meta.url), 'utf8');
 
 test('fallback cards preserve Etsy card structure while adding only the requested shop/rating row', () => {
   const fallback = runtime.slice(runtime.indexOf('function favFallbackNode'), runtime.indexOf('function favPrepareOwnedCard0141'));
@@ -27,12 +28,14 @@ test('fallback heart uses Etsy’s native Favorites control contract', () => {
   assert.match(styles, /\.ebsf-fallback-card \.ebsf-fallback-heart\{[^}]*display:inline-flex!important[^}]*align-items:center!important[^}]*justify-content:center!important/s);
 });
 
-test('fallback option badges and cart action retain Etsy semantics while actions reveal on hover or focus', () => {
+test('fallback option badges retain Etsy semantics while the final cart owner reserves hover space', () => {
   const fallback = runtime.slice(runtime.indexOf('function favFallbackNode'), runtime.indexOf('function favPrepareOwnedCard0141'));
   assert.match(fallback, /record\.hasVariations \? '<span[^']*Multiple options/);
   assert.match(fallback, /record\.isPersonalizable \? '<span[^']*Personalizable/);
   assert.match(fallback, /class="wt-mt-xs-2 ebsf-card-options"/);
-  assert.match(styles, /\.ebsf-fallback-card \.ebsf-card-actions\{[^}]*max-height:0[^}]*opacity:0[^}]*pointer-events:none/s);
-  assert.match(styles, /\.ebsf-fallback-card:hover \.ebsf-card-actions,\.ebsf-fallback-card:focus-within \.ebsf-card-actions\{[^}]*max-height:52px[^}]*opacity:1[^}]*pointer-events:auto/s);
   assert.match(styles, /\.ebsf-fallback-card \.ebsf-card-options\{[^}]*display:flex[^}]*flex-wrap:wrap/s);
+  assert.match(cartActions, /\[data-ebsf-owned-cart-slot="1"\]\{[^}]*flex:0 0 52px!important[^}]*height:52px!important[^}]*opacity:0!important[^}]*pointer-events:none!important/s);
+  assert.match(cartActions, /\[data-ebsf-owned-card="1"\]:hover \[data-ebsf-owned-cart-slot="1"\].*opacity:1!important.*pointer-events:auto!important/s);
+  assert.doesNotMatch(cartActions, /visibility:hidden/);
+  assert.doesNotMatch(cartActions, /max-height:0/);
 });

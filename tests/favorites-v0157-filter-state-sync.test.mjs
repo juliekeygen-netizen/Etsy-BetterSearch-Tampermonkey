@@ -56,16 +56,21 @@ function loadVisualSyncHelper() {
   return context.testApi.sync;
 }
 
-test('state/count semantics stay final until render transaction and metadata-context boundaries', () => {
+test('state/count semantics stay ordered through render transaction and metadata-context boundaries', () => {
   const diagnostics = userscript.indexOf('/src/103-favorites-v0157-diagnostics-fixes.js');
   const stateSync = userscript.indexOf('/src/104-favorites-v0157-filter-state-sync.js');
   const transaction = userscript.indexOf('/src/105-favorites-v01512-atomic-render.js');
   const metadataContext = userscript.indexOf('/src/106-favorites-v01524-metadata-context-generation.js');
-  assert.ok(diagnostics >= 0 && stateSync > diagnostics && transaction > stateSync && metadataContext > transaction);
+  const cardCartBoundary = userscript.indexOf('/src/109-favorites-card-cart-actions.js');
+  assert.ok(diagnostics >= 0 && stateSync > diagnostics && transaction > stateSync && metadataContext > transaction && cardCartBoundary > metadataContext);
   const requires = Array.from(userscript.matchAll(/^\/\/ @require\s+([^\s]+)$/gm), (match) => match[1]);
-  assert.equal(requires.at(-3) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`);
-  assert.equal(requires.at(-2) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`);
-  assert.equal(requires.at(-1) || '', `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/106-favorites-v01524-metadata-context-generation.js?v=${packageJson.version}`);
+  const stateUrl = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/104-favorites-v0157-filter-state-sync.js?v=${packageJson.version}`;
+  const transactionUrl = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/105-favorites-v01512-atomic-render.js?v=${packageJson.version}`;
+  const metadataUrl = `https://raw.githubusercontent.com/juliekeygen-netizen/Etsy-BetterSearch-Tampermonkey/main/src/106-favorites-v01524-metadata-context-generation.js?v=${packageJson.version}`;
+  const stateIndex = requires.indexOf(stateUrl);
+  assert.ok(stateIndex >= 0, 'final filter-state owner remains loaded');
+  assert.equal(requires[stateIndex + 1] || '', transactionUrl, 'atomic render remains immediately after filter-state semantics');
+  assert.equal(requires[stateIndex + 2] || '', metadataUrl, 'metadata-context fencing remains immediately after atomic render');
 });
 
 test('normalized default configuration has no meaningfully active v2 filter binding', () => {
