@@ -8,6 +8,10 @@ const bridge = await readFile(new URL('../extension/content-bridge.js', import.m
 const bridgeFinal = await readFile(new URL('../extension/content-bridge-final.js', import.meta.url), 'utf8');
 const build = await readFile(new URL('../scripts/build.mjs', import.meta.url), 'utf8');
 
+function executableSource(source) {
+  return source.replace(/^\s*\/\/.*$/gm, '');
+}
+
 test('final raw-listing handoff merge never treats import wall-clock time as Favorite evidence', () => {
   for (const source of [workerFinal, bridgeFinal]) {
     const start = source.indexOf('function ebs');
@@ -16,7 +20,7 @@ test('final raw-listing handoff merge never treats import wall-clock time as Fav
     assert.match(mergeArea, /lastSeenFavoriteAt/);
     assert.match(mergeArea, /lastCardRefreshAt/);
     assert.match(mergeArea, /favoriteScopes/);
-    assert.doesNotMatch(mergeArea, /Date\.now\(\)/);
+    assert.doesNotMatch(executableSource(mergeArea), /Date\.now\(\)/);
   }
 
   // The older bodies may still exist for readable history, but the final owners
