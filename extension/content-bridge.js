@@ -68,20 +68,24 @@ async function ebsHandleMaintenanceRequest(message) {
     return { accepted:false, reason:'inactive-runtime-owner' };
   }
 
-  let catalogueAccepted = false;
-  let deepAccepted = false;
-  if (message.catalogue !== false) {
-    catalogueAccepted = message.force === true
+  const catalogueRequested = message.catalogue !== false;
+  const deepRequested = message.deepMetadata !== false;
+  let catalogueStarted = false;
+  let deepStarted = false;
+  if (catalogueRequested) {
+    catalogueStarted = message.force === true
       ? await ebsRunForcedCatalogue()
       : await ebsRunScheduledCatalogue();
   }
-  if (message.deepMetadata !== false) {
-    deepAccepted = await ebsRunDeep(message.force === true && message.reason === 'manual-deep');
+  if (deepRequested) {
+    deepStarted = await ebsRunDeep(message.force === true && message.reason === 'manual-deep');
   }
   return {
-    accepted:Boolean(catalogueAccepted || deepAccepted),
-    catalogue:Boolean(catalogueAccepted),
-    deepMetadata:Boolean(deepAccepted),
+    // `accepted` means this tab is the eligible semantic owner. A scheduled
+    // catalogue check that finds nothing due is still a successful handoff.
+    accepted:Boolean(catalogueRequested || deepRequested),
+    catalogueStarted:Boolean(catalogueStarted),
+    deepMetadataStarted:Boolean(deepStarted),
   };
 }
 
