@@ -44,11 +44,19 @@ test('off-page simple cards submit Etsy cart/listing form state with the logged-
   assert.match(moduleSource, /redirect: 'follow'/);
 });
 
-test('off-page cart state is committed only after Etsy redirects to a cart URL', () => {
+test('off-page cart state is committed only after Etsy redirects to a local or locale-prefixed cart URL', () => {
   assert.match(moduleSource, /function favCartResponseConfirmed01530/);
   assert.match(moduleSource, /if \(!response\?\.ok\) return false/);
-  assert.ok(moduleSource.includes(String.raw`/^\/cart\/?$/i.test(finalUrl.pathname)`));
-  assert.ok(moduleSource.includes(String.raw`/^\/cart\/\d+/i.test(finalUrl.pathname)`));
+  const confirmationLine = moduleSource.split(/\r?\n/).find((line) => line.includes('return /^') && line.includes('.test(finalUrl.pathname)')) || '';
+  const literalMatch = confirmationLine.match(/return\s+(\/\^.*\/i)\.test\(finalUrl\.pathname\);/);
+  assert.ok(literalMatch, 'cart confirmation must expose one explicit pathname regexp');
+  const cartPathPattern = Function(`return ${literalMatch[1]}`)();
+  for (const pathname of ['/cart', '/cart/', '/cart/12345', '/fi-en/cart', '/fi-en/cart/', '/in-en/cart/12345']) {
+    assert.match(pathname, cartPathPattern, `${pathname} should confirm a cart destination`);
+  }
+  for (const pathname of ['/listing/12345/example', '/cart/listing.php', '/fi-en/listing/12345/example', '/foo/bar/cart']) {
+    assert.doesNotMatch(pathname, cartPathPattern, `${pathname} must not confirm a cart destination`);
+  }
   assert.match(moduleSource, /if \(!favCartResponseConfirmed01530\(response\)\)/);
   assert.match(moduleSource, /favSetOwnedCartState01530\(request\.id, true\)/);
 });
