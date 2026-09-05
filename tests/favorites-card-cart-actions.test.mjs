@@ -47,8 +47,8 @@ test('off-page simple cards submit Etsy cart/listing form state with the logged-
 test('off-page cart state is committed only after Etsy redirects to a cart URL', () => {
   assert.match(moduleSource, /function favCartResponseConfirmed01530/);
   assert.match(moduleSource, /if \(!response\?\.ok\) return false/);
-  assert.match(moduleSource, /\^\\\/cart\\\/?\$\/i/);
-  assert.match(moduleSource, /\^\\\/cart\\\/\\d\+\/i/);
+  assert.ok(moduleSource.includes(String.raw`/^\/cart\/?$/i.test(finalUrl.pathname)`));
+  assert.ok(moduleSource.includes(String.raw`/^\/cart\/\d+/i.test(finalUrl.pathname)`));
   assert.match(moduleSource, /if \(!favCartResponseConfirmed01530\(response\)\)/);
   assert.match(moduleSource, /favSetOwnedCartState01530\(request\.id, true\)/);
 });
