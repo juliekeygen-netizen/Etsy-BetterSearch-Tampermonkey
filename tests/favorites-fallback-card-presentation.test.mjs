@@ -34,7 +34,8 @@ test('fallback option badges retain Etsy semantics while the final cart owner re
   assert.match(fallback, /record\.isPersonalizable \? '<span[^']*Personalizable/);
   assert.match(fallback, /class="wt-mt-xs-2 ebsf-card-options"/);
   assert.match(styles, /\.ebsf-fallback-card \.ebsf-card-options\{[^}]*display:flex[^}]*flex-wrap:wrap/s);
-  assert.match(cartActions, /\[data-ebsf-owned-cart-slot="1"\]\{[^}]*flex:0 0 52px!important[^}]*height:52px!important[^}]*opacity:0!important[^}]*visibility:hidden!important/s);
-  assert.match(cartActions, /\[data-ebsf-owned-card="1"\]:hover \[data-ebsf-owned-cart-slot="1"\].*opacity:1!important.*visibility:visible!important/s);
+  assert.match(cartActions, /\[data-ebsf-owned-cart-slot="1"\]\{[^}]*flex:0 0 52px!important[^}]*height:52px!important[^}]*opacity:0!important[^}]*pointer-events:none!important/s);
+  assert.match(cartActions, /\[data-ebsf-owned-card="1"\]:hover \[data-ebsf-owned-cart-slot="1"\].*opacity:1!important.*pointer-events:auto!important/s);
+  assert.doesNotMatch(cartActions, /visibility:hidden/);
   assert.doesNotMatch(cartActions, /max-height:0/);
 });
