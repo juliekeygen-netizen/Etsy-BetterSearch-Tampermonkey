@@ -48,8 +48,12 @@ export function makeManifest(target, { version, name, description }) {
     name,
     version,
     description: manifestDescription,
-    permissions: ['storage'],
+    permissions: ['storage', 'alarms'],
     host_permissions: ['https://www.etsy.com/*'],
+    action: {
+      default_title: 'Etsy BetterSearch',
+      default_popup: 'popup.html'
+    },
     content_scripts: [
       {
         matches: ['https://www.etsy.com/*'],
