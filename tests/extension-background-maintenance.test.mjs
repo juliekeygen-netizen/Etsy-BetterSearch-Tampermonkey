@@ -84,6 +84,10 @@ async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function plain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 test('Chrome and Firefox manifests expose the popup and alarm permission without adding cookie/tab permissions', () => {
   for (const target of ['chrome', 'firefox']) {
     const manifest = makeManifest(target, { version:'0.15.29', name:'Etsy BetterSearch', description:'test' });
@@ -99,7 +103,7 @@ test('Chrome and Firefox manifests expose the popup and alarm permission without
 test('background bootstrap persists defaults and creates a recurring maintenance alarm', async () => {
   const harness = createBackgroundHarness();
   await settle();
-  const settings = harness.storage['ebsf.extension.maintenance.settings.v1'];
+  const settings = plain(harness.storage['ebsf.extension.maintenance.settings.v1']);
   assert.deepEqual(settings, { enabled:true, intervalMinutes:60, catalogue:true, deepMetadata:true });
   const alarm = harness.alarms.get('etsy-bettersearch-maintenance');
   assert.equal(alarm.periodInMinutes, 60);
@@ -136,8 +140,11 @@ test('manual maintenance delegates to one eligible Etsy tab and fails closed whe
 });
 
 test('content bridge is extension-only, loaded after shared modules, and reuses existing scanner owners', () => {
+  const sharedModulesPosition = buildSource.indexOf("${moduleSources.join('\\n')}");
+  const bridgePosition = buildSource.indexOf('${contentBridge.trim()}');
   assert.match(buildSource, /extension\/content-bridge\.js/);
-  assert.match(buildSource, /\$\{moduleSources\.join\('[^']*'\)\}[\s\S]*\$\{contentBridge\.trim\(\)\}/);
+  assert.ok(sharedModulesPosition >= 0, 'generated extension bundle must still include the shared userscript module chain');
+  assert.ok(bridgePosition > sharedModulesPosition, 'extension-only maintenance bridge must load after the shared module chain');
   assert.match(bridgeSource, /favMaybeAutoSync\(true\)/);
   assert.match(bridgeSource, /favSyncScope\(scope/);
   assert.match(bridgeSource, /favDeepStart\(\{ force:force === true \}\)/);
