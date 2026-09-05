@@ -35,7 +35,7 @@ test('package version stays aligned with userscript', async () => {
   assert.equal(pkg.version, metadataValue(metadata, 'version'));
 });
 
-test('Chrome manifest uses MV3 service worker and Etsy host permission', () => {
+test('Chrome manifest uses MV3 service worker, maintenance alarm, popup and Etsy host permission', () => {
   const manifest = makeManifest('chrome', {
     version: '1.2.3',
     name: 'Etsy BetterSearch',
@@ -43,12 +43,16 @@ test('Chrome manifest uses MV3 service worker and Etsy host permission', () => {
   });
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, 'background.js');
-  assert.deepEqual(manifest.permissions, ['storage']);
+  assert.deepEqual(manifest.permissions, ['storage', 'alarms']);
+  assert.equal(manifest.action.default_popup, 'popup.html');
+  assert.equal(manifest.action.default_title, 'Etsy BetterSearch');
   assert.ok(manifest.host_permissions.includes('https://www.etsy.com/*'));
   assert.equal(manifest.content_scripts[0].run_at, 'document_idle');
+  assert.ok(!manifest.permissions.includes('cookies'));
+  assert.ok(!manifest.permissions.includes('tabs'));
 });
 
-test('Firefox manifest uses background scripts and a stable Gecko id', () => {
+test('Firefox manifest uses background scripts, maintenance popup and a stable Gecko id', () => {
   const manifest = makeManifest('firefox', {
     version: '1.2.3',
     name: 'Etsy BetterSearch',
@@ -56,6 +60,8 @@ test('Firefox manifest uses background scripts and a stable Gecko id', () => {
   });
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.background.scripts, ['background.js']);
+  assert.deepEqual(manifest.permissions, ['storage', 'alarms']);
+  assert.equal(manifest.action.default_popup, 'popup.html');
   assert.equal(
     manifest.browser_specific_settings.gecko.id,
     'etsy-bettersearch@juliekeygen-netizen.github.io'

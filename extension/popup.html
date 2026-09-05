@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Etsy BetterSearch</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="popup-shell">
+    <header class="popup-header">
+      <div>
+        <div class="eyebrow">Etsy BetterSearch</div>
+        <h1>Maintenance</h1>
+      </div>
+      <span id="status-pill" class="status-pill">Loading…</span>
+    </header>
+
+    <section class="status-card" aria-live="polite">
+      <div class="status-row"><span>Profile</span><strong id="profile-state">—</strong></div>
+      <div class="status-row"><span>Favorites indexed</span><strong id="indexed-state">—</strong></div>
+      <div class="status-row"><span>Deep metadata</span><strong id="coverage-state">—</strong></div>
+      <div class="status-row"><span>Last activity</span><strong id="last-run">—</strong></div>
+      <div class="status-row"><span>Next check</span><strong id="next-run">—</strong></div>
+      <div class="status-row"><span>Catalogue job</span><strong id="catalogue-state">Idle</strong></div>
+      <div class="status-row"><span>Metadata job</span><strong id="deep-state">Idle</strong></div>
+    </section>
+
+    <section class="settings-card">
+      <label class="switch-row">
+        <span><strong>Automatic maintenance</strong><small>Runs in the browser background; no Etsy tab is required after initialization.</small></span>
+        <input id="enabled" type="checkbox">
+      </label>
+
+      <label class="field-row" for="interval">
+        <span><strong>Interval</strong><small>How often the browser checks for work.</small></span>
+        <select id="interval">
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+          <option value="60">1 hour</option>
+          <option value="180">3 hours</option>
+          <option value="360">6 hours</option>
+          <option value="720">12 hours</option>
+          <option value="1440">24 hours</option>
+        </select>
+      </label>
+
+      <label class="check-row"><input id="catalogue" type="checkbox"><span>Refresh Favorites catalogue</span></label>
+      <label class="check-row"><input id="deep-metadata" type="checkbox"><span>Fill / refresh deep metadata</span></label>
+    </section>
+
+    <section class="actions">
+      <button id="sync-now" type="button" class="primary">Sync favorites now</button>
+      <button id="deep-now" type="button">Scan metadata now</button>
+    </section>
+
+    <p id="migration-note" class="note" hidden>Open your own Etsy Favorites once to initialize background maintenance for this account.</p>
+    <p id="feedback" class="feedback" aria-live="polite"></p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
